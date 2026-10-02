@@ -1,0 +1,40 @@
+# Unity generated folders
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/MemoryCaptures/
+/Recordings/
+
+# Local AI-agent configuration and skills
+/.agents/
+/.codex/
+
+# IDE-generated files
+/.vs/
+/.idea/
+/.vscode/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# OS and Unity diagnostics
+.DS_Store
+Thumbs.db
+sysinfo.txt
+crashlytics-build.properties
+
+# Asset Store tools
+/[Aa]ssets/AssetStoreTools*
