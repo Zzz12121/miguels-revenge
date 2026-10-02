@@ -24,6 +24,11 @@ public static class BossArenaBuilder
     [MenuItem("GeminiGrowUp/建立 Boss 房 (Build Boss Arena)")]
     public static void Build()
     {
+        if (!EditorUtility.DisplayDialog("重建 BossArena 場景？",
+                "這會整個重建 BossArena.unity：場景裡的 PlayerRig、BossRoom Prefab 等都會被換成舊的測試物件。\n" +
+                "現在大部分情況都不需要用這個選單，確定要重建嗎？",
+                "重建", "取消"))
+            return;
         if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
         EnsureFolder(MatDir);
         EnsureFolder(SceneDir);

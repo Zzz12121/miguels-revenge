@@ -18,6 +18,8 @@ public class BossHealth : MonoBehaviour, IDamageable
     public bool IsDead { get; private set; }
     /// <summary>要不要顯示畫面下方的血條（戰鬥開始才顯示）</summary>
     public bool ShowBar { get; set; }
+    /// <summary>無敵（例如進入二階段的怒吼時）</summary>
+    public bool Invulnerable { get; set; }
     public event System.Action OnDied;
     public event System.Action<float> OnDamaged;
 
@@ -40,16 +42,30 @@ public class BossHealth : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
-        if (IsDead || amount <= 0f) return;
+        if (IsDead || Invulnerable || amount <= 0f) return;
         Health = Mathf.Max(0f, Health - amount);
         lastHitTime = Time.time;
         OnDamaged?.Invoke(amount);
-        if (Health <= 0f)
-        {
-            IsDead = true;
-            deathTime = Time.time;
-            OnDied?.Invoke();
-        }
+        if (Health <= 0f) Die();
+    }
+
+    /// <summary>測試用：直接把血量設成某個值（會觸發二階段 / 死亡）</summary>
+    public void SetHealth(float value)
+    {
+        if (IsDead) return;
+        float before = Health;
+        Health = Mathf.Clamp(value, 0f, maxHealth);
+        lastHitTime = Time.time;
+        if (Health < before) OnDamaged?.Invoke(before - Health);
+        if (Health <= 0f) Die();
+    }
+
+    void Die()
+    {
+        if (IsDead) return;
+        IsDead = true;
+        deathTime = Time.time;
+        OnDied?.Invoke();
     }
 
     public void ExcludeFromFlash(Renderer r)

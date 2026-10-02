@@ -7,6 +7,9 @@ using UnityEngine.InputSystem;
 /// - 左 Shift：衝刺
 /// - 空白鍵：跳躍（含 Coyote Time 與跳躍緩衝，手感較好）
 /// 需要搭配 CharacterController。
+///
+/// 小怪也用這個元件移動（勾選 aiControlled），由 EnemyAI 呼叫 SetAIInput 給方向，
+/// 所以小怪的走路、衝刺、跳躍、重力手感都跟玩家完全一樣。
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class ThirdPersonController : MonoBehaviour
@@ -45,8 +48,57 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
     public Transform cameraTransform;
 
+    [Header("AI 控制（小怪用）")]
+    [Tooltip("勾選後不讀鍵盤，改由程式（EnemyAI）呼叫 SetAIInput 控制")]
+    public bool aiControlled = false;
+
+    Vector3 aiMove;
+    bool aiSprint;
+    bool aiJump;
+
     CharacterController controller;
     Vector3 horizontalVelocity;
+
+    [Header("腳步聲")]
+    [Tooltip("腳步聲（不填 = Kenney RPG Audio 的 footstep00~09）")]
+    public AudioClip[] footstepSounds;
+    [Range(0f, 1f)] public float footstepVolume = 0.35f;
+    [Tooltip("走幾公尺響一次")]
+    public float stepDistance = 1.9f;
+    float stepTravel;
+    bool wasGrounded = true;
+    float fallSpeed;
+
+    static readonly string[] DefaultSteps =
+    {
+        "SFX/RPG/footstep00", "SFX/RPG/footstep01", "SFX/RPG/footstep02", "SFX/RPG/footstep03", "SFX/RPG/footstep04",
+        "SFX/RPG/footstep05", "SFX/RPG/footstep06", "SFX/RPG/footstep07", "SFX/RPG/footstep08", "SFX/RPG/footstep09",
+    };
+
+    void Footstep(float volume)
+    {
+        // 小怪的腳步聲小一點、低一點，不然一群小怪會很吵
+        float v = volume * (aiControlled ? 0.5f : 1f);
+        float pitch = (aiControlled ? 0.85f : 1f) * Random.Range(0.9f, 1.1f);
+        GameAudio.PlayAt(GameAudio.Pick(footstepSounds, DefaultSteps), transform.position, v, pitch, 1f, 25f);
+    }
+
+    void UpdateFootsteps(float dt)
+    {
+        bool grounded = controller.isGrounded;
+        if (grounded)
+        {
+            if (!wasGrounded && fallSpeed < -6f) Footstep(footstepVolume * 1.4f); // 落地
+            stepTravel += horizontalVelocity.magnitude * dt;
+            if (stepTravel >= stepDistance)
+            {
+                stepTravel = 0f;
+                Footstep(footstepVolume);
+            }
+        }
+        else fallSpeed = verticalVelocity;
+        wasGrounded = grounded;
+    }
     float verticalVelocity;
     float rotationVelocity;
     float lastGroundedTime = float.NegativeInfinity;
@@ -73,6 +125,15 @@ public class ThirdPersonController : MonoBehaviour
         rotationVelocity = 0f;
     }
 
+    /// <summary>AI 用：給一個世界座標的移動方向（長度 0~1）、要不要衝刺、要不要跳</summary>
+    public void SetAIInput(Vector3 worldMove, bool sprint = false, bool jump = false)
+    {
+        worldMove.y = 0f;
+        aiMove = Vector3.ClampMagnitude(worldMove, 1f);
+        aiSprint = sprint;
+        if (jump) aiJump = true;
+    }
+
     /// <summary>清除所有速度（重生 / 傳送時使用）</summary>
     public void ResetMotion()
     {
@@ -90,17 +151,31 @@ public class ThirdPersonController : MonoBehaviour
     void Update()
     {
         float dt = Time.deltaTime;
-        Vector2 input = ReadMoveInput(out bool sprint, out bool jumpPressed);
-        if (jumpPressed) lastJumpPressedTime = Time.time;
+        Vector3 moveDir;
+        bool sprint, jumpPressed;
 
-        // ---- 1. 以鏡頭方向換算移動方向 ----
-        Vector3 camForward = Vector3.forward, camRight = Vector3.right;
-        if (cameraTransform != null)
+        if (aiControlled)
         {
-            camForward = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
-            camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
+            // ---- 1a. AI：直接用世界座標的方向 ----
+            bool canAct = inputEnabled;
+            moveDir = canAct ? aiMove : Vector3.zero;
+            sprint = canAct && aiSprint;
+            jumpPressed = canAct && aiJump;
+            aiJump = false;
         }
-        Vector3 moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
+        else
+        {
+            // ---- 1b. 玩家：以鏡頭方向換算移動方向 ----
+            Vector2 input = ReadMoveInput(out sprint, out jumpPressed);
+            Vector3 camForward = Vector3.forward, camRight = Vector3.right;
+            if (cameraTransform != null)
+            {
+                camForward = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
+                camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
+            }
+            moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
+        }
+        if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
         float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier;
@@ -141,6 +216,8 @@ public class ThirdPersonController : MonoBehaviour
         // 撞到天花板時停止上升
         if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f)
             verticalVelocity = 0f;
+
+        UpdateFootsteps(dt);
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed)

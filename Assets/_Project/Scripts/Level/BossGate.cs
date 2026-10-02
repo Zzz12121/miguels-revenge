@@ -99,6 +99,8 @@ public class BossGate : MonoBehaviour
                 {
                     state = GateState.Open;
                     MoveDoor(true, openTime);
+                    GameAudio.Play("SFX/RPG/doorOpen_1", door != null ? door.position : transform.position, 1f, 0.55f, 0f, 1f, 50f);
+                    GameAudio.Play("SFX/RPG/creak1", door != null ? door.position : transform.position, 0.8f, 0.6f, 0f, 1f, 50f);
                 }
                 break;
 
@@ -107,6 +109,8 @@ public class BossGate : MonoBehaviour
                 {
                     state = GateState.Sealed;
                     MoveDoor(false, closeTime);
+                    GameAudio.Play("SFX/RPG/doorClose_4", door != null ? door.position : transform.position, 1f, 0.5f, 0f, 1f, 60f);
+                    GameAudio.Play("SFX/rock_hit", door != null ? door.position : transform.position, 0.5f, 1.2f, 0f, 1f, 60f);
                     ThirdPersonCamera.ShakeMain(0.2f, 0.3f);
                     if (boss != null) boss.BeginFight();
                 }

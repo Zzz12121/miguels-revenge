@@ -47,6 +47,7 @@ public class FloorTile : MonoBehaviour
     MaterialPropertyBlock mpb;
     Color baseColor = Color.gray;
     Coroutine routine;
+    Color? telegraph;          // Boss 攻擊範圍預警色（不管方塊正在做什麼動畫都要顯示）
     Vector3 basePosition;
     Vector3 baseScale;
 
@@ -83,10 +84,15 @@ public class FloorTile : MonoBehaviour
         rend.SetPropertyBlock(mpb);
     }
 
-    /// <summary>只有在正常狀態時才改顏色（避免蓋掉塌陷的閃爍）</summary>
+    /// <summary>
+    /// 設定 / 清除 Boss 攻擊範圍的預警色。
+    /// 方塊正在升起、恢復、凹陷中也會顯示；只有塌陷閃爍中（Warning）和掉下去（Fallen）時
+    /// 先記住，等方塊回來時再套用。
+    /// </summary>
     public void SetTelegraph(Color? color)
     {
-        if (CurrentState == State.Normal) SetTint(color);
+        telegraph = color;
+        if (CurrentState != State.Warning && CurrentState != State.Fallen) SetTint(color);
     }
 
     // ---------------- 地形高度 ----------------
@@ -177,16 +183,22 @@ public class FloorTile : MonoBehaviour
         }
         transform.position = toPos;
         transform.localScale = toScale;
-        SetTint(null);
+        SetTint(telegraph);
         CurrentState = State.Normal;
         routine = null;
     }
 
     // ---------------- 凹陷 ----------------
 
+    /// <summary>
+    /// 往下凹。正在升起、正在恢復、已經凹陷中的方塊也會被打斷改成凹陷，
+    /// 只有正在塌陷 / 已經掉下去 / 還在地底等待升起的方塊不受影響。
+    /// </summary>
     public void Dent(float delay, float depth, float holdTime, float recoverTime)
     {
-        if (!canCollapse || CurrentState != State.Normal) return;
+        if (!canCollapse || IsCracking) return;
+        if (CurrentState == State.Warning || CurrentState == State.Fallen) return;
+        if (CurrentState == State.Restoring && !rend.enabled) return;
         Run(DentRoutine(delay, depth, holdTime, recoverTime));
     }
 
@@ -194,11 +206,16 @@ public class FloorTile : MonoBehaviour
     {
         CurrentState = State.Dented;
         if (delay > 0f) yield return new WaitForSeconds(delay);
-        SetTint(null);
+
+        // 如果是打斷了升起 / 恢復的動畫，先把大小和碰撞恢復正常
+        transform.localScale = RestScale;
+        rend.enabled = true;
+        col.enabled = true;
+        SetTint(telegraph);
 
         Vector3 rest = RestPosition;
         Vector3 down = rest + Vector3.down * depth;
-        yield return MoveTo(rest, down, 0.07f);       // 瞬間砸下去
+        yield return MoveTo(transform.position, down, 0.07f); // 瞬間砸下去（從目前位置開始）
         yield return new WaitForSeconds(holdTime);
         yield return MoveTo(down, rest, recoverTime); // 慢慢回來
 
@@ -260,7 +277,7 @@ public class FloorTile : MonoBehaviour
         while (PlayerOverlaps(RestPosition, half)) yield return null;
 
         rend.enabled = true;
-        SetTint(null);
+        SetTint(telegraph);
         yield return MoveTo(RestPosition + Vector3.down * (RestScale.y + 1f), RestPosition, 0.8f);
         col.enabled = true;
         CurrentState = State.Normal;
@@ -282,6 +299,7 @@ public class FloorTile : MonoBehaviour
         routine = null;
         if (flatten) { Height = 0f; IsPillar = false; }
         IsCracking = false;
+        telegraph = null;
         ForceVisible();
         transform.position = RestPosition;
         transform.localScale = RestScale;
@@ -293,7 +311,7 @@ public class FloorTile : MonoBehaviour
     {
         rend.enabled = true;
         col.enabled = true;
-        SetTint(null);
+        SetTint(telegraph);
     }
 
     // ---------------- 工具 ----------------

@@ -52,7 +52,8 @@ public class Checkpoint : MonoBehaviour
             playerHealth.respawnPoint = respawnPoint != null ? respawnPoint : transform;
             if (healOnTouch) playerHealth.HealFull();
 
-            message = activated ? "已休息，HP 回復" : "已記錄重生點";
+            message = activated ? "HP RESTORED" : "CHECKPOINT REACHED";
+            GameAudio.Play(activated ? "SFX/RPG/metalClick" : "SFX/RPG/metalLatch", transform.position, 0.9f, 0.9f, 0f, 0.3f);
             messageTime = Time.time;
             if (!activated)
             {

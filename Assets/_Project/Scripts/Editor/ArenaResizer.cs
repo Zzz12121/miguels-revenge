@@ -10,7 +10,7 @@ using UnityEngine;
 ///   - 環形牆依新半徑重建（96 段），入口大門移到新的南側
 ///   - Boss 起始位置跟著放大
 ///   - Boss 技能數值套用放大版（光束寬度 ×2，拍地範圍 ×3，怒吼 80%；普攻距離不變）
-/// 接著重建 Floor01 場景，讓走廊接到新的入口。
+/// 之後請執行「更新第二層」讓走廊接到新的入口。
 ///
 /// 所有數值都是「直接設定成目標值」，重複執行不會越放越大。
 /// </summary>
@@ -24,14 +24,14 @@ public static class ArenaResizer
     [MenuItem("GeminiGrowUp/套用大競技場（半徑 36m）")]
     public static void Apply()
     {
-        string path = Floor01Builder.FindBossRoomPrefab();
+        string path = Floor02Builder.FindBossRoomPrefab();
         if (path == null)
         {
             EditorUtility.DisplayDialog("找不到 BossRoom", "專案裡找不到名為 BossRoom 的 Prefab。", "OK");
             return;
         }
         if (!EditorUtility.DisplayDialog("套用大競技場",
-                "會修改 BossRoom.prefab（地板、牆、大門、Boss 數值）並重建 Floor01 場景。\n建議先備份或 commit。要繼續嗎？",
+                "會修改 BossRoom.prefab（地板、牆、大門、Boss 數值）。\n建議先備份或 commit。要繼續嗎？",
                 "繼續", "取消"))
             return;
 
@@ -59,7 +59,7 @@ public static class ArenaResizer
             floor.Generate();
 
             // ---------- 環形牆 ----------
-            var walls = Floor01Builder.FindDeep(root.transform, "Walls");
+            var walls = Floor02Builder.FindDeep(root.transform, "Walls");
             if (walls == null)
             {
                 walls = new GameObject("Walls").transform;
@@ -85,7 +85,7 @@ public static class ArenaResizer
             }
 
             // ---------- 大門（移到新的南側入口） ----------
-            Floor01Builder.BuildGate(root, center, NewRadius, bc, wallMat, doorMat);
+            Floor02Builder.BuildGate(root, center, NewRadius, bc, wallMat, doorMat);
 
             // ---------- Boss ----------
             bc.transform.SetPositionAndRotation(center + new Vector3(0f, 0f, 12f), Quaternion.Euler(0f, 180f, 0f));
@@ -102,13 +102,9 @@ public static class ArenaResizer
             bc.playerCollapseRadius = 3.2f;
             bc.safeRadius = 7f;
             // 光束：原地發射、寬度 ×2（厚度不變，才跳得過）、會打爆柱子
-            bc.beamWidth = 2f;
-            bc.beamThickness = 1f;
-            bc.beamHeight = 0.6f;
-            bc.beamMinAimDistance = 8f;
+            bc.beamDiameter = 2f;
+            bc.beamMinAimDistance = 6f;
             bc.beamChargeTime = 2f;
-            bc.beamLockTime = 0.3f;
-            bc.beamSweepDegrees = 120f;
             bc.beamBreaksPillars = true;
             bc.beamPillarBreakTime = 0.3f;
 
@@ -119,8 +115,8 @@ public static class ArenaResizer
             PrefabUtility.UnloadPrefabContents(root);
         }
 
-        Debug.Log("[GeminiGrowUp] BossRoom 已套用大競技場。接著重建 Floor01 場景…");
-        Floor01Builder.Build();
+        // 不再自動重建 Floor02（會蓋掉 PlayerRig 和小怪），改用「更新第二層」把走廊接到新的入口
+        Debug.Log("[GeminiGrowUp] BossRoom 已套用大競技場。如果競技場大小有變，請再執行「GeminiGrowUp → 更新第二層（寬走廊 + 小怪）」讓走廊接上新的入口。");
     }
 }
 #endif

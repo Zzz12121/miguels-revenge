@@ -12,7 +12,9 @@ using UnityEngine.InputSystem;
 ///   1. 拍地  ：朝前方扇形拍一掌，衝擊波往外擴散、地板凹陷並出現不規則深坑。
 ///              衝擊波經過時腳還踩在地上就會受傷 → 要抓時機跳過去。
 ///   2. 怒吼  ：全場隨機一部分方塊＋玩家腳下的方塊，預警後塌陷，掉下去會死。
-///   3. 光束  ：原地瞄準玩家後往追蹤方向掃射。柱子可以擋住光束一次，但會被打爆（外牆不會）。
+///   3. 光束  ：舉起右手，預警線先照在玩家身上並慢慢跟著（比走路慢），
+///              發射後照射點直線追向玩家（比走路快、比跑步慢）。手臂會跟光束對成一直線。
+///              站在光束裡每 0.3 秒受傷一次；照到的地板會碎掉，柱子能擋一下但會被打爆。
 ///   4. 跳躍砸地：跳到玩家位置砸下來。落點會先在地板上標紅，要趕快跑出去；
 ///              落地後還有一圈往外擴散的衝擊波，要跳過去。玩家離太遠時 Boss 也會用這招拉近距離。
 ///
@@ -99,30 +101,34 @@ public class BossController : MonoBehaviour
     public float collapseDownTime = 5f;
 
     [Header("3. 光束")]
+    [Tooltip("舉手 + 細線預警的時間 (秒)")]
     public float beamChargeTime = 2f;
-    [Tooltip("蓄力時瞄準點追玩家的速度 (m/s)。要比玩家走路速度 (4.5) 慢，玩家跑起來才甩得掉")]
-    public float beamTrackSpeed = 3.5f;
-    [Tooltip("蓄力最後這段時間完全鎖定方向不再追蹤 (秒)")]
-    public float beamLockTime = 0.3f;
-    [Tooltip("瞄準點離 Boss 至少這麼遠，避免玩家繞到身邊時瞄準方向亂跳")]
-    public float beamMinAimDistance = 8f;
-    [Tooltip("旋轉速度 (度/秒)")]
-    public float beamRotateSpeed = 40f;
-    [Tooltip("總共轉幾度")]
-    public float beamSweepDegrees = 120f;
-    [Tooltip("光束中心離 Boss 腳底的高度，玩家腳底要高於 高度 + 粗細/2 才躲得過")]
-    public float beamHeight = 0.6f;
-    [Tooltip("光束的上下厚度 (m)；太厚玩家會跳不過")]
-    public float beamThickness = 1.0f;
-    [Tooltip("光束的左右寬度 (m)")]
-    public float beamWidth = 2f;
-    public float beamDamage = 20f;
-    [Tooltip("光束會不會被柱子擋住")]
-    public bool beamBlockedByPillars = true;
-    [Tooltip("光束能不能打爆柱子")]
+    [Tooltip("蓄力時，預警線的照射點追玩家的速度 (m/s)。比玩家走路 (4.5) 慢，用走的就能甩開")]
+    public float beamChargeChaseSpeed = 3.5f;
+    [Tooltip("光束發射持續多久 (秒)")]
+    public float beamDuration = 5f;
+    [Tooltip("照射點直線追玩家的速度 (m/s)。比玩家走路 (4.5) 快、比衝刺 (8) 慢：用走的會被追上，要跑才躲得掉")]
+    public float beamChaseSpeed = 6f;
+    [Tooltip("照射點離 Boss 至少這麼遠 (m)")]
+    public float beamMinAimDistance = 6f;
+    [Tooltip("光束的粗細（直徑，m）")]
+    public float beamDiameter = 2f;
+    [Tooltip("站在光束裡每隔多久受一次傷 (秒)")]
+    public float beamTickInterval = 0.3f;
+    [Tooltip("每次受到的傷害")]
+    public float beamTickDamage = 6f;
+    [Tooltip("光束會不會破壞照到的地板")]
+    public bool beamBreaksFloor = true;
+    [Tooltip("地板被照到後閃爍多久才掉下去 (秒)")]
+    public float beamFloorBreakDelay = 0.25f;
+    [Tooltip("光束能不能打爆柱子（柱子會擋住光束）")]
     public bool beamBreaksPillars = true;
-    [Tooltip("柱子被光束掃到後，閃爍多久才倒下 (秒)；倒下前仍然擋得住光束")]
+    [Tooltip("柱子被光束照到後，閃爍多久才倒下 (秒)；倒下前仍然擋得住光束")]
     public float beamPillarBreakTime = 0.3f;
+    [Tooltip("光束從哪裡射出。留空 = 自動找模型的右手（hand.R）；找不到就從胸口射出")]
+    public Transform beamSource;
+    [Tooltip("發射時把右手臂轉成跟光束同一直線（覆蓋動畫的手臂角度）")]
+    public bool beamAimArm = true;
 
     [Header("4. 跳躍砸地")]
     [Tooltip("玩家離這麼遠時，Boss 會用跳躍砸地拉近距離 (m)")]
@@ -144,7 +150,41 @@ public class BossController : MonoBehaviour
     public float jumpRecoverTime = 1.5f;
     public Color jumpTelegraphColor = new Color(0.9f, 0.1f, 0.35f);
 
+    [Header("二階段（憤怒）")]
+    [Tooltip("血量掉到一定比例時進入二階段")]
+    public bool enablePhase2 = true;
+    [Tooltip("血量剩多少比例時進入二階段（0.5 = 半血）")]
+    [Range(0.05f, 0.95f)] public float phase2HealthRatio = 0.5f;
+    [Tooltip("二階段移動速度倍率")]
+    public float phase2MoveMultiplier = 1.5f;
+    [Tooltip("二階段轉身速度倍率")]
+    public float phase2TurnMultiplier = 1.4f;
+    [Tooltip("二階段每次大招之間的追擊時間倍率（越小越常放大招）")]
+    public float phase2ChaseTimeMultiplier = 0.7f;
+    [Tooltip("二階段大招之後喘息的秒數（一階段是 1 秒）")]
+    public float phase2RestTime = 0.4f;
+    [Tooltip("進入二階段時怒吼的時間（這段時間 Boss 無敵）")]
+    public float phase2RoarTime = 2.2f;
+    [Tooltip("怒吼震開玩家的範圍 (m)")]
+    public float phase2PushRadius = 10f;
+    public float phase2PushForce = 16f;
+    public float phase2PushDamage = 5f;
+
+    [Header("音效")]
+    [Tooltip("Boss 戰音樂（不填 = Resources/Audio/Music/boss_fight_music）。玩家進門、Boss 被觸發後才開始播")]
+    public AudioClip bossMusic;
+    [Range(0f, 1f)] public float musicVolume = 0.5f;
+    [Tooltip("音樂淡入 / Boss 被打倒後淡出的秒數")]
+    public float musicFadeIn = 1.5f;
+    public float musicFadeOut = 4f;
+    [Tooltip("怒吼聲（不填 = SFX/roar_rock_crumble）")]
+    public AudioClip roarSound;
+    [Tooltip("拍地、跳砸落地、柱子碎裂的撞擊聲（不填 = SFX/rock_hit）")]
+    public AudioClip impactSound;
+    [Range(0f, 1f)] public float sfxVolume = 1f;
+
     [Header("除錯")]
+    [Tooltip("數字鍵 1~4 放大招、5 = Boss 血量直接變成二階段門檻、6 = Boss 直接死亡")]
     public bool debugKeys = true;
     public bool showStatus = true;
 
@@ -152,6 +192,8 @@ public class BossController : MonoBehaviour
     /// <summary>戰鬥進行中（已觸發、Boss 還沒死）</summary>
     public bool FightActive { get; private set; }
     public bool IsDefeated => dead;
+    /// <summary>是否已經進入二階段</summary>
+    public bool InPhase2 => phase2;
 
     public event System.Action OnFightStarted;
     /// <summary>玩家死亡後戰鬥重置（BossGate 用來把門恢復）</summary>
@@ -162,6 +204,7 @@ public class BossController : MonoBehaviour
 
     PlayerHealth playerHealth;
     BossHealth health;
+    BossVisual visual;   // 有模型動畫時才會有（安裝石像模型後自動加上）
     Special? lastSpecial;
     Special? forcedSpecial;
     float lastSwipeTime = float.NegativeInfinity;
@@ -169,12 +212,20 @@ public class BossController : MonoBehaviour
     bool airborne;
     Vector3 startPosition;
     Quaternion startRotation;
-    float currentBeamThickness;
+    float currentBeamDiameter;
+    Vector3 beamAim;        // 光束照射點（只用 x, z）
+    float nextBeamTick;
+    int beamState;          // 0 = 關閉、1 = 蓄力（細線）、2 = 發射
+    float armAimWeight;     // 手臂對準光束的程度（0~1，平滑過渡）
     bool dead;
+    bool phase2;          // 已進入二階段
+    bool phase2Pending;   // 血量到門檻了，等目前的招式放完就變身
+    BossRageEffect rage;
     readonly RaycastHit[] rayHits = new RaycastHit[128];
-    float currentBeamWidth;
 
     bool PlayerAlive => player != null && (playerHealth == null || !playerHealth.IsDead);
+    float MoveSpeed => moveSpeed * (phase2 ? phase2MoveMultiplier : 1f);
+    float TurnSpeed => turnSpeed * (phase2 ? phase2TurnMultiplier : 1f);
 
     void Awake()
     {
@@ -195,18 +246,39 @@ public class BossController : MonoBehaviour
         }
         if (beam != null) health.ExcludeFromFlash(beam.GetComponent<Renderer>());
         health.OnDied += OnBossDied;
+        health.OnDamaged += OnBossDamaged;
+
+        rage = GetComponent<BossRageEffect>();
+        if (rage == null) rage = gameObject.AddComponent<BossRageEffect>();
+
+        visual = GetComponent<BossVisual>();
+        if (visual == null) visual = null; // Unity 的「假 null」轉成真的 null，後面才能用 != null 判斷
 
         startPosition = transform.position;
         startRotation = transform.rotation;
 
         if (playerHealth != null) playerHealth.OnRespawned += ResetFight;
-        SetupBeam(false, beamThickness);
+
+        // 光束從右手射出
+        if (beamSource == null) beamSource = FindDeep(transform, "hand.R");
+        HideBeam();
+    }
+
+    static Transform FindDeep(Transform t, string name)
+    {
+        if (t.name == name) return t;
+        foreach (Transform c in t)
+        {
+            var r = FindDeep(c, name);
+            if (r != null) return r;
+        }
+        return null;
     }
 
     void OnDestroy()
     {
         if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
-        if (health != null) health.OnDied -= OnBossDied;
+        if (health != null) { health.OnDied -= OnBossDied; health.OnDamaged -= OnBossDamaged; }
     }
 
     void Start()
@@ -223,6 +295,10 @@ public class BossController : MonoBehaviour
         if (Keyboard.current.digit2Key.wasPressedThisFrame) forcedSpecial = Special.Roar;
         if (Keyboard.current.digit3Key.wasPressedThisFrame) forcedSpecial = Special.Beam;
         if (Keyboard.current.digit4Key.wasPressedThisFrame) forcedSpecial = Special.Jump;
+        if (Keyboard.current.digit5Key.wasPressedThisFrame && !phase2)
+            health.SetHealth(health.maxHealth * phase2HealthRatio);
+        if (Keyboard.current.digit6Key.wasPressedThisFrame)
+            health.SetHealth(0f);
     }
 
     // =====================================================================
@@ -243,6 +319,7 @@ public class BossController : MonoBehaviour
             arena.GenerateTerrain(keepFlat);
         }
         StartCoroutine(Brain());
+        GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, musicFadeIn);
         OnFightStarted?.Invoke();
     }
 
@@ -257,17 +334,22 @@ public class BossController : MonoBehaviour
         }
 
         StopAllCoroutines();
+        GameAudio.StopMusic(1.5f);
         dead = false;
         airborne = false;
         forcedSpecial = null;
         lastSpecial = null;
-        SetupBeam(false, beamThickness);
+        phase2 = phase2Pending = false;
+        health.Invulnerable = false;
+        if (rage != null) rage.ResetRage();
+        HideBeam();
         if (bodyPivot != null)
         {
             bodyPivot.localRotation = Quaternion.identity;
             bodyPivot.localScale = Vector3.one;
         }
         transform.SetPositionAndRotation(startPosition, startRotation);
+        if (visual != null) visual.ResetVisual();
         health.ResetHealth();
         health.ShowBar = false;
         if (arena != null) arena.ResetAllTiles(true);
@@ -281,10 +363,15 @@ public class BossController : MonoBehaviour
         dead = true;
         FightActive = false;
         StopAllCoroutines();
-        SetupBeam(false, beamThickness);
+        HideBeam();
         if (arena != null)
             foreach (var t in arena.Tiles) t.SetTelegraph(null);
         CurrentAction = "擊敗";
+        GameAudio.StopMusic(musicFadeOut);
+        PlayRoar(0.65f, 0.9f);
+        health.Invulnerable = false;
+        if (rage != null) rage.SetRage(0f); // 死掉時紅光慢慢熄滅
+        PlayAnim("Death");
         StartCoroutine(DeathRoutine());
         OnDefeated?.Invoke();
     }
@@ -300,7 +387,9 @@ public class BossController : MonoBehaviour
         }
         ThirdPersonCamera.ShakeMain(0.3f, 0.6f);
         yield return StretchBody(Vector3.one, 0.2f);
-        yield return Lean(-85f, 1.4f); // 往後倒下
+        yield return Lean(-85f, 1.4f, true); // 往後倒下（不管有沒有模型動畫都完整倒下）
+        PlayImpact(0.7f, 1f);                 // 倒地
+        ThirdPersonCamera.ShakeMain(0.4f, 0.5f);
     }
 
     // =====================================================================
@@ -321,8 +410,13 @@ public class BossController : MonoBehaviour
                 continue;
             }
 
-            yield return Chase(Random.Range(chaseTimeRange.x, chaseTimeRange.y));
+            if (phase2Pending) { yield return EnterPhase2(); continue; }
+
+            float chaseTime = Random.Range(chaseTimeRange.x, chaseTimeRange.y);
+            if (phase2) chaseTime *= phase2ChaseTimeMultiplier;
+            yield return Chase(chaseTime);
             if (!PlayerAlive) continue;
+            if (phase2Pending) { yield return EnterPhase2(); continue; }
 
             Special next = forcedSpecial ?? PickSpecial();
             forcedSpecial = null;
@@ -337,9 +431,66 @@ public class BossController : MonoBehaviour
             }
 
             CurrentAction = "喘息";
-            yield return new WaitForSeconds(1f);
+            yield return new WaitForSeconds(phase2 ? phase2RestTime : 1f);
         }
     }
+
+    // =====================================================================
+    //  二階段
+    // =====================================================================
+
+    void OnBossDamaged(float amount)
+    {
+        if (!enablePhase2 || phase2 || phase2Pending || dead || health.IsDead) return;
+        if (health.Health <= health.maxHealth * phase2HealthRatio)
+        {
+            phase2Pending = true;
+            forcedSpecial = null; // 測試鍵預約的招式取消，先變身
+        }
+    }
+
+    /// <summary>進入二階段：無敵怒吼、震開附近的玩家、身體亮起紅光，之後動作變快</summary>
+    IEnumerator EnterPhase2()
+    {
+        phase2Pending = false;
+        health.Invulnerable = true;
+        CurrentAction = "憤怒";
+        PlayAnim("Roar", 0.6f);
+
+        yield return Lean(-14f, 0.6f);   // 往後仰蓄力
+
+        // 爆發
+        phase2 = true;
+        rage.SetRage(1f);
+        rage.Burst();
+        PlayRoar(0.8f, 1f);
+        PlayImpact(0.75f, 0.8f);
+        ThirdPersonCamera.ShakeMain(0.6f, 1.2f);
+        if (PlayerAlive)
+        {
+            Vector3 to = FlatTo(player.position);
+            if (to.magnitude < phase2PushRadius)
+            {
+                Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
+                playerHealth?.TakeDamage(phase2PushDamage, dir * phase2PushForce + Vector3.up * 6f);
+            }
+        }
+        yield return Lean(8f, 0.15f);
+        yield return new WaitForSeconds(Mathf.Max(0f, phase2RoarTime - 1.15f));
+        yield return Lean(0f, 0.4f);
+
+        EndAnim();
+        health.Invulnerable = false;
+    }
+
+    // Boss 的聲音一半是 3D（聽得出方向），在競技場任何地方都聽得到
+    void PlayRoar(float pitch, float volume) =>
+        GameAudio.PlayAt(GameAudio.Pick(roarSound, "SFX/roar_rock_crumble"), transform.position + Vector3.up * 4f,
+                         volume * sfxVolume, pitch, 0.5f, 90f);
+
+    void PlayImpact(float pitch, float volume) =>
+        GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), transform.position,
+                         volume * sfxVolume, pitch * Random.Range(0.95f, 1.05f), 0.5f, 90f);
 
     Special PickSpecial()
     {
@@ -355,15 +506,15 @@ public class BossController : MonoBehaviour
     IEnumerator Chase(float duration)
     {
         float t = 0f;
-        while (t < duration && forcedSpecial == null)
+        while (t < duration && forcedSpecial == null && !phase2Pending)
         {
             if (!PlayerAlive) yield break;
             CurrentAction = "追擊";
 
             Vector3 toPlayer = FlatTo(player.position);
-            FaceTowards(toPlayer, turnSpeed);
+            FaceTowards(toPlayer, TurnSpeed);
             if (toPlayer.magnitude > stopDistance)
-                TryMove(toPlayer, moveSpeed * Time.deltaTime);
+                TryMove(toPlayer, MoveSpeed * Time.deltaTime);
 
             // 玩家跑太遠：跳過去砸
             if (toPlayer.magnitude > jumpMinDistance && Time.time - lastJumpTime >= jumpCooldown)
@@ -386,7 +537,9 @@ public class BossController : MonoBehaviour
     IEnumerator Swipe()
     {
         CurrentAction = "揮擊";
+        PlayAnim("Swipe", swipeWindup + 0.1f);
         yield return Lean(-15f, swipeWindup);  // 後仰蓄力
+        GameAudio.Play("SFX/RPG/knifeSlice", transform.position + Vector3.up * 3f, 0.9f * sfxVolume, 0.45f, 0.05f, 0.6f, 60f);
         yield return Lean(25f, 0.1f);          // 揮下去
 
         if (PlayerInFan(swipeRange + 0.5f, swipeHalfAngle, out Vector3 dir))
@@ -394,6 +547,7 @@ public class BossController : MonoBehaviour
 
         yield return new WaitForSeconds(0.3f);
         yield return Lean(0f, 0.4f);
+        EndAnim();
         lastSwipeTime = Time.time;
     }
 
@@ -410,8 +564,8 @@ public class BossController : MonoBehaviour
         while (t < 3f && FlatTo(player.position).magnitude > slamApproachDistance)
         {
             Vector3 to = FlatTo(player.position);
-            FaceTowards(to, turnSpeed);
-            TryMove(to, moveSpeed * 1.4f * Time.deltaTime);
+            FaceTowards(to, TurnSpeed);
+            TryMove(to, MoveSpeed * 1.4f * Time.deltaTime);
             t += Time.deltaTime;
             yield return null;
         }
@@ -420,7 +574,7 @@ public class BossController : MonoBehaviour
         t = 0f;
         while (t < 0.35f)
         {
-            FaceTowards(FlatTo(player.position), turnSpeed * 2f);
+            FaceTowards(FlatTo(player.position), TurnSpeed * 2f);
             t += Time.deltaTime;
             yield return null;
         }
@@ -433,12 +587,14 @@ public class BossController : MonoBehaviour
             : new List<FloorTile>();
         foreach (var tile in tiles) tile.SetTelegraph(slamTelegraphColor);
 
+        PlayAnim("Slam", slamWindup + 0.08f);
         yield return Lean(-25f, slamWindup);
 
         // 拍下去！
         CurrentAction = "拍地";
         yield return Lean(40f, 0.08f);
         ThirdPersonCamera.ShakeMain(0.35f, 0.5f);
+        PlayImpact(1f, 1f);
 
         // 用 Perlin 雜訊決定哪些方塊變成深坑，每次拍地形狀都不一樣
         Vector2 noiseOffset = new Vector2(Random.Range(0f, 1000f), Random.Range(0f, 1000f));
@@ -461,6 +617,7 @@ public class BossController : MonoBehaviour
 
         yield return new WaitForSeconds(0.4f);
         yield return Lean(0f, 0.5f);
+        EndAnim();
     }
 
     /// <summary>玩家腳是不是踩在地上（用來判斷有沒有跳過衝擊波）</summary>
@@ -480,10 +637,12 @@ public class BossController : MonoBehaviour
     {
         CurrentAction = "怒吼";
 
-        // 朝天伸展（之後換成真正的怒吼動畫）
+        // 朝天伸展
+        PlayAnim("Roar", 0.65f);
         yield return Lean(-20f, 0.4f);
         yield return StretchBody(new Vector3(0.9f, 1.25f, 0.9f), 0.25f);
         ThirdPersonCamera.ShakeMain(0.25f, roarDuration);
+        PlayRoar(1f, 1f);
 
         if (arena != null)
         {
@@ -508,6 +667,7 @@ public class BossController : MonoBehaviour
         yield return new WaitForSeconds(roarDuration);
         yield return StretchBody(Vector3.one, 0.3f);
         yield return Lean(0f, 0.3f);
+        EndAnim();
     }
 
     // =====================================================================
@@ -516,141 +676,208 @@ public class BossController : MonoBehaviour
 
     IEnumerator BeamAttack()
     {
-        // 原地發射，不用跑到中央
-        float t;
-
-        // 蓄力：瞄準點一開始就在玩家身上（站著不動會被打）
         CurrentAction = "光束（蓄力）";
-        Vector3 aimPoint = player.position;
-        FaceDirectionInstant(FlatTo(aimPoint));
-        SetupBeam(true, 0.06f, 0.06f);
+        PlayAnim("Beam", 0.5f);   // 舉起右手
 
-        // 瞄準點以固定速度 (m/s) 追玩家，比玩家移動慢，所以跑起來就能甩開
-        // 同時記錄瞄準是往哪個方向轉的，發射後就往那個方向掃
-        float sweepSign = 0f;
-        t = 0f;
+        // 蓄力：預警線直接照在玩家身上，之後以「比走路慢」的速度跟著玩家（不會受傷）
+        beamAim = player.position;
+        ClampBeamAim();
+        ShowBeam(0.12f, 1);
+        float t = 0f;
         while (t < beamChargeTime)
         {
-            if (t < beamChargeTime - beamLockTime && PlayerAlive)
-            {
-                Vector3 prevDir = FlatTo(aimPoint);
-                aimPoint = Vector3.MoveTowards(aimPoint, player.position, beamTrackSpeed * Time.deltaTime);
-
-                // 瞄準點不能太靠近 Boss，不然方向會瞬間大轉
-                Vector3 newDir = FlatTo(aimPoint);
-                if (newDir.magnitude < beamMinAimDistance)
-                {
-                    newDir = (newDir.sqrMagnitude > 0.0001f ? newDir.normalized : transform.forward) * beamMinAimDistance;
-                    aimPoint = transform.position + newDir;
-                }
-
-                float turned = Vector3.SignedAngle(prevDir, newDir, Vector3.up);
-                if (Mathf.Abs(turned) > 0.01f) sweepSign = Mathf.Sign(turned);
-                FaceDirectionInstant(newDir);
-            }
-            UpdateBeamLength();
+            ChaseBeamAim(beamChargeChaseSpeed);
+            FaceTowards(FlatTo(beamAim), TurnSpeed);
             t += Time.deltaTime;
             yield return null;
         }
 
-        // 玩家完全沒動過：往玩家目前所在的那一側掃；剛好正對就隨機
-        if (sweepSign == 0f)
-        {
-            float side = Vector3.SignedAngle(transform.forward, FlatTo(player.position), Vector3.up);
-            sweepSign = Mathf.Abs(side) > 1f ? Mathf.Sign(side) : (Random.value < 0.5f ? 1f : -1f);
-        }
-
-        // 發射並往追蹤方向旋轉
+        // 發射：照射點改用「比走路快、比跑步慢」的速度直線追玩家
         CurrentAction = "光束";
-        SetupBeam(true, beamThickness, beamWidth);
+        ShowBeam(beamDiameter, 2);
         ThirdPersonCamera.ShakeMain(0.15f, 0.3f);
-        float swept = 0f;
-        while (swept < beamSweepDegrees)
+        nextBeamTick = 0f;
+        t = 0f;
+        while (t < beamDuration)
         {
-            float step = beamRotateSpeed * Time.deltaTime;
-            transform.Rotate(0f, step * sweepSign, 0f);
-            swept += step;
-            UpdateBeamLength(true);
-            CheckBeamHit();
+            ChaseBeamAim(beamChaseSpeed);
+            FaceTowards(FlatTo(beamAim), TurnSpeed);
+            t += Time.deltaTime;
             yield return null;
         }
 
-        SetupBeam(false, beamThickness);
+        HideBeam();
+        EndAnim();
     }
 
-    float MaxBeamLength => arena != null ? arena.radius * 2f + 3f : 30f;
+    void ChaseBeamAim(float speed)
+    {
+        if (PlayerAlive)
+        {
+            Vector3 target = player.position;
+            target.y = beamAim.y;
+            beamAim = Vector3.MoveTowards(beamAim, target, speed * Time.deltaTime);
+        }
+        ClampBeamAim();
+    }
 
-    void SetupBeam(bool active, float thickness) => SetupBeam(active, thickness, beamWidth);
+    /// <summary>照射點不能太靠近 Boss，也不能跑出場地</summary>
+    void ClampBeamAim()
+    {
+        beamAim.y = transform.position.y;
+        Vector3 fromBoss = FlatTo(beamAim);
+        if (fromBoss.magnitude < beamMinAimDistance)
+            beamAim = transform.position + (fromBoss.sqrMagnitude > 0.0001f ? fromBoss.normalized : transform.forward) * beamMinAimDistance;
+        beamAim = ClampInArena(beamAim);
+    }
 
-    void SetupBeam(bool active, float thickness, float width)
+    /// <summary>照射點在地面上的位置（含山丘高度）</summary>
+    Vector3 BeamAimOnGround()
+    {
+        Vector3 aim = beamAim;
+        aim.y = arena != null && arena.TryGetGroundHeight(aim, out float gy) ? gy
+              : (arena != null ? arena.Center.y : transform.position.y);
+        return aim;
+    }
+
+    // 動畫在 Update 之後、LateUpdate 之前更新骨頭，所以手臂對準和光束位置都放在 LateUpdate，
+    // 才能用「這一幀動畫算完的手」接著改，光束起點也才不會慢一幀
+    void LateUpdate()
+    {
+        float target = beamState > 0 && beamAimArm ? 1f : 0f;
+        armAimWeight = Mathf.MoveTowards(armAimWeight, target, Time.deltaTime / 0.25f);
+        if (armAimWeight > 0f) AimArmAt(BeamAimOnGround(), armAimWeight);
+
+        if (beamState > 0) UpdateBeam(beamState == 2);
+    }
+
+    /// <summary>把右上臂、前臂轉向目標點，讓 肩膀 → 手肘 → 手掌 → 光束 成一直線</summary>
+    void AimArmAt(Vector3 point, float weight)
+    {
+        if (beamSource == null) return;
+        Transform forearm = beamSource.parent;
+        Transform upperArm = forearm != null ? forearm.parent : null;
+        if (forearm == null || upperArm == null) return;
+
+        // 1) 上臂：讓「肩膀 → 手腕」對準目標
+        Vector3 cur = beamSource.position - upperArm.position;
+        Vector3 want = point - upperArm.position;
+        if (cur.sqrMagnitude > 0.0001f && want.sqrMagnitude > 0.0001f)
+            upperArm.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(cur, want), weight) * upperArm.rotation;
+
+        // 2) 前臂：讓「手肘 → 手腕」也對準目標（把手肘打直）
+        cur = beamSource.position - forearm.position;
+        want = point - forearm.position;
+        if (cur.sqrMagnitude > 0.0001f && want.sqrMagnitude > 0.0001f)
+            forearm.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(cur, want), weight) * forearm.rotation;
+    }
+
+    void ShowBeam(float diameter, int state)
     {
         if (beam == null) return;
-        currentBeamThickness = thickness;
-        currentBeamWidth = width;
-        beam.gameObject.SetActive(active);
-        beam.localRotation = Quaternion.identity;
-        SetBeamLength(MaxBeamLength);
+        currentBeamDiameter = diameter;
+        beamState = state;
+        beam.gameObject.SetActive(true);
     }
 
-    void SetBeamLength(float length)
+    void HideBeam()
     {
-        beam.localScale = new Vector3(currentBeamWidth, currentBeamThickness, length);
-        beam.localPosition = new Vector3(0f, beamHeight, bodyRadius * 0.8f + length * 0.5f);
+        beamState = 0;
+        if (beam != null) beam.gameObject.SetActive(false);
     }
 
-    /// <summary>光束碰到柱子或牆壁就截斷；firing = true 時持續照射會打爆柱子</summary>
-    void UpdateBeamLength(bool firing = false)
+    /// <summary>光束起點：右手掌前端（手腕再往手掌方向延伸 0.9m）；沒有模型時從胸口</summary>
+    Vector3 BeamOrigin()
     {
-        if (beam == null) return;
-        Vector3 origin = transform.position + Vector3.up * beamHeight + transform.forward * bodyRadius * 0.8f;
-        float max = MaxBeamLength;
-        float length = max;
+        if (beamSource == null)
+            return transform.position + Vector3.up * 4.5f + transform.forward * (bodyRadius + 0.3f);
+        Vector3 wrist = beamSource.position;
+        Vector3 dir = beamSource.parent != null ? (wrist - beamSource.parent.position).normalized : transform.forward;
+        return wrist + dir * 0.9f;
+    }
 
-        FloorTile blockingPillar = null;
-        int count = Physics.RaycastNonAlloc(origin, transform.forward, rayHits, max, ~0, QueryTriggerInteraction.Ignore);
-        for (int i = 0; i < count; i++)
+    /// <summary>
+    /// 更新光束：從手直線照到照射點。中間碰到柱子 / 牆 / 隆起的地板就停在那裡。
+    /// firing = true 時：破壞照到的地板、打爆柱子、每 beamTickInterval 秒傷害一次玩家。
+    /// </summary>
+    void UpdateBeam(bool firing)
+    {
+        if (beam == null || !beam.gameObject.activeSelf) return;
+
+        Vector3 origin = BeamOrigin();
+        Vector3 aim = BeamAimOnGround();
+
+        Vector3 d = aim - origin;
+        float len = d.magnitude;
+        if (len < 0.1f) return;
+        Vector3 dirN = d / len;
+
+        // 找出光束最先碰到的東西（自己和玩家不算）
+        Vector3 end = aim;
+        Collider blocker = null;
+        float best = len + 0.5f;
+        int n = Physics.RaycastNonAlloc(origin, dirN, rayHits, len + 0.5f, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
         {
             var c = rayHits[i].collider;
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
             if (player != null && c.transform.IsChildOf(player)) continue;
+            if (c is CharacterController) continue; // 小怪等角色不擋
+            if (rayHits[i].distance < best) { best = rayHits[i].distance; blocker = c; }
+        }
+        if (blocker != null) end = origin + dirN * best;
 
-            bool blocks;
-            FloorTile tile = null;
-            if (c.TryGetComponent(out tile))
-                blocks = beamBlockedByPillars && tile.IsPillar;   // 小山丘不擋，柱子擋
-            else
-                blocks = true;                                    // 外牆、門等其他東西都擋（而且打不壞）
-            if (blocks && rayHits[i].distance < length)
+        Vector3 seg = end - origin;
+        beam.SetPositionAndRotation((origin + end) * 0.5f, Quaternion.LookRotation(seg));
+        beam.localScale = new Vector3(currentBeamDiameter, currentBeamDiameter, seg.magnitude);
+
+        if (!firing) return;
+
+        // 打爆柱子
+        if (beamBreaksPillars && blocker != null && blocker.TryGetComponent(out FloorTile hitTile)
+            && hitTile.IsPillar && !hitTile.IsCracking && arena != null)
+        {
+            hitTile.ShatterAfter(beamPillarBreakTime);
+            foreach (var t in arena.GetTilesNear(hitTile.RestPosition, arena.tileSize * 1.5f))
+                if (t.IsPillar) t.ShatterAfter(beamPillarBreakTime); // 2x2 大柱子一起碎
+            ThirdPersonCamera.ShakeMain(0.1f, 0.15f);
+            GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), hitTile.transform.position, 0.6f * sfxVolume, 1.25f, 0.8f, 70f);
+        }
+
+        // 破壞照到的地板（Boss 腳下附近不會破）
+        if (beamBreaksFloor && arena != null)
+        {
+            foreach (var t in arena.GetTilesNear(end, currentBeamDiameter * 0.5f))
             {
-                length = rayHits[i].distance;
-                blockingPillar = tile;
+                if (t.IsPillar || !t.canCollapse) continue;
+                if (ArenaFloor.FlatDistance(t.RestPosition, transform.position) < safeRadius) continue;
+                t.Collapse(beamFloorBreakDelay, collapseDownTime);
             }
         }
-        SetBeamLength(Mathf.Max(length, 0.1f));
 
-        // 發射中掃到柱子：柱子開始碎裂，beamPillarBreakTime 秒後倒下
-        // （光束掃過一根柱子通常只有 0.1~0.2 秒，所以不能用「持續照射」來判斷）
-        if (firing && beamBreaksPillars && blockingPillar != null && !blockingPillar.IsCracking)
+        // 持續傷害：每 beamTickInterval 秒一次（不受受傷無敵時間影響）
+        if (Time.time >= nextBeamTick && PlayerAlive && playerHealth != null && PlayerInBeam(end))
         {
-            blockingPillar.ShatterAfter(beamPillarBreakTime);
-            // 2x2 的大柱子：同一根的其他格也一起碎
-            foreach (var n in arena.GetTilesNear(blockingPillar.RestPosition, arena.tileSize * 1.5f))
-                if (n.IsPillar) n.ShatterAfter(beamPillarBreakTime);
-            ThirdPersonCamera.ShakeMain(0.1f, 0.15f);
+            Vector3 away = player.position - end;
+            away.y = 0f;
+            Vector3 push = away.sqrMagnitude > 0.01f ? away.normalized : transform.forward;
+            playerHealth.TakeDamage(beamTickDamage, push * 2f + Vector3.up * 1f, true);
+            nextBeamTick = Time.time + beamTickInterval;
         }
     }
 
-    void CheckBeamHit()
+    /// <summary>玩家在光束裡：碰到光束本體，或站在照射點的範圍內</summary>
+    bool PlayerInBeam(Vector3 end)
     {
-        if (beam == null || !PlayerAlive || playerHealth == null) return;
+        Vector3 toEnd = player.position - end;
+        float dy = toEnd.y;
+        toEnd.y = 0f;
+        if (toEnd.magnitude <= currentBeamDiameter * 0.5f + 0.5f && dy < 2.5f) return true;
+
         var hits = Physics.OverlapBox(beam.position, beam.lossyScale * 0.5f, beam.rotation, ~0, QueryTriggerInteraction.Ignore);
         foreach (var h in hits)
-        {
-            if (h.transform != player && !h.transform.IsChildOf(player)) continue;
-            Vector3 push = Vector3.Cross(Vector3.up, beam.forward); // 往光束旋轉的方向推
-            playerHealth.TakeDamage(beamDamage, push * 5f + Vector3.up * 5f);
-            break;
-        }
+            if (h.transform == player || h.transform.IsChildOf(player)) return true;
+        return false;
     }
 
     // =====================================================================
@@ -661,14 +888,15 @@ public class BossController : MonoBehaviour
     {
         lastJumpTime = Time.time;
         CurrentAction = "跳躍砸地（蓄力）";
+        PlayAnim("Jump", jumpWindup);
 
         // 蹲下蓄力，同時轉向玩家
         float t = 0f;
         while (t < jumpWindup)
         {
-            FaceTowards(FlatTo(player.position), turnSpeed * 2f);
+            FaceTowards(FlatTo(player.position), TurnSpeed * 2f);
             float k = t / jumpWindup;
-            if (bodyPivot != null) bodyPivot.localScale = new Vector3(1f + 0.15f * k, 1f - 0.25f * k, 1f + 0.15f * k);
+            SetBodyScale(new Vector3(1f + 0.15f * k, 1f - 0.25f * k, 1f + 0.15f * k));
             t += Time.deltaTime;
             yield return null;
         }
@@ -683,7 +911,7 @@ public class BossController : MonoBehaviour
         // 飛行：拋物線
         CurrentAction = "跳躍砸地";
         airborne = true;
-        if (bodyPivot != null) bodyPivot.localScale = new Vector3(0.9f, 1.15f, 0.9f);
+        SetBodyScale(new Vector3(0.9f, 1.15f, 0.9f));
         Vector3 start = transform.position;
         Vector3 flatDir = FlatTo(target);
         t = 0f;
@@ -694,15 +922,17 @@ public class BossController : MonoBehaviour
             Vector3 p = Vector3.Lerp(start, target, k);
             p.y += jumpHeight * 4f * k * (1f - k);
             transform.position = p;
-            FaceTowards(flatDir, turnSpeed);
+            FaceTowards(flatDir, TurnSpeed);
             yield return null;
         }
         transform.position = target;
         airborne = false;
 
         // 落地！
-        if (bodyPivot != null) bodyPivot.localScale = new Vector3(1.25f, 0.7f, 1.25f);
+        PlayAnim("JumpLand");
+        SetBodyScale(new Vector3(1.25f, 0.7f, 1.25f));
         ThirdPersonCamera.ShakeMain(0.5f, 0.6f);
+        PlayImpact(0.85f, 1f);
 
         // 落點形成隕石坑：中間最深、外圍淺；範圍內的柱子直接打爆
         foreach (var tile in landTiles)
@@ -739,6 +969,7 @@ public class BossController : MonoBehaviour
 
         CurrentAction = "硬直";
         yield return new WaitForSeconds(jumpRecoverTime);
+        EndAnim();
     }
 
     /// <summary>
@@ -857,9 +1088,30 @@ public class BossController : MonoBehaviour
         return PlayerAlive && dir.magnitude <= range && Vector3.Angle(transform.forward, dir) <= halfAngle;
     }
 
-    IEnumerator Lean(float angle, float duration)
+    // ---------------- 模型動畫 ----------------
+
+    void PlayAnim(string state, float secondsUntilHit = -1f)
+    {
+        if (visual != null) visual.PlayAction(state, secondsUntilHit);
+    }
+
+    void EndAnim()
+    {
+        if (visual != null) visual.EndAction();
+    }
+
+    /// <summary>有模型動畫時，程式做的整體前傾 / 伸縮要打折（不然會跟動畫疊加得太誇張）</summary>
+    float ProceduralScale => visual != null && visual.HasAnimator ? visual.proceduralLean : 1f;
+
+    void SetBodyScale(Vector3 scale)
+    {
+        if (bodyPivot != null) bodyPivot.localScale = Vector3.Lerp(Vector3.one, scale, ProceduralScale);
+    }
+
+    IEnumerator Lean(float angle, float duration, bool ignoreScale = false)
     {
         if (bodyPivot == null) { yield return new WaitForSeconds(duration); yield break; }
+        if (!ignoreScale) angle *= ProceduralScale;
         Quaternion from = bodyPivot.localRotation;
         Quaternion to = Quaternion.Euler(angle, 0f, 0f);
         float t = 0f;
@@ -875,6 +1127,7 @@ public class BossController : MonoBehaviour
     IEnumerator StretchBody(Vector3 scale, float duration)
     {
         if (bodyPivot == null) yield break;
+        scale = Vector3.Lerp(Vector3.one, scale, ProceduralScale);
         Vector3 from = bodyPivot.localScale;
         float t = 0f;
         while (t < duration)
@@ -891,11 +1144,11 @@ public class BossController : MonoBehaviour
         if (!showStatus || (!FightActive && !dead)) return;
         var style = new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.UpperCenter, fontStyle = FontStyle.Bold };
         GUI.color = Color.white;
-        GUI.Label(new Rect(0, 16, Screen.width, 30), $"BOSS：{CurrentAction}", style);
+        GUI.Label(new Rect(0, 16, Screen.width, 30), phase2 ? $"BOSS（二階段）：{CurrentAction}" : $"BOSS：{CurrentAction}", style);
         if (debugKeys)
         {
             var small = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.UpperCenter };
-            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：1 拍地 / 2 怒吼塌陷 / 3 光束", small);
+            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：1 拍地 / 2 怒吼塌陷 / 3 光束 / 4 跳砸 / 5 打到二階段 / 6 直接擊敗", small);
         }
     }
 

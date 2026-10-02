@@ -99,6 +99,7 @@ public class ThirdPersonCamera : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             if (hits[i].transform.IsChildOf(target)) continue; // 忽略玩家自己
+            if (hits[i].collider is CharacterController) continue; // 小怪擋在中間不拉近鏡頭
             if (hits[i].distance <= 0f) continue;              // 起點就重疊的忽略
             allowed = Mathf.Min(allowed, Mathf.Max(hits[i].distance - 0.05f, 0.3f));
         }

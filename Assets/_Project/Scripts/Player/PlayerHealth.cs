@@ -29,6 +29,7 @@ public class PlayerHealth : MonoBehaviour
     Vector3 spawnPos;
     Quaternion spawnRot;
     float lastHitTime = float.NegativeInfinity;
+    float lastFlashTime = float.NegativeInfinity;
     string deathReason = "";
 
     void Awake()
@@ -53,13 +54,20 @@ public class PlayerHealth : MonoBehaviour
     }
 
     /// <summary>造成傷害；回傳 true 代表這次真的有打到（不在無敵時間內）</summary>
-    public bool TakeDamage(float amount, Vector3 knockback = default)
+    /// <param name="ignoreInvincibility">true = 持續傷害（例如光束），不受也不觸發受傷後的無敵時間</param>
+    public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false)
     {
-        if (IsDead || Time.time - lastHitTime < invincibleTime) return false;
-        lastHitTime = Time.time;
+        if (IsDead) return false;
+        if (!ignoreInvincibility)
+        {
+            if (Time.time - lastHitTime < invincibleTime) return false;
+            lastHitTime = Time.time;
+        }
+        lastFlashTime = Time.time;
         Health = Mathf.Max(0f, Health - amount);
         controller.AddImpulse(knockback);
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
+        GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
         if (Health <= 0f) Die("被打倒了");
         return true;
     }
@@ -111,7 +119,7 @@ public class PlayerHealth : MonoBehaviour
         GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
 
         // 受傷時畫面閃紅
-        float flash = 1f - Mathf.Clamp01((Time.time - lastHitTime) / 0.3f);
+        float flash = 1f - Mathf.Clamp01((Time.time - lastFlashTime) / 0.3f);
         if (flash > 0f && !IsDead)
         {
             GUI.color = new Color(1f, 0f, 0f, 0.25f * flash);

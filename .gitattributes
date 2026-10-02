@@ -1,0 +1,19 @@
+# Unity 的場景 / Prefab 是文字檔，統一換行符號，避免 Windows / Mac 組員之間出現整份檔案都被改掉的假差異
+*.cs        text eol=lf
+*.unity     text eol=lf
+*.prefab    text eol=lf
+*.asset     text eol=lf
+*.mat       text eol=lf
+*.meta      text eol=lf
+*.controller text eol=lf
+*.anim      text eol=lf
+*.inputactions text eol=lf
+
+# 二進位檔
+*.fbx  binary
+*.blend binary
+*.png  binary
+*.jpg  binary
+*.zip  binary
+*.wav  binary
+*.mp3  binary
