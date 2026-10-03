@@ -170,6 +170,14 @@ public class BossController : MonoBehaviour
     public float phase2PushForce = 16f;
     public float phase2PushDamage = 5f;
 
+    [Header("登場（波次戰打完後從天而降）")]
+    [Tooltip("砸下來之前，落點的地板閃紅警告幾秒")]
+    public float arriveWarnTime = 2.5f;
+    [Tooltip("從多高砸下來 (m)")]
+    public float arriveHeight = 45f;
+    [Tooltip("砸下來花幾秒（越小越快）")]
+    public float arriveFallTime = 0.55f;
+
     [Header("音效")]
     [Tooltip("Boss 戰音樂（不填 = Resources/Audio/Music/boss_fight_music）。玩家進門、Boss 被觸發後才開始播")]
     public AudioClip bossMusic;
@@ -177,8 +185,17 @@ public class BossController : MonoBehaviour
     [Tooltip("音樂淡入 / Boss 被打倒後淡出的秒數")]
     public float musicFadeIn = 1.5f;
     public float musicFadeOut = 4f;
-    [Tooltip("怒吼聲（不填 = SFX/roar_rock_crumble）")]
+    [Tooltip("低沉的碎石吼聲：Boss 被打倒時用（不填 = SFX/roar_rock_crumble）")]
     public AudioClip roarSound;
+    [Tooltip("怒吼聲：怒吼技能、登場、進入二階段都用這個（不填 = SFX/dragon_roar）。進入二階段時 Boss 會吼到這個聲音差不多播完才繼續行動")]
+    public AudioClip phase2RoarSound;
+    [Tooltip("光束蓄力的聲音（不填 = SFX/laser_charge）。會自動調整快慢來配合蓄力時間")]
+    public AudioClip beamChargeSound;
+    [Tooltip("光束發射中持續播放的聲音，要能循環（不填 = SFX/laser_loop）")]
+    public AudioClip beamLoopSound;
+    [Tooltip("光束結束時的收尾聲（不填 = SFX/laser_end）")]
+    public AudioClip beamEndSound;
+    [Range(0f, 1f)] public float beamVolume = 0.6f;
     [Tooltip("拍地、跳砸落地、柱子碎裂的撞擊聲（不填 = SFX/rock_hit）")]
     public AudioClip impactSound;
     [Range(0f, 1f)] public float sfxVolume = 1f;
@@ -199,6 +216,10 @@ public class BossController : MonoBehaviour
     /// <summary>玩家死亡後戰鬥重置（BossGate 用來把門恢復）</summary>
     public event System.Action OnFightReset;
     public event System.Action OnDefeated;
+    /// <summary>Boss 從天而降、砸到地面的那一刻（ArenaWaves 用來清掉剩下的小怪）</summary>
+    public event System.Action OnArrived;
+    /// <summary>Boss 目前是隱藏的（還沒登場）</summary>
+    public bool IsHidden => hidden;
 
     enum Special { Slam, Roar, Beam, Jump }
 
@@ -218,6 +239,9 @@ public class BossController : MonoBehaviour
     int beamState;          // 0 = 關閉、1 = 蓄力（細線）、2 = 發射
     float armAimWeight;     // 手臂對準光束的程度（0~1，平滑過渡）
     bool dead;
+    bool hidden;          // 還沒登場：看不到、打不到
+    readonly List<Renderer> hiddenRenderers = new List<Renderer>();
+    readonly List<Collider> hiddenColliders = new List<Collider>();
     bool phase2;          // 已進入二階段
     bool phase2Pending;   // 血量到門檻了，等目前的招式放完就變身
     BossRageEffect rage;
@@ -279,6 +303,7 @@ public class BossController : MonoBehaviour
     {
         if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
         if (health != null) { health.OnDied -= OnBossDied; health.OnDamaged -= OnBossDamaged; }
+        StopBeamSound(false); // 離開場景時，循環播放的光束聲不能留著
     }
 
     void Start()
@@ -309,6 +334,7 @@ public class BossController : MonoBehaviour
     public void BeginFight()
     {
         if (FightActive || dead) return;
+        SetHidden(false); // 不管是怎麼開打的，開打時一定要看得到、打得到
         FightActive = true;
         health.ShowBar = true;
 
@@ -321,6 +347,98 @@ public class BossController : MonoBehaviour
         StartCoroutine(Brain());
         GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, musicFadeIn);
         OnFightStarted?.Invoke();
+    }
+
+    // =====================================================================
+    //  隱藏 / 從天而降登場
+    // =====================================================================
+
+    /// <summary>把 Boss 藏起來（看不到、打不到），或讓它重新出現</summary>
+    public void SetHidden(bool hide)
+    {
+        if (hide == hidden) return;
+        hidden = hide;
+        if (hide)
+        {
+            hiddenRenderers.Clear();
+            hiddenColliders.Clear();
+            foreach (var r in GetComponentsInChildren<Renderer>(true))
+                if (r.enabled) { r.enabled = false; hiddenRenderers.Add(r); }
+            foreach (var c in GetComponentsInChildren<Collider>(true))
+                if (c.enabled) { c.enabled = false; hiddenColliders.Add(c); }
+        }
+        else
+        {
+            foreach (var r in hiddenRenderers) if (r != null) r.enabled = true;
+            foreach (var c in hiddenColliders) if (c != null) c.enabled = true;
+            hiddenRenderers.Clear();
+            hiddenColliders.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Boss 登場：landPoint 的地板先閃紅警告，然後 Boss 從天上砸下來（砸到會受傷、要跳過衝擊波），
+    /// 接著柱子和山丘升起，Boss 戰正式開始。
+    /// </summary>
+    public void ArriveAndBeginFight(Vector3 landPoint)
+    {
+        if (FightActive || dead) return;
+        StartCoroutine(ArriveRoutine(landPoint));
+    }
+
+    IEnumerator ArriveRoutine(Vector3 landPoint)
+    {
+        CurrentAction = "降臨";
+        Vector3 target = ClampInArena(landPoint);
+        target.y = arena != null && arena.TryGetGroundHeight(target, out float g) ? g : landPoint.y;
+        var landTiles = arena != null ? arena.GetTilesNear(target, jumpLandRadius) : new List<FloorTile>();
+
+        // 警告：落點的地板閃紅，越閃越快
+        float t = 0f, phase = 0f;
+        while (t < arriveWarnTime)
+        {
+            float k = t / arriveWarnTime;
+            phase += Time.deltaTime * Mathf.Lerp(2f, 9f, k);
+            float blink = 0.5f + 0.5f * Mathf.Sin(phase * Mathf.PI * 2f);
+            Color c = Color.Lerp(jumpTelegraphColor * 0.4f, jumpTelegraphColor, blink);
+            foreach (var tile in landTiles) tile.SetTelegraph(c);
+            t += Time.deltaTime;
+            yield return null;
+        }
+        foreach (var tile in landTiles) tile.SetTelegraph(jumpTelegraphColor);
+
+        // 出現在高空，加速砸下來
+        health.Invulnerable = true;
+        airborne = true;
+        Vector3 top = target + Vector3.up * arriveHeight;
+        transform.position = top;
+        if (visual != null) visual.ResetVisual(); // 瞬間移動不算「走路」
+        if (PlayerAlive) FaceDirectionInstant(FlatTo(player.position));
+        SetHidden(false);
+        SetBodyScale(new Vector3(0.9f, 1.15f, 0.9f));
+        GameAudio.Play("SFX/RPG/knifeSlice2", target + Vector3.up * 3f, 1f * sfxVolume, 0.3f, 0f, 0.3f, 90f);
+        t = 0f;
+        while (t < arriveFallTime)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / arriveFallTime);
+            transform.position = Vector3.Lerp(top, target, k * k);
+            yield return null;
+        }
+        transform.position = target;
+        airborne = false;
+
+        OnArrived?.Invoke();
+        yield return LandImpact(target, landTiles, 1.6f);
+
+        // 怒吼，柱子和山丘升起，正式開打
+        health.Invulnerable = false;
+        BeginFight();
+        PlayAnim("Roar", 0.4f);
+        PlayBigRoar(1f);
+        ThirdPersonCamera.ShakeMain(0.3f, 1f);
+        yield return new WaitForSeconds(1.3f);
+        EndAnim();
     }
 
     /// <summary>玩家重生時：Boss 回血、回原位、地板壓平，等玩家再次進門</summary>
@@ -463,9 +581,15 @@ public class BossController : MonoBehaviour
         phase2 = true;
         rage.SetRage(1f);
         rage.Burst();
-        PlayRoar(0.8f, 1f);
+        AudioClip rageRoar = GameAudio.Pick(phase2RoarSound, "SFX/dragon_roar");
+        if (rageRoar != null)
+            GameAudio.PlayAt(rageRoar, transform.position + Vector3.up * 4f, sfxVolume, 1f, 0.5f, 90f);
+        else PlayRoar(0.8f, 1f); // 找不到二階段的怒吼聲就用原本的
         PlayImpact(0.75f, 0.8f);
-        ThirdPersonCamera.ShakeMain(0.6f, 1.2f);
+        // 吼多久：至少 phase2RoarTime，而且要等怒吼聲差不多播完
+        float hold = Mathf.Max(0f, phase2RoarTime - 1.15f);
+        if (rageRoar != null) hold = Mathf.Max(hold, rageRoar.length - 0.9f);
+        ThirdPersonCamera.ShakeMain(0.6f, Mathf.Max(1.2f, hold));
         if (PlayerAlive)
         {
             Vector3 to = FlatTo(player.position);
@@ -476,11 +600,19 @@ public class BossController : MonoBehaviour
             }
         }
         yield return Lean(8f, 0.15f);
-        yield return new WaitForSeconds(Mathf.Max(0f, phase2RoarTime - 1.15f));
+        yield return new WaitForSeconds(hold);
         yield return Lean(0f, 0.4f);
 
         EndAnim();
         health.Invulnerable = false;
+    }
+
+    /// <summary>大聲怒吼（怒吼技能、登場用；跟進入二階段是同一個聲音）。找不到就用原本的碎石怒吼</summary>
+    void PlayBigRoar(float volume)
+    {
+        AudioClip clip = GameAudio.Pick(phase2RoarSound, "SFX/dragon_roar");
+        if (clip != null) GameAudio.PlayAt(clip, transform.position + Vector3.up * 4f, volume * sfxVolume, 1f, 0.5f, 90f);
+        else PlayRoar(1f, volume);
     }
 
     // Boss 的聲音一半是 3D（聽得出方向），在競技場任何地方都聽得到
@@ -642,7 +774,7 @@ public class BossController : MonoBehaviour
         yield return Lean(-20f, 0.4f);
         yield return StretchBody(new Vector3(0.9f, 1.25f, 0.9f), 0.25f);
         ThirdPersonCamera.ShakeMain(0.25f, roarDuration);
-        PlayRoar(1f, 1f);
+        PlayBigRoar(1f);
 
         if (arena != null)
         {
@@ -683,6 +815,7 @@ public class BossController : MonoBehaviour
         beamAim = player.position;
         ClampBeamAim();
         ShowBeam(0.12f, 1);
+        StartBeamChargeSound();
         float t = 0f;
         while (t < beamChargeTime)
         {
@@ -695,6 +828,7 @@ public class BossController : MonoBehaviour
         // 發射：照射點改用「比走路快、比跑步慢」的速度直線追玩家
         CurrentAction = "光束";
         ShowBeam(beamDiameter, 2);
+        StartBeamLoopSound();
         ThirdPersonCamera.ShakeMain(0.15f, 0.3f);
         nextBeamTick = 0f;
         t = 0f;
@@ -706,8 +840,56 @@ public class BossController : MonoBehaviour
             yield return null;
         }
 
+        StopBeamSound(true);
         HideBeam();
         EndAnim();
+    }
+
+    // ---------------- 光束音效 ----------------
+
+    AudioSource beamChargeSource, beamLoopSource;
+
+    Vector3 BeamSoundPosition => transform.position + Vector3.up * 3f;
+
+    /// <summary>蓄力聲：調整播放速度，讓聲音剛好在發射的那一刻播完</summary>
+    void StartBeamChargeSound()
+    {
+        StopBeamSound(false);
+        AudioClip clip = GameAudio.Pick(beamChargeSound, "SFX/laser_charge");
+        if (clip == null) return;
+        float pitch = Mathf.Clamp(clip.length / Mathf.Max(beamChargeTime, 0.1f), 0.6f, 1.6f);
+        beamChargeSource = GameAudio.PlayAt(clip, BeamSoundPosition, beamVolume * 0.8f * sfxVolume, pitch, 0.4f, 90f);
+    }
+
+    /// <summary>發射中：循環播放，直到光束結束</summary>
+    void StartBeamLoopSound()
+    {
+        StopBeamSound(false);
+        AudioClip clip = GameAudio.Pick(beamLoopSound, "SFX/laser_loop");
+        if (clip == null) return;
+        beamLoopSource = GameAudio.PlayAt(clip, BeamSoundPosition, beamVolume * sfxVolume, 1f, 0.4f, 90f);
+        if (beamLoopSource != null) beamLoopSource.loop = true;
+    }
+
+    /// <summary>停掉光束的聲音。playTail = true 時接一聲收尾（光束正常結束時）</summary>
+    void StopBeamSound(bool playTail)
+    {
+        bool wasFiring = beamLoopSource != null && beamLoopSource.loop && beamLoopSource.isPlaying;
+
+        // 音效播放器是共用的：確認它還在播「我們的聲音」才去停，不要停到別人的
+        if (beamChargeSource != null && beamChargeSource.isPlaying
+            && beamChargeSource.clip == GameAudio.Pick(beamChargeSound, "SFX/laser_charge"))
+            beamChargeSource.Stop();
+        if (wasFiring)
+        {
+            beamLoopSource.loop = false;
+            beamLoopSource.Stop();
+        }
+        beamChargeSource = null;
+        beamLoopSource = null;
+
+        if (playTail && wasFiring)
+            GameAudio.PlayAt(GameAudio.Pick(beamEndSound, "SFX/laser_end"), BeamSoundPosition, beamVolume * sfxVolume, 1f, 0.4f, 90f);
     }
 
     void ChaseBeamAim(float speed)
@@ -782,6 +964,7 @@ public class BossController : MonoBehaviour
 
     void HideBeam()
     {
+        StopBeamSound(false); // 被打斷（Boss 死掉、戰鬥重置）時聲音也要停
         beamState = 0;
         if (beam != null) beam.gameObject.SetActive(false);
     }
@@ -928,11 +1111,24 @@ public class BossController : MonoBehaviour
         transform.position = target;
         airborne = false;
 
+        yield return LandImpact(target, landTiles, 1f);
+
+        CurrentAction = "硬直";
+        yield return new WaitForSeconds(jumpRecoverTime);
+        EndAnim();
+    }
+
+    /// <summary>
+    /// 砸到地上：隕石坑、直接砸中的傷害、往外擴散的衝擊波（跳砸和登場共用）。
+    /// power = 震動的強度倍率。
+    /// </summary>
+    IEnumerator LandImpact(Vector3 target, List<FloorTile> landTiles, float power)
+    {
         // 落地！
         PlayAnim("JumpLand");
         SetBodyScale(new Vector3(1.25f, 0.7f, 1.25f));
-        ThirdPersonCamera.ShakeMain(0.5f, 0.6f);
-        PlayImpact(0.85f, 1f);
+        ThirdPersonCamera.ShakeMain(0.5f * power, 0.6f * power);
+        PlayImpact(0.85f / power, 1f);
 
         // 落點形成隕石坑：中間最深、外圍淺；範圍內的柱子直接打爆
         foreach (var tile in landTiles)
@@ -966,10 +1162,6 @@ public class BossController : MonoBehaviour
         // 往外擴散的衝擊波（360 度），要跳過
         StartCoroutine(StretchBody(Vector3.one, 0.4f));
         yield return Shockwave(target, transform.forward, 180f, jumpLandRadius, jumpWaveRange, slamWaveSpeed, slamWaveWidth, jumpWaveDamage);
-
-        CurrentAction = "硬直";
-        yield return new WaitForSeconds(jumpRecoverTime);
-        EndAnim();
     }
 
     /// <summary>

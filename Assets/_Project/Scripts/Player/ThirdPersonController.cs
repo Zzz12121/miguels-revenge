@@ -139,6 +139,39 @@ public class ThirdPersonController : MonoBehaviour
     {
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
+        ballistic = false;
+    }
+
+    bool ballistic;
+    /// <summary>正在拋物線飛行中（Launch 之後、落地之前）</summary>
+    public bool IsBallistic => ballistic;
+
+    /// <summary>
+    /// 以指定的速度起跳（拋物線）。飛行中不受移動輸入影響，落地後恢復正常。
+    /// 小怪跳過缺口 / 撲向玩家時使用。
+    /// </summary>
+    public void Launch(Vector3 velocity)
+    {
+        horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        verticalVelocity = velocity.y;
+        ballistic = true;
+        lastGroundedTime = float.NegativeInfinity;
+        lastJumpPressedTime = float.NegativeInfinity;
+    }
+
+    /// <summary>
+    /// 算出「跳到 target」需要的起跳速度。apex = 拋物線最高點比起跳點高多少 (m)。
+    /// </summary>
+    public Vector3 LaunchVelocityTo(Vector3 target, float apex)
+    {
+        float g = -gravity;
+        Vector3 flat = target - transform.position;
+        float rise = flat.y;               // 落點比起跳點高多少
+        flat.y = 0f;
+        apex = Mathf.Max(apex, rise + 0.5f, 0.5f);
+        float vy = Mathf.Sqrt(2f * g * apex);
+        float time = vy / g + Mathf.Sqrt(2f * (apex - rise) / g);
+        return flat / Mathf.Max(time, 0.05f) + Vector3.up * vy;
     }
 
     void Awake()
@@ -181,7 +214,13 @@ public class ThirdPersonController : MonoBehaviour
         float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier;
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
-        horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
+        if (ballistic)
+        {
+            // 拋物線飛行中：水平速度不變，落地（或撞到東西停下來）才恢復控制
+            // 上升中 verticalVelocity > 0，所以起跳那一幀「還在地上」不會誤判成落地
+            if (controller.isGrounded && verticalVelocity <= 0f) ballistic = false;
+        }
+        else horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
 
         // ---- 3. 角色轉向移動方向 ----
         if (moveDir.sqrMagnitude > 0.001f && !lockRotation)

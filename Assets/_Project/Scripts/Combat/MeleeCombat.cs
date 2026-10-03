@@ -87,6 +87,8 @@ public abstract class MeleeCombat : MonoBehaviour
     protected virtual float PitchScale => 1f;
     /// <summary>每一刀開始時呼叫（index = 第幾段，從 0 開始）</summary>
     protected virtual void OnSwingStart(int index) { }
+    /// <summary>每一刀開始時通知外面（模型動畫用）</summary>
+    public event System.Action<int> OnSwing;
 
     // ---------------- 對外 ----------------
 
@@ -152,6 +154,7 @@ public abstract class MeleeCombat : MonoBehaviour
     {
         controller.FaceDirection(GetAimDirection());
         OnSwingStart(index);
+        OnSwing?.Invoke(index);
 
         // 三種揮法：右→左橫砍、左→右橫砍、由上往下重劈
         Vector3 from, to;
