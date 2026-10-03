@@ -1,0 +1,74 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &5768188598269301783
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2579209127280632022}
+  - component: {fileID: 900531320172103042}
+  m_Layer: 0
+  m_Name: PF_VoidRendSkill
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2579209127280632022
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5768188598269301783}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &900531320172103042
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5768188598269301783}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a3299045839ca64281e01fcf6f6f9c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoidRendSkillDemo
+  effectRangeMultiplier: 4
+  chargeOrbitSeconds: 3.5
+  launchHeight: 4.5
+  smokeMaterial: {fileID: 2100000, guid: 029e71ecd7de936468ee9a5287ace920, type: 2}
+  refractionMaterial: {fileID: 2100000, guid: 575af6c753741c046855fd46ad23c55e, type: 2}
+  previewPipeline: {fileID: 11400000, guid: 49c2c264a79f0dc4da303a95abbd7ec3, type: 2}
+  targetControllers: []
+  onTargetLocked:
+    m_PersistentCalls:
+      m_Calls: []
+  onTargetReleased:
+    m_PersistentCalls:
+      m_Calls: []
+  onFinisherImpact:
+    m_PersistentCalls:
+      m_Calls: []
+  caster: {fileID: 0}
+  target: {fileID: 0}
+  skillCamera: {fileID: 0}
+  slashMaterial: {fileID: 2100000, guid: 7ccb4f1ef0eb00e47a57d4b4b317f7af, type: 2}
+  riftCoreMaterial: {fileID: 2100000, guid: 6f9f8dc9a8f5a7b4386d7243b0eeb62c, type: 2}
+  afterimageMaterial: {fileID: 2100000, guid: 0d6ed52b1b6674b498c08cab9b5b6796, type: 2}
+  particleMaterial: {fileID: 2100000, guid: c1520d11a03d23246906f7b92bee1099, type: 2}
+  playOnStart: 0
+  loopPreview: 0
+  loopDelay: 1.7
+  teleportRadius: 3.4
+  teleportCount: 6
