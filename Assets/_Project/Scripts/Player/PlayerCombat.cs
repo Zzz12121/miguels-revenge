@@ -27,10 +27,22 @@ public class PlayerCombat : MeleeCombat
     void Update()
     {
         if (health != null && health.IsDead) return;
-        var mouse = Mouse.current;
-        if (mouse == null || Cursor.lockState != CursorLockMode.Locked) return;
+        if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        if (mouse.leftButton.wasPressedThisFrame)
+        bool attackPressed = false;
+        var mouse = Mouse.current;
+        if (mouse != null)
+        {
+            attackPressed = mouse.leftButton.wasPressedThisFrame;
+        }
+#if ENABLE_LEGACY_INPUT_MANAGER
+        else
+        {
+            attackPressed = Input.GetMouseButtonDown(0);
+        }
+#endif
+
+        if (attackPressed)
         {
             if (!BeginAttack()) attackQueued = true; // 攻擊中再按 = 預約下一段
         }

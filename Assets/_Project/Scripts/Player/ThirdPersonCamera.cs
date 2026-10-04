@@ -44,7 +44,7 @@ public class ThirdPersonCamera : MonoBehaviour
     [Tooltip("被牆擋住後，鏡頭拉回原距離的速度")]
     public float returnSpeed = 6f;
 
-    float yaw, pitch;
+    [HideInInspector] public float yaw, pitch;
     float currentDistance;
     Vector3 smoothedPivot, pivotVelocity;
     readonly RaycastHit[] hits = new RaycastHit[16];
@@ -128,18 +128,56 @@ public class ThirdPersonCamera : MonoBehaviour
         if (mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             LockCursor(true);
 
-        if (mouse == null || Cursor.lockState != CursorLockMode.Locked) return;
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (kb == null && Input.GetKeyDown(KeyCode.Escape)) LockCursor(false);
+        if (mouse == null && Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked)
+            LockCursor(true);
+#endif
 
-        // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）
-        Vector2 delta = mouse.delta.ReadValue();
-        yaw += delta.x * mouseSensitivity;
-        pitch += delta.y * mouseSensitivity * (invertY ? 1f : -1f);
-        pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        // 縮放
-        float scroll = mouse.scroll.ReadValue().y;
-        if (Mathf.Abs(scroll) > 0.01f)
-            distance = Mathf.Clamp(distance - Mathf.Sign(scroll) * zoomStep, minDistance, maxDistance);
+        if (mouse != null)
+        {
+            // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）
+            Vector2 delta = mouse.delta.ReadValue();
+            yaw += delta.x * mouseSensitivity;
+            pitch += delta.y * mouseSensitivity * (invertY ? 1f : -1f);
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+
+            // 縮放
+            float scroll = mouse.scroll.ReadValue().y;
+            if (Mathf.Abs(scroll) > 0.01f)
+                distance = Mathf.Clamp(distance - Mathf.Sign(scroll) * zoomStep, minDistance, maxDistance);
+        }
+#if ENABLE_LEGACY_INPUT_MANAGER
+        else
+        {
+            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity * 15f;
+            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity * 15f;
+            yaw += mouseX;
+            pitch += mouseY * (invertY ? 1f : -1f);
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.01f)
+                distance = Mathf.Clamp(distance - Mathf.Sign(scroll) * zoomStep, minDistance, maxDistance);
+        }
+#endif
+    }
+
+
+    /// <summary>
+    /// 立即將鏡頭瞬移至目標身後（切換跟隨目標或傳送時呼叫，防止平滑插值穿幫或卡在障礙物）
+    /// </summary>
+    public void SnapToTarget()
+    {
+        if (target == null) return;
+        smoothedPivot = target.position + targetOffset;
+        currentDistance = distance;
+        Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 lookPoint = smoothedPivot + rotation * Vector3.right * shoulderOffset;
+        Vector3 backDir = rotation * Vector3.back;
+        transform.SetPositionAndRotation(lookPoint + backDir * currentDistance, rotation);
     }
 
     static void LockCursor(bool locked)
