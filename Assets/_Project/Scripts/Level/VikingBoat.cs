@@ -29,11 +29,17 @@ public class VikingBoat : MonoBehaviour
     [Tooltip("下一關場景名稱（需加入 Build Settings）")]
     public string nextSceneName = "Floor02";
 
-    [Header("玩家站立點")]
+    [Header("玩家站立點與朝向")]
     [Tooltip("玩家站在船上的位置，留空會自動抓船隻中心")]
     public Transform playerStandingPoint;
+    [Tooltip("如果玩家站立點有旋轉，是否直接跟隨站立點的旋轉方向；若為 false 則使用船隻朝向")]
+    public bool useStandingPointRotation = true;
+    [Tooltip("手動微調玩家登船後的面向角度偏差 (度，如 90、-90、180)")]
+    public float playerFacingOffsetAngle = -90f;
 
     [Header("自由駕駛控制參數")]
+    [Tooltip("船隻視覺船頭的偏轉角度校正（預設 90 度，讓 W 前進永遠朝著視覺龍頭/船首方向推進）")]
+    public float boatForwardOffsetAngle = 0f;
     [Tooltip("最大前進航速 (m/s)")]
     public float forwardSpeed = 9.0f;
     [Tooltip("最大倒退航速 (m/s)")]
@@ -119,8 +125,9 @@ public class VikingBoat : MonoBehaviour
                 break;
 
             case BoatState.Transitioning:
-                // 淡出過場時保持微幅前進慣性
-                transform.position += transform.forward * (Mathf.Max(currentSpeed, 4f) * 0.5f) * Time.deltaTime;
+                // 淡出過場時保持朝視覺船首微幅前進慣性
+                Vector3 transFwd = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
+                transform.position += transFwd * (Mathf.Max(currentSpeed, 4f) * 0.5f) * Time.deltaTime;
                 ApplyWaveFloating(currentSpeed);
                 break;
         }
@@ -176,14 +183,24 @@ public class VikingBoat : MonoBehaviour
         var cc = player.GetComponent<CharacterController>();
         if (cc != null) cc.enabled = false;
 
-        // 2. 將角色固定在船隻的掌舵站立點上
-        Vector3 standingPos = playerStandingPoint != null
-            ? playerStandingPoint.position
-            : transform.position + transform.up * 0.6f;
+        var combat = player.GetComponent<PlayerCombat>();
+        if (combat != null) combat.enabled = false; // 登船時鎖定戰鬥揮劍，避免揮劍轉向
 
-        player.transform.position = standingPos;
-        player.transform.rotation = transform.rotation;
+        // 2. 將角色固定在船隻掌舵站立點上，並依據站立點或設定角度精確朝向船頭前方
         player.transform.SetParent(transform);
+        if (playerStandingPoint != null)
+        {
+            player.transform.position = playerStandingPoint.position;
+            Quaternion targetRot = useStandingPointRotation
+                ? playerStandingPoint.localRotation * Quaternion.Euler(0f, playerFacingOffsetAngle, 0f)
+                : Quaternion.Euler(0f, playerFacingOffsetAngle, 0f);
+            player.transform.localRotation = targetRot;
+        }
+        else
+        {
+            player.transform.localPosition = new Vector3(0f, 0.7f, 0f);
+            player.transform.localRotation = Quaternion.Euler(0f, playerFacingOffsetAngle, 0f);
+        }
 
         // 3. 調整攝影機：將攝影機解除階層依附，平滑拉開至航海視角，跟隨長船，視角自動對準船頭正前方海面
         var mainCam = Camera.main;
@@ -197,7 +214,7 @@ public class VikingBoat : MonoBehaviour
                 camScript.minDistance = 6f;
                 camScript.maxDistance = 24f;
                 camScript.targetOffset = new Vector3(0f, 3.0f, 0f);
-                camScript.yaw = transform.eulerAngles.y; // 視角自動朝向船頭正前方海面
+                camScript.yaw = currentYaw + boatForwardOffsetAngle; // 鏡頭自動對準視覺船首正前方海面！
                 camScript.pitch = 14f;
                 camScript.SnapToTarget(); // 立即將鏡頭瞬移至長船後方，防止平滑過渡被陸地建物卡住
             }
@@ -221,10 +238,10 @@ public class VikingBoat : MonoBehaviour
         var kb = Keyboard.current;
         if (kb != null)
         {
-            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) moveInput += 1f;
-            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) moveInput -= 1f;
-            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) turnInput -= 1f;
-            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) turnInput += 1f;
+            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) moveInput -= 1f;
+            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) moveInput += 1f;
+            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) turnInput += 1f;
+            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) turnInput -= 1f;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         if (Mathf.Abs(moveInput) < 0.01f) moveInput = Input.GetAxisRaw("Vertical");
@@ -245,8 +262,8 @@ public class VikingBoat : MonoBehaviour
             currentYaw += turnInput * steeringTurnSpeed * dt * steerDir;
         }
 
-        // 前進推進（依 currentYaw 計算前進向量，不受浪涌俯仰傾斜干擾）
-        Vector3 forwardDir = Quaternion.Euler(0f, currentYaw, 0f) * Vector3.forward;
+        // 前進推進（依 currentYaw 與 boatForwardOffsetAngle 計算精確的視覺船首方向）
+        Vector3 forwardDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
         transform.position += forwardDir * (currentSpeed * dt);
 
         // 加上海浪顛簸與浮動效果
@@ -327,6 +344,19 @@ public class VikingBoat : MonoBehaviour
 
         Debug.Log($"[VikingBoat] 抵達指定航行海域，切換場景至：{nextSceneName}");
         SceneManager.LoadScene(nextSceneName);
+    }
+
+    
+    void LateUpdate()
+    {
+        // 駕駛或過場中，強制讓主角維持站在站立點並始終面向船頭前方
+        if ((currentState == BoatState.Driving || currentState == BoatState.Transitioning) && playerObj != null)
+        {
+            Quaternion targetRot = (playerStandingPoint != null && useStandingPointRotation)
+                ? playerStandingPoint.localRotation * Quaternion.Euler(0f, playerFacingOffsetAngle, 0f)
+                : Quaternion.Euler(0f, playerFacingOffsetAngle, 0f);
+            playerObj.transform.localRotation = targetRot;
+        }
     }
 
     void OnGUI()
@@ -474,6 +504,11 @@ public class VikingBoat : MonoBehaviour
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(destinationPoint, destinationRadius);
         Gizmos.DrawLine(transform.position, destinationPoint);
+
+        // 繪製視覺船首朝向指針
+        Gizmos.color = Color.magenta;
+        Vector3 bowDir = Quaternion.Euler(0f, (Application.isPlaying ? currentYaw : transform.eulerAngles.y) + boatForwardOffsetAngle, 0f) * Vector3.forward;
+        Gizmos.DrawRay(transform.position + Vector3.up * 1.5f, bowDir * 8f);
     }
 
     // ================= 自動運行支援（只要一按 Play 便自動準備好） =================
