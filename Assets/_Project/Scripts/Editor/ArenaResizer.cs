@@ -6,7 +6,7 @@ using UnityEngine;
 /// 選單：GeminiGrowUp > 套用大競技場（半徑 36m）
 ///
 /// 修改 BossRoom.prefab：
-///   - 競技場半徑 18 → 36（地板重新產生，約 2300 個方塊）
+///   - 競技場半徑 18 → 36（地板重新產生，約 1200 塊不規則石板）
 ///   - 環形牆依新半徑重建（96 段），入口大門移到新的南側
 ///   - Boss 起始位置跟著放大
 ///   - Boss 技能數值套用放大版（光束寬度 ×2，拍地範圍 ×3，怒吼 80%；普攻距離不變）
@@ -52,8 +52,10 @@ public static class ArenaResizer
 
             // ---------- 地板 ----------
             floor.radius = NewRadius;
-            floor.pillarCount = 20;        // 面積變 4 倍，柱子多一點
-            floor.pillarSpacing = 8f;
+            floor.bigRockCount = 16;       // 面積變 4 倍，岩石多一點
+            floor.bigRockSpacing = 9f;
+            floor.smallRockCount = 20;
+            floor.tileThickness = 2.5f;
             floor.keepFlatRadius = 4f;
             floor.riseWaveSpeed = 28f;     // 升起動畫的總時間維持差不多
             floor.Generate();
@@ -101,7 +103,7 @@ public static class ArenaResizer
             bc.collapseRatio = 0.8f;
             bc.playerCollapseRadius = 3.2f;
             bc.safeRadius = 7f;
-            // 光束：原地發射、寬度 ×2（厚度不變，才跳得過）、會打爆柱子
+            // 光束：原地發射、寬度 ×2（厚度不變，才跳得過）、會打碎岩石
             bc.beamDiameter = 2f;
             bc.beamMinAimDistance = 6f;
             bc.beamChargeTime = 2f;

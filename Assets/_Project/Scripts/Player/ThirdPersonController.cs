@@ -48,6 +48,15 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
     public Transform cameraTransform;
 
+    [Header("推石頭")]
+    [Tooltip("頂著可以推的岩石（ArenaRock）走時會把它推動，自己的速度會變慢。小怪（AI 控制）不會推")]
+    public bool canPushRocks = true;
+
+    float pushFactor = 1f;
+    float pushUntil = float.NegativeInfinity;
+    /// <summary>正在推石頭（之後做推的動畫時可以讀這個值）</summary>
+    public bool IsPushing => Time.time < pushUntil;
+
     [Header("AI 控制（小怪用）")]
     [Tooltip("勾選後不讀鍵盤，改由程式（EnemyAI）呼叫 SetAIInput 控制")]
     public bool aiControlled = false;
@@ -211,7 +220,7 @@ public class ThirdPersonController : MonoBehaviour
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier;
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
         if (ballistic)
@@ -257,6 +266,40 @@ public class ThirdPersonController : MonoBehaviour
             verticalVelocity = 0f;
 
         UpdateFootsteps(dt);
+    }
+
+    /// <summary>
+    /// CharacterController 移動時撞到東西就會呼叫。撞到可以推的岩石、而且是朝著它走：
+    /// 把岩石往前推一小段，並讓自己接下來一小段時間變慢（岩石越重越慢）。
+    /// </summary>
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        if (aiControlled || !canPushRocks || ballistic) return;
+        if (hit.normal.y > 0.6f) return; // 踩在上面，不是從旁邊推
+
+        if (hit.collider.attachedRigidbody == null) return; // 地板、牆壁沒有 Rigidbody，馬上就跳過了
+        var rock = ArenaRock.From(hit.collider);
+        if (rock == null || !rock.pushable) return;
+        if (hit.point.y > rock.transform.position.y + rock.height * 0.6f) return; // 站在石頭的肩膀上，不算推
+
+        Vector3 move = horizontalVelocity;
+        float speed = move.magnitude;
+        if (speed < 0.2f) return;
+
+        Vector3 toRock = rock.transform.position - transform.position;
+        toRock.y = 0f;
+        if (toRock.sqrMagnitude < 0.0001f) return;
+        toRock.Normalize();
+        if (Vector3.Dot(move / speed, toRock) < 0.35f) return; // 只是從旁邊擦過去
+
+        // 岩石每一幀往前挪「比玩家這一幀想走的距離少一點」，玩家下一幀跟上去時一定還頂得到它，
+        // 才不會推一下、空一幀、再推一下地卡頓
+        float pushSpeed = Mathf.Min(speed, sprintSpeed * rock.pushSpeedFactor);
+        if (rock.Push(toRock, pushSpeed * Time.deltaTime * 0.85f, controller))
+        {
+            pushFactor = rock.pushSpeedFactor;
+            pushUntil = Time.time + 0.15f;
+        }
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed)

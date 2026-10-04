@@ -6,15 +6,15 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Boss AI（用膠囊體代替模型）
 ///
-/// 戰鬥開始（由 BossGate 呼叫 BeginFight，或勾選 autoStart）：競技場地板升起隨機的小山丘與柱子。
-/// 平常：追著玩家（會繞過柱子、爬上小山丘），靠近時普通攻擊（揮擊）。
+/// 戰鬥開始（由 BossGate 呼叫 BeginFight，或勾選 autoStart）：競技場的地面冒出隨機的岩石（大岩柱當掩體、小石塊可以推）。
+/// 平常：追著玩家（路上的岩石會被撞開 / 撞碎），靠近時普通攻擊（揮擊）。
 /// 每追擊一段時間，隨機使用一招特殊攻擊（不會連續重複同一招）：
 ///   1. 拍地  ：朝前方扇形拍一掌，衝擊波往外擴散、地板凹陷並出現不規則深坑。
 ///              衝擊波經過時腳還踩在地上就會受傷 → 要抓時機跳過去。
-///   2. 怒吼  ：全場隨機一部分方塊＋玩家腳下的方塊，預警後塌陷，掉下去會死。
+///   2. 怒吼  ：全場隨機一部分石板＋玩家腳下的石板，預警後塌陷，掉下去會死。
 ///   3. 光束  ：舉起右手，預警線先照在玩家身上並慢慢跟著（比走路慢），
 ///              發射後照射點直線追向玩家（比走路快、比跑步慢）。手臂會跟光束對成一直線。
-///              站在光束裡每 0.3 秒受傷一次；照到的地板會碎掉，柱子能擋一下但會被打爆。
+///              站在光束裡每 0.3 秒受傷一次；照到的地板會碎掉，岩石能擋一下但會被打碎。
 ///   4. 跳躍砸地：跳到玩家位置砸下來。落點會先在地板上標紅，要趕快跑出去；
 ///              落地後還有一圈往外擴散的衝擊波，要跳過去。玩家離太遠時 Boss 也會用這招拉近距離。
 ///
@@ -34,7 +34,7 @@ public class BossController : MonoBehaviour
     [Header("戰鬥開始")]
     [Tooltip("勾選 = 場景一開始就開打（測試用）；不勾 = 等 BossGate 觸發")]
     public bool autoStart = false;
-    [Tooltip("戰鬥開始時是否產生隨機地形（山丘、柱子）")]
+    [Tooltip("戰鬥開始時是否從地面冒出隨機的岩石")]
     public bool generateTerrainOnStart = true;
     [Tooltip("開場等待多久才開始行動 (秒)，地形會在這段時間升起")]
     public float startDelay = 3f;
@@ -47,7 +47,7 @@ public class BossController : MonoBehaviour
     public float stopDistance = 3.2f;
     [Tooltip("Boss 身體半徑，用來計算攻擊距離")]
     public float bodyRadius = 1.5f;
-    [Tooltip("Boss 能直接走上去的高度差 (m)，超過就當成障礙物繞開（例如柱子）")]
+    [Tooltip("Boss 能直接走上去的高度差 (m)，超過就當成障礙物繞開")]
     public float maxStepHeight = 2f;
     [Tooltip("爬上 / 走下地形時高度變化的速度 (m/s)")]
     public float groundFollowSpeed = 6f;
@@ -85,6 +85,8 @@ public class BossController : MonoBehaviour
     [Range(0f, 1f)] public float slamDeepHoleAmount = 0.3f;
     [Tooltip("深坑形狀的雜訊縮放，越小坑越大塊、越大坑越碎")]
     public float slamDeepHoleNoiseScale = 0.35f;
+    [Tooltip("拍地時，離 Boss 這個距離以內的大岩柱會被震碎（更遠的只有小石塊會被震開）")]
+    public float slamRockBreakRange = 14f;
     public float slamDamage = 25f;
     public Color slamTelegraphColor = new Color(1f, 0.55f, 0.1f);
 
@@ -97,7 +99,7 @@ public class BossController : MonoBehaviour
     [Tooltip("Boss 腳下多大範圍不會塌（讓 Boss 有地方站）")]
     public float safeRadius = 7f;
     public float collapseWarnTime = 3f;
-    [Tooltip("方塊掉下去後多久升回來")]
+    [Tooltip("石板掉下去後多久升回來")]
     public float collapseDownTime = 5f;
 
     [Header("3. 光束")]
@@ -121,9 +123,9 @@ public class BossController : MonoBehaviour
     public bool beamBreaksFloor = true;
     [Tooltip("地板被照到後閃爍多久才掉下去 (秒)")]
     public float beamFloorBreakDelay = 0.25f;
-    [Tooltip("光束能不能打爆柱子（柱子會擋住光束）")]
+    [Tooltip("光束能不能打碎岩石（岩石會擋住光束）")]
     public bool beamBreaksPillars = true;
-    [Tooltip("柱子被光束照到後，閃爍多久才倒下 (秒)；倒下前仍然擋得住光束")]
+    [Tooltip("岩石被光束照到後，閃爍多久才碎掉 (秒)；碎掉前仍然擋得住光束")]
     public float beamPillarBreakTime = 0.3f;
     [Tooltip("光束從哪裡射出。留空 = 自動找模型的右手（hand.R）；找不到就從胸口射出")]
     public Transform beamSource;
@@ -196,7 +198,7 @@ public class BossController : MonoBehaviour
     [Tooltip("光束結束時的收尾聲（不填 = SFX/laser_end）")]
     public AudioClip beamEndSound;
     [Range(0f, 1f)] public float beamVolume = 0.6f;
-    [Tooltip("拍地、跳砸落地、柱子碎裂的撞擊聲（不填 = SFX/rock_hit）")]
+    [Tooltip("拍地、跳砸落地、岩石碎裂的撞擊聲（不填 = SFX/rock_hit）")]
     public AudioClip impactSound;
     [Range(0f, 1f)] public float sfxVolume = 1f;
 
@@ -378,7 +380,7 @@ public class BossController : MonoBehaviour
 
     /// <summary>
     /// Boss 登場：landPoint 的地板先閃紅警告，然後 Boss 從天上砸下來（砸到會受傷、要跳過衝擊波），
-    /// 接著柱子和山丘升起，Boss 戰正式開始。
+    /// 接著岩石從地面冒出來，Boss 戰正式開始。
     /// </summary>
     public void ArriveAndBeginFight(Vector3 landPoint)
     {
@@ -431,7 +433,7 @@ public class BossController : MonoBehaviour
         OnArrived?.Invoke();
         yield return LandImpact(target, landTiles, 1.6f);
 
-        // 怒吼，柱子和山丘升起，正式開打
+        // 怒吼，岩石冒出來，正式開打
         health.Invulnerable = false;
         BeginFight();
         PlayAnim("Roar", 0.4f);
@@ -728,21 +730,26 @@ public class BossController : MonoBehaviour
         ThirdPersonCamera.ShakeMain(0.35f, 0.5f);
         PlayImpact(1f, 1f);
 
-        // 用 Perlin 雜訊決定哪些方塊變成深坑，每次拍地形狀都不一樣
+        // 用 Perlin 雜訊決定哪些石板變成深坑，每次拍地形狀都不一樣
         Vector2 noiseOffset = new Vector2(Random.Range(0f, 1000f), Random.Range(0f, 1000f));
         float deepThreshold = 1f - slamDeepHoleAmount;
         foreach (var tile in tiles)
         {
             tile.SetTelegraph(null);
             float d = ArenaFloor.FlatDistance(tile.RestPosition, origin);
-            float noise = Mathf.PerlinNoise(tile.gridX * slamDeepHoleNoiseScale + noiseOffset.x,
-                                            tile.gridZ * slamDeepHoleNoiseScale + noiseOffset.y);
+            // 用石板的位置取雜訊（除以一格的長度，數值的手感才跟以前的方塊地板一樣）
+            float cell = Mathf.Max(arena.tileSize, 0.1f);
+            float noise = Mathf.PerlinNoise(tile.RestPosition.x / cell * slamDeepHoleNoiseScale + noiseOffset.x,
+                                            tile.RestPosition.z / cell * slamDeepHoleNoiseScale + noiseOffset.y);
             bool deep = noise > deepThreshold;
             // 深坑的深度也加一點隨機，看起來比較不整齊
             float depth = deep ? slamDeepHoleDepth * Random.Range(0.8f, 1.2f) : slamDentDepth * Random.Range(0.85f, 1.1f);
             float delay = (d - bodyRadius) / slamWaveSpeed + (deep ? 0.15f : 0f);
             tile.Dent(delay, depth, slamDentHoldTime, slamDentRecoverTime);
         }
+        // 扇形裡的岩石：近的大岩柱被震碎，小石塊被衝擊波震開
+        if (arena != null)
+            arena.SmashRocksInFan(origin, forward, slamHalfAngle, slamRange, bodyRadius, slamRockBreakRange, slamWaveSpeed, transform);
 
         // 衝擊波往外擴散，碰到還踩在地上的玩家就造成傷害
         yield return Shockwave(origin, forward, slamHalfAngle, bodyRadius, slamRange, slamWaveSpeed, slamWaveWidth, slamDamage);
@@ -780,7 +787,7 @@ public class BossController : MonoBehaviour
         {
             var chosen = new HashSet<FloorTile>();
 
-            // 全場每一塊獨立隨機（山丘、柱子也一樣會塌）
+            // 全場每一塊石板獨立隨機（上面的岩石會跟著掉下去）
             foreach (var tile in arena.Tiles)
                 if (tile.canCollapse && Random.value < collapseRatio) chosen.Add(tile);
 
@@ -913,7 +920,7 @@ public class BossController : MonoBehaviour
         beamAim = ClampInArena(beamAim);
     }
 
-    /// <summary>照射點在地面上的位置（含山丘高度）</summary>
+    /// <summary>照射點在地面上的位置</summary>
     Vector3 BeamAimOnGround()
     {
         Vector3 aim = beamAim;
@@ -980,8 +987,8 @@ public class BossController : MonoBehaviour
     }
 
     /// <summary>
-    /// 更新光束：從手直線照到照射點。中間碰到柱子 / 牆 / 隆起的地板就停在那裡。
-    /// firing = true 時：破壞照到的地板、打爆柱子、每 beamTickInterval 秒傷害一次玩家。
+    /// 更新光束：從手直線照到照射點。中間碰到岩石 / 牆就停在那裡。
+    /// firing = true 時：破壞照到的地板、打碎岩石、每 beamTickInterval 秒傷害一次玩家。
     /// </summary>
     void UpdateBeam(bool firing)
     {
@@ -1016,15 +1023,13 @@ public class BossController : MonoBehaviour
 
         if (!firing) return;
 
-        // 打爆柱子
-        if (beamBreaksPillars && blocker != null && blocker.TryGetComponent(out FloorTile hitTile)
-            && hitTile.IsPillar && !hitTile.IsCracking && arena != null)
+        // 打碎擋住光束的岩石（先閃爍一下才碎，這段時間還擋得住）
+        var hitRock = ArenaRock.From(blocker);
+        if (beamBreaksPillars && hitRock != null && hitRock.IsStanding && !hitRock.IsCracking)
         {
-            hitTile.ShatterAfter(beamPillarBreakTime);
-            foreach (var t in arena.GetTilesNear(hitTile.RestPosition, arena.tileSize * 1.5f))
-                if (t.IsPillar) t.ShatterAfter(beamPillarBreakTime); // 2x2 大柱子一起碎
+            hitRock.ShatterAfter(beamPillarBreakTime);
             ThirdPersonCamera.ShakeMain(0.1f, 0.15f);
-            GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), hitTile.transform.position, 0.6f * sfxVolume, 1.25f, 0.8f, 70f);
+            GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), hitRock.transform.position, 0.6f * sfxVolume, 1.25f, 0.8f, 70f);
         }
 
         // 破壞照到的地板（Boss 腳下附近不會破）
@@ -1032,7 +1037,7 @@ public class BossController : MonoBehaviour
         {
             foreach (var t in arena.GetTilesNear(end, currentBeamDiameter * 0.5f))
             {
-                if (t.IsPillar || !t.canCollapse) continue;
+                if (!t.canCollapse) continue;
                 if (ArenaFloor.FlatDistance(t.RestPosition, transform.position) < safeRadius) continue;
                 t.Collapse(beamFloorBreakDelay, collapseDownTime);
             }
@@ -1130,14 +1135,16 @@ public class BossController : MonoBehaviour
         ThirdPersonCamera.ShakeMain(0.5f * power, 0.6f * power);
         PlayImpact(0.85f / power, 1f);
 
-        // 落點形成隕石坑：中間最深、外圍淺；範圍內的柱子直接打爆
+        // 落點形成隕石坑：中間最深、外圍淺
         foreach (var tile in landTiles)
         {
             tile.SetTelegraph(null);
-            if (tile.IsPillar) { tile.Shatter(); continue; }
             float d = ArenaFloor.FlatDistance(tile.RestPosition, target) / jumpLandRadius;
             tile.Dent(0f, Mathf.Lerp(1.6f, 0.4f, d), 2f, 1.2f);
         }
+        // 落點範圍內的岩石全部砸碎；衝擊波掃到的小石塊被震開
+        if (arena != null)
+            arena.SmashRocksNear(target, jumpLandRadius, jumpWaveRange, slamWaveSpeed, transform);
 
         // 直接砸中
         if (PlayerAlive && playerHealth != null)
@@ -1194,7 +1201,7 @@ public class BossController : MonoBehaviour
     //  移動 / 地形
     // =====================================================================
 
-    /// <summary>讓 Boss 的高度貼著腳下的地形（上下山丘）</summary>
+    /// <summary>讓 Boss 的高度貼著腳下的地面</summary>
     void FollowGround()
     {
         if (arena == null || dead || airborne) return;
@@ -1205,8 +1212,8 @@ public class BossController : MonoBehaviour
     }
 
     /// <summary>
-    /// 往 dir 方向移動 distance；前面是洞或太高的障礙（柱子）時，
-    /// 會試著往左右偏一點繞過去。回傳有沒有成功移動。
+    /// 往 dir 方向移動 distance；前面是洞時會試著往左右偏一點繞過去。回傳有沒有成功移動。
+    /// 路上的岩石擋不住 Boss：小石塊被撞開，大岩柱被撞碎。
     /// </summary>
     bool TryMove(Vector3 dir, float distance)
     {
@@ -1221,6 +1228,7 @@ public class BossController : MonoBehaviour
             Vector3 next = transform.position + d * distance;
             if (!CanStandAt(next, d)) continue;
             transform.position = ClampInArena(next);
+            if (arena != null) arena.TouchRocks(transform.position, bodyRadius, transform);
             return true;
         }
         return false;

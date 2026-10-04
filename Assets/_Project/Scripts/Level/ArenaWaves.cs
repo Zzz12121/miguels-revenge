@@ -6,11 +6,11 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Boss 房的波次戰：玩家進門、大門關上之後，先打兩波小怪，Boss 才從天而降。
 ///
-///   進門 → 平坦的競技場，沒有 Boss、沒有柱子
+///   進門 → 平坦的競技場，沒有 Boss、沒有岩石
 ///   WAVE 1（約 30 秒）：不定時生成小怪。有的從天上掉到玩家附近，有的在離玩家較遠的地方冒出來
 ///   WAVE 2（約 60 秒）：小怪照樣生成，另外每隔幾秒會有一條橫跨競技場的「切線」地板塌陷，之後再復原
 ///   清場：等塌掉的地板都復原、剩下的小怪被打完（或等太久）
-///   BOSS：場地中央出現警告 → Boss 砸下來（會受傷）→ 柱子和山丘升起 → Boss 戰開始
+///   BOSS：場地中央出現警告 → Boss 砸下來（會受傷）→ 岩石從地面冒出來 → Boss 戰開始
 ///
 /// 玩家死掉重生時整個重來（小怪清空、Boss 再次隱藏）。
 /// 這個元件放在 BossGate 上；沒有放的話 BossGate 會在遊戲開始時自動加上。
@@ -236,7 +236,7 @@ public class ArenaWaves : MonoBehaviour
         skipRequested = false;
         while (!skipRequested && Time.time < phaseEndTime && (enemies.Count > 0 || pendingSpawns > 0))
             yield return null;
-        // 場地中央的地板一定要先回來，Boss 才有地方落地（其他還沒復原的地板，Boss 登場時會跟著柱子一起升回來）
+        // 場地中央的地板一定要先回來，Boss 才有地方落地（其他還沒復原的地板，Boss 登場、岩石冒出來時會一起升回來）
         float hardLimit = Time.time + stripWarnTime + stripDownTime + 3f;
         while (!LandingZoneSettled() && Time.time < hardLimit) yield return null;
         yield return new WaitForSeconds(0.5f);
@@ -280,7 +280,7 @@ public class ArenaWaves : MonoBehaviour
         }
     }
 
-    /// <summary>Boss 落點（場地中央）的地板都好好的（沒有正在預警、掉下去、升回來的方塊）</summary>
+    /// <summary>Boss 落點（場地中央）的地板都好好的（沒有正在預警、掉下去、升回來的石板）</summary>
     bool LandingZoneSettled()
     {
         if (arena == null) return true;
@@ -457,13 +457,13 @@ public class ArenaWaves : MonoBehaviour
         return ai;
     }
 
-    /// <summary>這個位置的地板是不是好好的（沒有塌、沒有在閃、不是柱子）</summary>
+    /// <summary>這個位置的地板是不是好好的（沒有塌、沒有在閃）</summary>
     bool Standable(Vector3 p)
     {
         if (arena == null) return false;
         if (ArenaFloor.FlatDistance(p, arena.Center) > arena.radius - 1.5f) return false;
         var t = arena.GetTileAt(p);
-        if (t == null || !t.IsSolid || t.IsPillar) return false;
+        if (t == null || !t.IsSolid) return false;
         var s = t.CurrentState;
         return s != FloorTile.State.Warning && s != FloorTile.State.Fallen && s != FloorTile.State.Restoring;
     }

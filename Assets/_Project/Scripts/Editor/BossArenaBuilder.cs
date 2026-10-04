@@ -53,8 +53,9 @@ public static class BossArenaBuilder
         var floor = floorGo.AddComponent<ArenaFloor>();
         floor.radius = ArenaRadius;
         floor.tileSize = TileSize;
-        floor.tileThickness = 1f;
+        floor.tileThickness = 2.5f;
         floor.tileMaterial = floorMat;
+        floor.rockMaterial = GetOrCreateMaterial("M_ArenaRock", new Color(0.36f, 0.35f, 0.39f));
         floor.Generate();
 
         // 環形牆：很多段方塊圍成一圈，內側剛好在可站立半徑外
