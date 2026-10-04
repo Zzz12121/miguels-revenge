@@ -150,6 +150,7 @@ public class ThirdPersonController : MonoBehaviour
 
     void Update()
     {
+        if (controller == null || !controller.enabled) return;
         float dt = Time.deltaTime;
         Vector3 moveDir;
         bool sprint, jumpPressed;
@@ -224,17 +225,29 @@ public class ThirdPersonController : MonoBehaviour
     {
         sprint = false;
         jumpPressed = false;
-        var kb = Keyboard.current;
-        if (kb == null || !inputEnabled) return Vector2.zero;
+        if (!inputEnabled) return Vector2.zero;
 
         Vector2 input = Vector2.zero;
-        if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.y += 1f;
-        if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.y -= 1f;
-        if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
-        if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
+        var kb = Keyboard.current;
+        if (kb != null)
+        {
+            if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.y += 1f;
+            if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.y -= 1f;
+            if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
+            if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
 
-        sprint = kb.leftShiftKey.isPressed;
-        jumpPressed = kb.spaceKey.wasPressedThisFrame;
+            sprint = kb.leftShiftKey.isPressed;
+            jumpPressed = kb.spaceKey.wasPressedThisFrame;
+        }
+#if ENABLE_LEGACY_INPUT_MANAGER
+        else
+        {
+            input.x = Input.GetAxisRaw("Horizontal");
+            input.y = Input.GetAxisRaw("Vertical");
+            sprint = Input.GetKey(KeyCode.LeftShift);
+            jumpPressed = Input.GetKeyDown(KeyCode.Space);
+        }
+#endif
         return Vector2.ClampMagnitude(input, 1f); // 斜走不會比較快
     }
 }
