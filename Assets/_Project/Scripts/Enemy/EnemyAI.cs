@@ -22,6 +22,16 @@ public class EnemyAI : MonoBehaviour
 {
     public enum State { Idle, Alerted, Chase, Return, Dropping, Dead, Jumping, Spawning }
 
+    [Header("巡邏與遊蕩")]
+    [Tooltip("未發現玩家時，是否在出生點周邊自由四處遊蕩走動")]
+    public bool enableWander = true;
+    [Tooltip("四處走動的半徑範圍 (m)")]
+    public float wanderRadius = 8f;
+    [Tooltip("走動到一個目標點後的停頓等待時間 (秒，最小/最大)")]
+    public Vector2 wanderWaitTime = new Vector2(2f, 4.5f);
+    [Tooltip("遊蕩走動時的移動速度比例 (0.5 = 半速漫步)")]
+    [Range(0.2f, 1f)] public float wanderSpeedMultiplier = 0.5f;
+
     [Header("警戒")]
     [Tooltip("玩家進入這個半徑就會被發現 (m)")]
     public float alertRadius = 9f;
@@ -95,6 +105,10 @@ public class EnemyAI : MonoBehaviour
     Quaternion homeRot;
     State state = State.Idle;
     float stateTimer;
+
+    Vector3 wanderTarget;
+    float wanderWaitTimer;
+    bool isWanderingMoving;
     float staggerTimer;
     float nextAttackTime;
     bool wasAttacking;
@@ -173,9 +187,7 @@ public class EnemyAI : MonoBehaviour
         switch (state)
         {
             case State.Idle:
-                controller.SetAIInput(Vector3.zero);
-                TurnTowards(homeRot * Vector3.forward, 180f);
-                if (playerAlive && CanDetectPlayer()) Alert(true);
+                UpdateIdleWander(playerAlive);
                 break;
 
             case State.Alerted:
@@ -340,6 +352,71 @@ public class EnemyAI : MonoBehaviour
         if (state == State.Dead || state == State.Dropping || state == State.Jumping || state == State.Spawning) return;
         nextPounceTime = Time.time + Random.Range(1.5f, 4f);
         SetState(State.Chase);
+    }
+
+    // ---------------- 閒置時在出生點附近遊蕩 ----------------
+
+    void UpdateIdleWander(bool playerAlive)
+    {
+        // 隨時檢測玩家是否進入警戒範圍
+        if (playerAlive && CanDetectPlayer())
+        {
+            controller.SetAIInput(Vector3.zero);
+            Alert(true);
+            return;
+        }
+
+        if (!enableWander)
+        {
+            controller.SetAIInput(Vector3.zero);
+            TurnTowards(homeRot * Vector3.forward, 180f);
+            return;
+        }
+
+        // 遊蕩邏輯：移動 vs 停頓等待
+        if (isWanderingMoving)
+        {
+            Vector3 diff = wanderTarget - transform.position;
+            diff.y = 0f;
+            float dist = diff.magnitude;
+
+            if (dist <= 0.6f)
+            {
+                // 到達漫步目標點，轉為停頓待機
+                isWanderingMoving = false;
+                wanderWaitTimer = Random.Range(wanderWaitTime.x, wanderWaitTime.y);
+                controller.SetAIInput(Vector3.zero);
+            }
+            else
+            {
+                Vector3 moveDir = (diff.normalized + Separation() * 0.5f).normalized * wanderSpeedMultiplier;
+                controller.SetAIInput(moveDir);
+                TurnTowards(diff, 200f);
+            }
+        }
+        else
+        {
+            controller.SetAIInput(Vector3.zero);
+            wanderWaitTimer -= Time.deltaTime;
+            if (wanderWaitTimer <= 0f)
+            {
+                PickNewWanderTarget();
+            }
+        }
+    }
+
+    void PickNewWanderTarget()
+    {
+        Vector2 circle = Random.insideUnitCircle * wanderRadius;
+        wanderTarget = homePos + new Vector3(circle.x, 0f, circle.y);
+
+        // 利用 Raycast 確保遊蕩點貼在地面上且非懸空
+        if (Physics.Raycast(wanderTarget + Vector3.up * 10f, Vector3.down, out RaycastHit hit, 20f))
+        {
+            wanderTarget.y = hit.point.y;
+        }
+
+        isWanderingMoving = true;
     }
 
     void UpdateChase(bool playerAlive)
@@ -507,6 +584,8 @@ public class EnemyAI : MonoBehaviour
         controller.enabled = true;
         controller.ResetMotion();
         controller.SetAIInput(Vector3.zero);
+        isWanderingMoving = false;
+        wanderWaitTimer = Random.Range(0.5f, 2f);
         staggerTimer = 0f;
         nextAttackTime = 0f;
         nextPounceTime = 0f;
@@ -727,6 +806,8 @@ public class EnemyAI : MonoBehaviour
         controller.enabled = true;
         controller.ResetMotion();
         controller.SetAIInput(Vector3.zero);
+        isWanderingMoving = false;
+        wanderWaitTimer = Random.Range(0.5f, 2f);
         if (player != null) FaceInstant(FlatToPlayer());
 
         dropStartY = start.y;
@@ -888,6 +969,8 @@ public class EnemyAI : MonoBehaviour
         Vector3 home = Application.isPlaying ? homePos : transform.position;
         Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.8f);
         Gizmos.DrawWireSphere(transform.position, alertRadius);   // 黃 = 警戒範圍
+        Gizmos.color = new Color(0.2f, 0.8f, 0.3f, 0.6f);
+        Gizmos.DrawWireSphere(home, wanderRadius);               // 綠 = 遊蕩範圍
         Gizmos.color = new Color(0.6f, 0.6f, 0.6f, 0.6f);
         Gizmos.DrawWireSphere(home, leashRadius);                 // 灰 = 最遠追到哪
     }
