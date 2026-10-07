@@ -7,6 +7,7 @@ using UnityEngine;
 ///
 /// 修改 BossRoom.prefab：
 ///   1. 把地板換成不規則的石板（每次執行排列都不一樣；想固定就在 ArenaFloor 的 Layout Seed 填一個數字）
+///      石板之間沒有縫（平常看起來是一整片，塌下去時才看得出形狀），材質用原本的 M_ArenaFloor
 ///   2. 設定岩石的材質（M_ArenaRock）。岩石本身是 Boss 戰開始時才由程式產生的，Prefab 裡看不到
 ///   3. 產生 Assets/_Project/Prefabs/PushableRock.prefab：可以推的石塊，拖進任何場景都能用
 ///
@@ -49,6 +50,17 @@ public static class ArenaFloorInstaller
             // 舊版的方塊只有 1m 厚；石板要比跳砸的凹陷深度（1.6m）厚，凹下去時才不會看到底下
             if (floor.tileThickness < 2.5f) floor.tileThickness = 2.5f;
             if (floor.rockMaterial == null) floor.rockMaterial = rockMat;
+            // 地板用原本有石磚貼圖的材質（M_ArenaFloor）。之前有一版換成純色的 M_ArenaSlab，這裡換回來；
+            // 如果你自己指定了別的材質，就保留你的
+            if (floor.tileMaterial == null || floor.tileMaterial.name == "M_ArenaSlab")
+            {
+                var floorMat = FindMaterial("M_ArenaFloor");
+                if (floorMat != null) floor.tileMaterial = floorMat;
+            }
+            // 石板之間不要有縫：平常看起來是一整片地板，塌下去時才看得出不規則的形狀。
+            // 只改掉舊的預設值（0.07 / 0.1）；如果你自己調成別的數字，就保留你的
+            if (Mathf.Approximately(floor.slabBevel, 0.07f)) floor.slabBevel = 0f;
+            if (Mathf.Approximately(floor.shadeVariation, 0.1f)) floor.shadeVariation = 0f;
             floor.Generate();
             slabs = floor.transform.childCount;
             PrefabUtility.SaveAsPrefabAsset(root, path);

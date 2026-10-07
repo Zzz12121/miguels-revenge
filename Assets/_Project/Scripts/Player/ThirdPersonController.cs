@@ -72,6 +72,8 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("腳步聲（不填 = Kenney RPG Audio 的 footstep00~09）")]
     public AudioClip[] footstepSounds;
     [Range(0f, 1f)] public float footstepVolume = 0.35f;
+    [Tooltip("AI 控制（小怪）時腳步聲的音量倍率。小怪數量多，要比玩家小聲很多才不會吵")]
+    [Range(0f, 1f)] public float aiFootstepScale = 0.2f;
     [Tooltip("走幾公尺響一次")]
     public float stepDistance = 1.9f;
     float stepTravel;
@@ -87,7 +89,7 @@ public class ThirdPersonController : MonoBehaviour
     void Footstep(float volume)
     {
         // 小怪的腳步聲小一點、低一點，不然一群小怪會很吵
-        float v = volume * (aiControlled ? 0.5f : 1f);
+        float v = volume * (aiControlled ? aiFootstepScale : 1f);
         float pitch = (aiControlled ? 0.85f : 1f) * Random.Range(0.9f, 1.1f);
         GameAudio.PlayAt(GameAudio.Pick(footstepSounds, DefaultSteps), transform.position, v, pitch, 1f, 25f);
     }

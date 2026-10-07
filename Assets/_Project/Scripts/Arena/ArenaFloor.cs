@@ -2,8 +2,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 圓形競技場的地板：由幾百塊形狀不規則的石板 (FloorTile) 拼成，像碎裂的石板地。
-/// 石板之間剛好密合，上緣有一圈斜角，所以看得出一塊一塊的輪廓。
+/// 圓形競技場的地板：由幾百塊形狀不規則的石板 (FloorTile) 拼成。
+/// 石板之間剛好密合、用同一個材質，平常看起來是一整片；塌陷、凹陷時才看得出不規則的形狀。
+/// （想平常就看得到裂縫：把 Slab Bevel 和 Shade Variation 調大再重新產生地板）
 /// - 提供「找出扇形範圍 / 某位置附近的石板 / 某位置的地面高度」等查詢給 Boss 和波次戰使用
 /// - GenerateTerrain：地面保持平的，從地底冒出岩石（Boss 戰開始時由 BossController 呼叫）
 ///     大岩柱：推不動，當掩體擋光束
@@ -24,6 +25,8 @@ public class ArenaFloor : MonoBehaviour
     public float tileSize = 1.5f;
     [Tooltip("石板的厚度 (m)。要比拍地 / 跳砸的凹陷深度厚，凹下去時才不會看到石板底下")]
     public float tileThickness = 2.5f;
+    [Tooltip("會塌的石板伸進牆裡多少 (m)。貼牆的石板掉下去後如果牆腳還看得到一條沒掉的邊，就調大一點")]
+    public float wallOverlap = 0.25f;
     public Material tileMaterial;
 
     [Header("石板形狀（改完要按右鍵「重新產生地板」）")]
@@ -33,10 +36,10 @@ public class ArenaFloor : MonoBehaviour
     [Range(0f, 0.48f)] public float slabJitter = 0.42f;
     [Tooltip("大石板的比例：越大 → 石板大小差異越大")]
     [Range(0f, 0.35f)] public float bigSlabChance = 0.14f;
-    [Tooltip("上緣斜角的寬度 (m)，石板之間的溝就是這個。0 = 沒有溝，看起來是一整片")]
-    public float slabBevel = 0.07f;
-    [Tooltip("每塊石板明暗的隨機差異（0 = 全部同一個顏色）")]
-    [Range(0f, 0.3f)] public float shadeVariation = 0.1f;
+    [Tooltip("上緣斜角的寬度 (m)，也就是石板之間的溝。0 = 沒有溝，平常看起來是一整片，塌下去時才看得出形狀；想看到裂縫就設 0.05 左右")]
+    public float slabBevel = 0f;
+    [Tooltip("每塊石板明暗的隨機差異。0 = 全部同一個顏色（看不出一塊一塊的，也比較省效能）")]
+    [Range(0f, 0.3f)] public float shadeVariation = 0f;
     [Tooltip("排列的亂數種子。0 = 每次重新產生都不一樣")]
     public int layoutSeed = 0;
     /// <summary>目前這批石板產生時用的 slabSize（查石板要用這個，不能用 Inspector 上改過但還沒重新產生的值）</summary>
@@ -442,34 +445,33 @@ public class ArenaFloor : MonoBehaviour
         for (int i = transform.childCount - 1; i >= 0; i--)
             DestroyImmediate(transform.GetChild(i).gameObject);
 
-        // 外圈多鋪一圈，讓石板一路延伸到牆壁裡面，邊緣才不會有縫
+        // 石板鋪到「牆的內側再往裡面一點點」為止，全部都會塌（包括貼著牆的那一圈）
         int seed = layoutSeed != 0 ? layoutSeed : Random.Range(1, int.MaxValue);
-        var cells = ShatterPattern.Generate(radius + slabSize, slabSize, slabJitter, bigSlabChance, 1, seed);
+        float edge = radius + wallOverlap;
+        var cells = ShatterPattern.Generate(edge, slabSize, slabJitter, bigSlabChance, 1, seed);
         var shadeRng = new System.Random(seed);
 
         int index = 0;
         foreach (var cell in cells)
         {
-            var go = new GameObject($"Slab_{index++:0000}");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = new Vector3(cell.centroid.x, 0f, cell.centroid.y);
+            float shade = 1f + ((float)shadeRng.NextDouble() * 2f - 1f) * shadeVariation;
+            CreateTile($"Slab_{index++:0000}", cell.site, cell.centroid, 0f, cell.outline, slabBevel, shade, true);
+        }
 
-            go.AddComponent<MeshFilter>();
-            var meshRenderer = go.AddComponent<MeshRenderer>();
-            if (tileMaterial != null) meshRenderer.sharedMaterial = tileMaterial;
-            go.AddComponent<MeshCollider>().convex = true;
-
-            var tile = go.AddComponent<FloorTile>();
-            tile.site = cell.site;
-            tile.uvOrigin = cell.centroid;
-            tile.outline = new Vector2[cell.outline.Length];
-            for (int i = 0; i < cell.outline.Length; i++) tile.outline[i] = cell.outline[i] - cell.centroid;
-            tile.thickness = tileThickness;
-            tile.bevel = slabBevel;
-            tile.uvSize = Mathf.Max(tileSize, 0.1f);
-            tile.shade = 1f + ((float)shadeRng.NextDouble() * 2f - 1f) * shadeVariation;
-            tile.canCollapse = cell.centroid.magnitude <= radius - slabSize * 0.4f; // 貼牆的外圈不塌
-            tile.Rebuild();
+        // 牆的正下方另外墊一圈不會塌的底座（平常被牆擋住看不到）：
+        // 貼牆的石板掉下去時，牆的下面才不會是空的；大門口也一直有地方可以站
+        int rimCount = Mathf.Max(24, Mathf.CeilToInt(2f * Mathf.PI * edge / Mathf.Max(slabSize * 1.8f, 0.5f)));
+        float rimInner = edge - 0.03f, rimOuter = edge + Mathf.Max(slabSize * 1.5f, 2.5f);
+        for (int i = 0; i < rimCount; i++)
+        {
+            float a0 = i * Mathf.PI * 2f / rimCount, a1 = (i + 1) * Mathf.PI * 2f / rimCount;
+            Vector2 d0 = new Vector2(Mathf.Cos(a0), Mathf.Sin(a0)), d1 = new Vector2(Mathf.Cos(a1), Mathf.Sin(a1));
+            var outline = new[] { d0 * rimInner, d0 * rimOuter, d1 * rimOuter, d1 * rimInner };
+            Vector2 centroid = ShatterPattern.Centroid(outline);
+            // 種子點放在最外側：場地裡面的位置查石板時才不會查到底座
+            Vector2 site = centroid.normalized * rimOuter;
+            // 比地板低一點點，跟石板、門檻重疊的地方才不會閃爍
+            CreateTile($"Rim_{i:000}", site, centroid, -0.04f, outline, 0f, 1f, false);
         }
 
         generatedSlabSize = slabSize;
@@ -485,5 +487,29 @@ public class ArenaFloor : MonoBehaviour
         }
 #endif
         Debug.Log($"[ArenaFloor] 產生了 {cells.Count} 塊石板");
+    }
+
+    void CreateTile(string tileName, Vector2 site, Vector2 centroid, float y, Vector2[] outline, float bevel, float shade, bool canCollapse)
+    {
+        var go = new GameObject(tileName);
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = new Vector3(centroid.x, y, centroid.y);
+
+        go.AddComponent<MeshFilter>();
+        var meshRenderer = go.AddComponent<MeshRenderer>();
+        if (tileMaterial != null) meshRenderer.sharedMaterial = tileMaterial;
+        go.AddComponent<MeshCollider>().convex = true;
+
+        var tile = go.AddComponent<FloorTile>();
+        tile.site = site;
+        tile.uvOrigin = centroid;
+        tile.outline = new Vector2[outline.Length];
+        for (int i = 0; i < outline.Length; i++) tile.outline[i] = outline[i] - centroid;
+        tile.thickness = tileThickness;
+        tile.bevel = bevel;
+        tile.uvSize = Mathf.Max(tileSize, 0.1f);
+        tile.shade = shade;
+        tile.canCollapse = canCollapse;
+        tile.Rebuild();
     }
 }

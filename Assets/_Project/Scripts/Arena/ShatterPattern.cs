@@ -9,6 +9,7 @@ using UnityEngine;
 ///   2. 每個種子點的石板 =「離這個點比離其他點都近」的範圍，一定是凸多邊形，而且彼此剛好密合
 ///   3. 把種子點往石板的重心移一點再算一次（Lloyd 鬆弛），石板會比較圓潤、少一些尖角
 ///   4. 把太短的邊（幾公分）縮成一個點，相鄰的石板一起改，所以還是密合的
+///   最外圈的石板會貼著圓整齊地收邊（做法見 Generate 裡的說明）
 ///
 /// 同一個 seed 一定產生同樣的結果。
 /// </summary>
@@ -24,22 +25,22 @@ public static class ShatterPattern
         public Vector2[] outline;
     }
 
-    /// <param name="fillRadius">要鋪滿的半徑</param>
+    /// <param name="radius">要鋪滿的圓的半徑。最外圈的石板會剛好貼著這個圓收邊，不會超出去</param>
     /// <param name="spacing">種子點的間距，大約等於石板的平均寬度</param>
     /// <param name="jitter">種子點隨機偏移的幅度（0 = 整齊的蜂巢，0.45 = 很不規則）</param>
     /// <param name="dropChance">拿掉種子點的機率，越大 → 大石板越多、大小差異越大</param>
     /// <param name="relaxIterations">鬆弛次數（0 = 尖角多，2 = 很圓潤）</param>
-    public static List<Cell> Generate(float fillRadius, float spacing, float jitter, float dropChance, int relaxIterations, int seed)
+    public static List<Cell> Generate(float radius, float spacing, float jitter, float dropChance, int relaxIterations, int seed)
     {
         spacing = Mathf.Max(spacing, 0.2f);
         var rng = new System.Random(seed);
 
-        // 1) 種子點：比要鋪的範圍多撒幾圈，最外圈的石板才有鄰居可以切
+        // 1) 種子點：只撒在圓裡面
         var sites = new List<Vector2>();
         float rowHeight = spacing * 0.8660254f;
-        float siteRadius = fillRadius + spacing * 2.5f;
-        int rows = Mathf.CeilToInt(siteRadius / rowHeight);
-        int cols = Mathf.CeilToInt(siteRadius / spacing) + 1;
+        float maxSiteRadius = radius - spacing * 0.2f; // 太貼邊的種子點會變成很薄的石板
+        int rows = Mathf.CeilToInt(radius / rowHeight);
+        int cols = Mathf.CeilToInt(radius / spacing) + 1;
         for (int j = -rows; j <= rows; j++)
         {
             for (int i = -cols; i <= cols; i++)
@@ -50,36 +51,42 @@ public static class ShatterPattern
                 float dist = Mathf.Sqrt((float)rng.NextDouble()) * jitter * spacing;
                 bool drop = rng.NextDouble() < dropChance;
                 var p = new Vector2(x + Mathf.Cos(angle) * dist, z + Mathf.Sin(angle) * dist);
-                if (drop || p.magnitude > siteRadius) continue;
+                if (drop || p.magnitude > maxSiteRadius) continue;
                 sites.Add(p);
             }
         }
-
-        // 最外面用一個正多邊形收邊（最外圈的石板會埋在牆裡，形狀不重要）
-        var bound = new List<Vector2>();
-        float boundRadius = fillRadius + spacing * 0.6f;
-        const int boundSides = 64;
-        for (int i = 0; i < boundSides; i++)
-        {
-            float a = i * Mathf.PI * 2f / boundSides;
-            bound.Add(new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * boundRadius);
-        }
+        int realCount = sites.Count;
 
         // 2) + 3) 算石板 → 種子點往重心移 → 再算一次
         List<List<Vector2>> polys = null;
         for (int it = 0; it <= relaxIterations; it++)
         {
-            polys = ComputeCells(sites, spacing, bound, boundRadius);
+            // 收邊的技巧：靠近邊緣的種子點，在圓的外面放一個「鏡像」的假種子點（沿著半徑方向對稱）。
+            // 真的和假的中間那條分界線剛好貼著圓，所以最外圈的石板會沿著圓整齊地切齊，不會有碎片。
+            sites.RemoveRange(realCount, sites.Count - realCount);
+            for (int i = 0; i < realCount; i++)
+            {
+                float r = sites[i].magnitude;
+                if (r < radius - spacing * 3.5f || r < 0.001f) continue;
+                sites.Add(sites[i] * ((2f * radius - r) / r));
+            }
+
+            polys = ComputeCells(sites, spacing);
             if (it == relaxIterations) break;
-            for (int i = 0; i < sites.Count; i++)
-                if (polys[i] != null) sites[i] = Vector2.Lerp(sites[i], Centroid(polys[i]), 0.75f);
+            for (int i = 0; i < realCount; i++)
+            {
+                if (polys[i] == null) continue;
+                Vector2 moved = Vector2.Lerp(sites[i], Centroid(polys[i]), 0.75f);
+                if (moved.magnitude > maxSiteRadius) moved = moved.normalized * maxSiteRadius;
+                sites[i] = moved;
+            }
         }
 
         var cells = new List<Cell>();
-        for (int i = 0; i < sites.Count; i++)
+        for (int i = 0; i < realCount; i++)
         {
             var poly = polys[i];
-            if (poly == null || sites[i].magnitude > fillRadius) continue;
+            if (poly == null) continue;
             if (Mathf.Abs(SignedArea(poly)) < spacing * spacing * 0.02f) continue; // 小到看不見的碎片
             cells.Add(new Cell { site = sites[i], centroid = Centroid(poly), outline = poly.ToArray() });
         }
@@ -181,7 +188,7 @@ public static class ShatterPattern
 
     // ---------------- Voronoi ----------------
 
-    static List<List<Vector2>> ComputeCells(List<Vector2> sites, float spacing, List<Vector2> bound, float boundRadius)
+    static List<List<Vector2>> ComputeCells(List<Vector2> sites, float spacing)
     {
         // 把種子點放進格子裡，找鄰居時只要看附近幾格
         float bucket = spacing * 1.5f;
@@ -224,17 +231,6 @@ public static class ShatterPattern
                 if (dist > MaxDistance(poly, s) * 2f) break; // 更遠的鄰居已經切不到了
                 poly = Clip(poly, s + d * 0.5f, d / dist);
                 if (poly.Count < 3) break;
-            }
-
-            // 靠近外緣的再被收邊的多邊形切一次
-            if (poly.Count >= 3 && s.magnitude + MaxDistance(poly, s) > boundRadius * 0.98f)
-            {
-                for (int b = 0; b < bound.Count && poly.Count >= 3; b++)
-                {
-                    Vector2 a0 = bound[b], a1 = bound[(b + 1) % bound.Count];
-                    Vector2 mid = (a0 + a1) * 0.5f;
-                    poly = Clip(poly, mid, mid.normalized);
-                }
             }
 
             poly = Clean(poly);
