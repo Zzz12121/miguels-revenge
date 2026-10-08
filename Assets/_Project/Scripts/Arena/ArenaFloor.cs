@@ -46,6 +46,9 @@ public class ArenaFloor : MonoBehaviour
     [SerializeField, HideInInspector] float generatedSlabSize;
 
     [Header("岩石：共用")]
+    [Tooltip("Boss 戰開始時要不要從地面冒出岩石（大岩柱 + 可以推的小石塊）。\n" +
+             "目前關掉：場地是一片平地。之後想要岩石回來，勾起來就好，下面的數量 / 大小設定都還在")]
+    public bool spawnRocks = false;
     [Tooltip("岩石的材質（不填就用地板的材質）")]
     public Material rockMaterial;
     [Tooltip("想用自己做的岩石 Prefab 就拖進來（上面要有或會自動加上 ArenaRock）；不填 = 用程式產生的岩石")]
@@ -239,7 +242,7 @@ public class ArenaFloor : MonoBehaviour
     // ---------------- 岩石 ----------------
 
     /// <summary>
-    /// 產生新的一批岩石，從中央往外依序從地底冒出來。地面本身保持平的。
+    /// 把還沒復原的地板補平；spawnRocks 有開的話，再產生新的一批岩石，從中央往外依序從地底冒出來。
     /// keepFlat：這些位置附近不放岩石（通常傳入玩家和 Boss 的位置）。
     /// </summary>
     public void GenerateTerrain(IList<Vector3> keepFlat)
@@ -249,6 +252,8 @@ public class ArenaFloor : MonoBehaviour
         // 還沒復原的地板（波次戰留下的洞）跟著岩石一起升回來
         foreach (var t in Tiles)
             t.RestoreNow(FlatDistance(t.RestPosition, Center) / Mathf.Max(riseWaveSpeed, 0.1f));
+
+        if (!spawnRocks) return; // 岩石關掉了：只把地板補平
 
         // 可以放岩石的石板：會塌的、不靠牆、不在中央、離玩家和 Boss 夠遠
         var candidates = new List<FloorTile>();

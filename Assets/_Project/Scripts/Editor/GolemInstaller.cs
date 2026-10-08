@@ -14,7 +14,7 @@ using UnityEngine;
 ///
 /// 每次在 Blender 改完模型、重新匯出覆蓋 Assets/_Project/Models/Golem/Golem.fbx 之後，
 /// 再執行一次這個選單就會：
-///   1. 設定 FBX 匯入：Generic 骨架、動畫名稱（Golem_Slam → Slam）、Idle / Walk 循環、材質換成 URP 材質（眼睛 / 核心會發光）
+///   1. 設定 FBX 匯入：Generic 骨架、動畫名稱（Golem_Slam → Slam）、Idle / Walk / SummonLoop 循環、材質換成 URP 材質（眼睛 / 核心會發光）
 ///   2. 重建 Golem.controller（Animator，每個動畫一個狀態，名稱跟招式一樣）
 ///   3. 修改 BossRoom.prefab：拿掉舊的身體，換成新模型，並加上 BossVisual
 ///
@@ -31,7 +31,7 @@ public static class GolemInstaller
     // Blender 匯出的模型在 Unity 裡會面向 -Z，轉 180 度讓臉朝向 Boss 的前方（+Z）
     const float ModelYaw = 180f;
 
-    static readonly string[] LoopingClips = { "Idle", "Walk" };
+    static readonly string[] LoopingClips = { "Idle", "Walk", "SummonLoop" };
 
     [MenuItem("GeminiGrowUp/安裝 或 更新 Boss 模型（骸骨巨像）")]
     public static void Install()
@@ -53,12 +53,52 @@ public static class GolemInstaller
                 "繼續", "取消"))
             return;
 
+        if (Reinstall()) Debug.Log("[GeminiGrowUp] Boss 模型（骸骨巨像）已安裝到 BossRoom。按 Play 測試，數字鍵 1~4 可以叫 Boss 放招。");
+    }
+
+    /// <summary>
+    /// 不跳視窗，直接重新安裝一次（別的安裝選單在 Golem.fbx 多了新動畫之後會呼叫這個）。
+    /// 回傳有沒有成功。
+    /// </summary>
+    internal static bool Reinstall()
+    {
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath) == null) return false;
+        string bossRoomPath = Floor02Builder.FindBossRoomPrefab();
+        if (bossRoomPath == null) return false;
+
         ConfigureImporter();
         var controller = BuildController();
         bool ok = PutModelIntoBossRoom(bossRoomPath, controller);
-
         AssetDatabase.SaveAssets();
-        if (ok) Debug.Log("[GeminiGrowUp] Boss 模型（骸骨巨像）已安裝到 BossRoom。按 Play 測試，數字鍵 1~4 可以叫 Boss 放招。");
+        return ok;
+    }
+
+    /// <summary>
+    /// Golem.fbx 裡已經有召喚動畫（Summon / SummonLoop）、但目前的 Animator 還沒有 → 需要重新安裝一次。
+    /// 還沒安裝過模型（沒有 Golem.controller）或 FBX 是舊的（沒有這些動畫）時回傳 false。
+    /// </summary>
+    internal static bool NeedsSummonUpdate()
+    {
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath) == null) return false;
+        var imp = AssetImporter.GetAtPath(FbxPath) as ModelImporter;
+        if (imp == null) return false;
+        foreach (string need in new[] { "Summon", "SummonLoop" })
+        {
+            if (ControllerHasState(need)) continue;
+            foreach (var clip in imp.defaultClipAnimations)
+                if (clip.takeName.EndsWith("_" + need)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Golem.controller 裡有沒有某個招式的動畫狀態</summary>
+    internal static bool ControllerHasState(string stateName)
+    {
+        var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (controller == null || controller.layers.Length == 0) return false;
+        foreach (var s in controller.layers[0].stateMachine.states)
+            if (s.state != null && s.state.name == stateName) return true;
+        return false;
     }
 
     // =====================================================================
@@ -74,7 +114,7 @@ public static class GolemInstaller
         imp.globalScale = 1f;
         imp.useFileScale = true;
 
-        // 動畫：Golem_Slam → Slam，Idle / Walk 設成循環
+        // 動畫：Golem_Slam → Slam，Idle / Walk / SummonLoop 設成循環
         var clips = imp.defaultClipAnimations;
         foreach (var clip in clips)
         {
@@ -144,7 +184,7 @@ public static class GolemInstaller
         }
 
         var missing = new List<string>();
-        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Death" })
+        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Summon", "SummonLoop", "Death" })
             if (!clips.Any(c => c.name == need)) missing.Add(need);
         if (missing.Count > 0)
             Debug.LogWarning("[GeminiGrowUp] Golem.fbx 裡少了這些動畫（Boss 放這些招式時會沒有動作）：" + string.Join("、", missing));

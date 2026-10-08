@@ -272,15 +272,30 @@ public class ThirdPersonController : MonoBehaviour
     }
 
     /// <summary>
-    /// CharacterController 移動時撞到東西就會呼叫。撞到可以推的岩石、而且是朝著它走：
-    /// 把岩石往前推一小段，並讓自己接下來一小段時間變慢（岩石越重越慢）。
+    /// CharacterController 移動時撞到東西就會呼叫。
+    /// 撞到木桶 / 木箱 / 掉在地上的火把（Knockable）：把它往前頂開、踢飛。
+    /// 撞到可以推的岩石、而且是朝著它走：把岩石往前推一小段，並讓自己接下來一小段時間變慢（岩石越重越慢）。
     /// </summary>
     void OnControllerColliderHit(ControllerColliderHit hit)
     {
-        if (aiControlled || !canPushRocks || ballistic) return;
-        if (hit.normal.y > 0.6f) return; // 踩在上面，不是從旁邊推
+        Rigidbody hitBody = hit.collider.attachedRigidbody;
+        if (hitBody == null) return;     // 地板、牆壁沒有 Rigidbody，馬上就跳過了
 
-        if (hit.collider.attachedRigidbody == null) return; // 地板、牆壁沒有 Rigidbody，馬上就跳過了
+        // 木桶、木箱、掉在地上的火把：玩家和小怪用走的都能把它頂開 / 踢飛（不然翻倒的木桶會把路堵住）
+        if (hitBody.TryGetComponent(out Knockable prop))
+        {
+            // 重的東西會把推的人拖慢（跟推岩石一樣的機制）
+            float slow = prop.Shove(transform.position, horizontalVelocity, hit.normal, sprintSpeed);
+            if (slow < 1f)
+            {
+                pushFactor = slow;
+                pushUntil = Time.time + 0.15f;
+            }
+            return;
+        }
+
+        if (hit.normal.y > 0.6f) return; // 踩在上面，不是從旁邊推
+        if (aiControlled || !canPushRocks || ballistic) return;
         var rock = ArenaRock.From(hit.collider);
         if (rock == null || !rock.pushable) return;
         if (hit.point.y > rock.transform.position.y + rock.height * 0.6f) return; // 站在石頭的肩膀上，不算推

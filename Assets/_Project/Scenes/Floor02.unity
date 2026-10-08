@@ -166,7 +166,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &153451575
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -184,6 +184,8 @@ MonoBehaviour:
   - {fileID: 468769985}
   - {fileID: 669189297}
   - {fileID: 1766698396}
+  warnWithRedCircle: 0
+  emergeWarnTime: 1
   dropHeight: 14
   dropDistance: {x: 2, y: 4}
   firstOnPlayer: 1
@@ -397,6 +399,75 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 3225303128382258515, guid: 619010688b6968e4b8675923c86f7bde, type: 3}
   m_PrefabInstance: {fileID: 468769984}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &482791868
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 482791870}
+  - component: {fileID: 482791869}
+  m_Layer: 0
+  m_Name: Dungeon
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &482791869
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 482791868}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cdbf25463bc8f7845bf755b89943a8ca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DungeonGenerator
+  roomCount: {x: 4, y: 6}
+  maxSideRooms: 2
+  seed: 0
+  gruntPrefab: {fileID: 4330986778754430036, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
+  ambusherPrefab: {fileID: 5061976072528338390, guid: 619010688b6968e4b8675923c86f7bde, type: 3}
+  enemiesPerRoom: {x: 3, y: 5}
+  extraEnemiesInBigRoom: 1
+  extraEnemiesPerDepth: 0.5
+  ambusherChance: 0.3
+  kit:
+    wall: {fileID: 919132149155446097, guid: 3545fbf1bd4f5074fbc126752ac00645, type: 3}
+    wallWindow: {fileID: 919132149155446097, guid: 57abc68757d3dbd44b9fc55b8f3996ca, type: 3}
+    wallPaint: {fileID: 919132149155446097, guid: 384bf31f8c9b65e41a782254e44437a0, type: 3}
+    battlement: {fileID: 919132149155446097, guid: f01cb68a221000840af58670406f9765, type: 3}
+    floor: {fileID: 919132149155446097, guid: 1fb57074d0772584886276d4240c5178, type: 3}
+    props:
+    - {fileID: 919132149155446097, guid: 94d02d3b7855bc64abeb0e6b010104ed, type: 3}
+    - {fileID: 919132149155446097, guid: e63b91bf2b9d20a48bce374d6f771459, type: 3}
+    - {fileID: 919132149155446097, guid: e30e9c99f6ccee342ae4eb865828b135, type: 3}
+    doorMaterial: {fileID: 2100000, guid: 1f81b37dc9cf9b04baa4f8d4cc7b88f6, type: 2}
+    torchWoodMaterial: {fileID: 2100000, guid: 66208f572ab77e34294a73e9df5ce9f6, type: 2}
+    torchFlameMaterial: {fileID: 2100000, guid: a60ed96209f6b6f48b78e16c1237ce9c, type: 2}
+  gate: {fileID: 0}
+  checkpoint: {fileID: 0}
+  movePlayerToStart: 1
+--- !u!4 &482791870
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 482791868}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &669189296
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -485,6 +556,10 @@ PrefabInstance:
     - target: {fileID: 2198546012390595861, guid: bda7eeca67ee1494faf84db6f6b801ae, type: 3}
       propertyPath: m_Name
       value: Corridor_Wide
+      objectReference: {fileID: 0}
+    - target: {fileID: 2198546012390595861, guid: bda7eeca67ee1494faf84db6f6b801ae, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5476523162469404217, guid: bda7eeca67ee1494faf84db6f6b801ae, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1064,7 +1139,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1417034448
 Transform:
   m_ObjectHideFlags: 0
@@ -1420,3 +1495,4 @@ SceneRoots:
   - {fileID: 1058629065}
   - {fileID: 1417034448}
   - {fileID: 153451576}
+  - {fileID: 482791870}

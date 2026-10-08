@@ -12,14 +12,17 @@ using UnityEngine.InputSystem;
 ///   1. 拍地  ：朝前方扇形拍一掌，衝擊波往外擴散、地板凹陷並出現不規則深坑。
 ///              衝擊波經過時腳還踩在地上就會受傷 → 要抓時機跳過去。
 ///   2. 怒吼  ：全場隨機一部分石板＋玩家腳下的石板，預警後塌陷，掉下去會死。
-///   3. 光束  ：舉起右手，預警線先照在玩家身上並慢慢跟著（比走路慢），
+///   3. 光束  ：（預設關閉，勾選 Enable Beam 才會用）舉起右手，預警線先照在玩家身上並慢慢跟著（比走路慢），
 ///              發射後照射點直線追向玩家（比走路快、比跑步慢）。手臂會跟光束對成一直線。
 ///              站在光束裡每 0.3 秒受傷一次；照到的地板會碎掉，岩石能擋一下但會被打碎。
-///   4. 跳躍砸地：跳到玩家位置砸下來。落點會先在地板上標紅，要趕快跑出去；
+///   4. 跳躍砸地：跳到玩家位置砸下來。落點會先出現紅色圓形警戒區（GroundTelegraph），要趕快跑出圈外；
 ///              落地後還有一圈往外擴散的衝擊波，要跳過去。玩家離太遠時 Boss 也會用這招拉近距離。
+///   5. 召喚  ：彎腰抓向地面再舉起雙手，接著持續幾秒一直做召喚的動作，小怪一隻一隻從場上隨機的位置鑽出來
+///              （沒有預告位置，間隔有快有慢）。這段時間 Boss 站著不動，是打牠的機會。
+///              場上的召喚小怪快滿了就不會再用；Boss 被打倒時小怪一起倒下。
 ///
 /// 玩家死亡重生時：Boss 回滿血、回到起始位置、地板壓平，回到「等待玩家進門」的狀態。
-/// 測試用：遊戲中按數字鍵 1 / 2 / 3 / 4 可以直接叫 Boss 放對應的招式。
+/// 測試用：遊戲中按數字鍵可以直接叫 Boss 放招：1 拍地、2 怒吼、3 召喚（開啟光束時是光束）、4 跳躍砸地、8 召喚。
 /// </summary>
 public class BossController : MonoBehaviour
 {
@@ -102,7 +105,30 @@ public class BossController : MonoBehaviour
     [Tooltip("石板掉下去後多久升回來")]
     public float collapseDownTime = 5f;
 
+    [Header("技能：召喚（從地底叫出一批小怪）")]
+    [Tooltip("會不會使用召喚")]
+    public bool enableSummon = true;
+    [Tooltip("召喚出來的一般小怪（沒填就不會召喚）")]
+    public GameObject summonGruntPrefab;
+    [Tooltip("召喚出來的另一種小怪（可以不填）")]
+    public GameObject summonAmbusherPrefab;
+    [Range(0f, 1f)] public float summonAmbusherChance = 0.3f;
+    [Tooltip("每次召喚幾隻（隨機範圍）")]
+    public Vector2Int summonCount = new Vector2Int(7, 9);
+    [Tooltip("場上最多同時有幾隻召喚出來的小怪；快滿了就不會再用這招")]
+    public int summonMaxAlive = 14;
+    [Tooltip("整招持續幾秒。這段時間 Boss 一直做著召喚的動作，小怪一隻一隻陸續冒出來（間隔有快有慢）")]
+    public float summonDuration = 5f;
+    [Tooltip("開始召喚後多久第一隻小怪才冒出來 (秒)：Boss 彎腰抓向地面、再把雙手舉起來的時間")]
+    public float summonWindup = 1.25f;
+    [Tooltip("小怪冒出來的位置至少離玩家多遠 (m)")]
+    public float summonMinPlayerDistance = 4f;
+    [Tooltip("召喚時的聲音（不填 = 低沉的碎石怒吼）")]
+    public AudioClip summonSound;
+
     [Header("3. 光束")]
+    [Tooltip("會不會使用光束。Boss 改成死靈法師之後預設關掉；勾起來就會回到招式輪替裡")]
+    public bool enableBeam = false;
     [Tooltip("舉手 + 細線預警的時間 (秒)")]
     public float beamChargeTime = 2f;
     [Tooltip("蓄力時，預警線的照射點追玩家的速度 (m/s)。比玩家走路 (4.5) 慢，用走的就能甩開")]
@@ -150,7 +176,25 @@ public class BossController : MonoBehaviour
     public float jumpWaveDamage = 15f;
     [Tooltip("落地後的硬直 (秒)，是玩家反擊的好時機")]
     public float jumpRecoverTime = 1.5f;
-    public Color jumpTelegraphColor = new Color(0.9f, 0.1f, 0.35f);
+    [Tooltip("落點警戒圈的顏色（跳砸、從天而降登場共用）。圈的大小 = 上面的 Jump Land Radius，站在圈外就不會被直接砸中")]
+    public Color landCircleColor = new Color(1f, 0.1f, 0.08f);
+
+    [Header("擊敗演出")]
+    [Tooltip("打倒 Boss 時顯示過關的大標題 + 勝利音效")]
+    public bool showVictoryBanner = true;
+    public string victoryTitle = "LEVEL COMPLETE";
+    [Tooltip("大標題下面的小字（留空 = 不顯示）")]
+    public string victorySubtitle = "";
+    public Color victoryColor = new Color(1f, 0.82f, 0.42f);
+    [Tooltip("勝利音效（不填 = Resources/Audio/SFX/victory_stinger）")]
+    public AudioClip victorySound;
+    [Range(0f, 1f)] public float victoryVolume = 0.9f;
+    [Tooltip("Boss 倒地之後再過幾秒才出現標題")]
+    public float victoryDelay = 0.35f;
+    [Tooltip("最後一擊的慢動作：時間變成幾倍（1 = 不要慢動作）")]
+    [Range(0.05f, 1f)] public float victorySlowMotion = 0.25f;
+    [Tooltip("慢動作持續多久（真實時間，秒）")]
+    public float victorySlowMotionTime = 0.9f;
 
     [Header("二階段（憤怒）")]
     [Tooltip("血量掉到一定比例時進入二階段")]
@@ -223,13 +267,16 @@ public class BossController : MonoBehaviour
     /// <summary>Boss 目前是隱藏的（還沒登場）</summary>
     public bool IsHidden => hidden;
 
-    enum Special { Slam, Roar, Beam, Jump }
+    enum Special { Slam, Roar, Beam, Jump, Summon }
 
     PlayerHealth playerHealth;
     BossHealth health;
     BossVisual visual;   // 有模型動畫時才會有（安裝石像模型後自動加上）
     Special? lastSpecial;
     Special? forcedSpecial;
+    readonly List<EnemyAI> summoned = new List<EnemyAI>();   // 目前還活著的召喚小怪
+    Transform summonContainer;
+    GroundTelegraph landMark;   // 目前顯示在地上的落點警戒圈
     float lastSwipeTime = float.NegativeInfinity;
     float lastJumpTime = float.NegativeInfinity;
     bool airborne;
@@ -253,8 +300,24 @@ public class BossController : MonoBehaviour
     float MoveSpeed => moveSpeed * (phase2 ? phase2MoveMultiplier : 1f);
     float TurnSpeed => turnSpeed * (phase2 ? phase2TurnMultiplier : 1f);
 
+    /// <summary>
+    /// 把舊版的預設標題換成新的。
+    /// 為什麼需要：場景裡已經載入的 Boss 會「記得」欄位當時的值，之後只改程式裡的預設文字，它不會跟著變
+    /// （要到場景重新載入才會），所以這裡明確地把舊的預設文字換掉。你自己在 Inspector 填的其他文字不受影響。
+    /// </summary>
+    void MigrateVictoryText()
+    {
+        if (victoryTitle == "強敵已討伐") victoryTitle = "LEVEL COMPLETE";
+        if (victorySubtitle == "VICTORY ACHIEVED") victorySubtitle = "";
+    }
+
+    // 編輯器裡：程式重新編譯、或在 Inspector 改數值時會呼叫 → Inspector 上看到的也會是新的文字
+    void OnValidate() => MigrateVictoryText();
+
     void Awake()
     {
+        MigrateVictoryText();
+
         // 做成 Prefab 後無法事先連到場景裡的玩家，所以沒設定時自動用 Tag "Player" 找
         if (player == null)
         {
@@ -306,6 +369,7 @@ public class BossController : MonoBehaviour
         if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
         if (health != null) { health.OnDied -= OnBossDied; health.OnDamaged -= OnBossDamaged; }
         StopBeamSound(false); // 離開場景時，循環播放的光束聲不能留著
+        if (summonContainer != null) Destroy(summonContainer.gameObject);
     }
 
     void Start()
@@ -316,12 +380,14 @@ public class BossController : MonoBehaviour
     void Update()
     {
         FollowGround();
+        PruneSummons();
 
         if (!debugKeys || !FightActive || Keyboard.current == null) return;
         if (Keyboard.current.digit1Key.wasPressedThisFrame) forcedSpecial = Special.Slam;
         if (Keyboard.current.digit2Key.wasPressedThisFrame) forcedSpecial = Special.Roar;
-        if (Keyboard.current.digit3Key.wasPressedThisFrame) forcedSpecial = Special.Beam;
+        if (Keyboard.current.digit3Key.wasPressedThisFrame) forcedSpecial = enableBeam ? Special.Beam : Special.Summon;
         if (Keyboard.current.digit4Key.wasPressedThisFrame) forcedSpecial = Special.Jump;
+        if (Keyboard.current.digit8Key.wasPressedThisFrame) forcedSpecial = Special.Summon;
         if (Keyboard.current.digit5Key.wasPressedThisFrame && !phase2)
             health.SetHealth(health.maxHealth * phase2HealthRatio);
         if (Keyboard.current.digit6Key.wasPressedThisFrame)
@@ -379,7 +445,7 @@ public class BossController : MonoBehaviour
     }
 
     /// <summary>
-    /// Boss 登場：landPoint 的地板先閃紅警告，然後 Boss 從天上砸下來（砸到會受傷、要跳過衝擊波），
+    /// Boss 登場：landPoint 的地面先出現紅色圓形警戒區，然後 Boss 從天上砸下來（砸到會受傷、要跳過衝擊波），
     /// 接著岩石從地面冒出來，Boss 戰正式開始。
     /// </summary>
     public void ArriveAndBeginFight(Vector3 landPoint)
@@ -395,19 +461,9 @@ public class BossController : MonoBehaviour
         target.y = arena != null && arena.TryGetGroundHeight(target, out float g) ? g : landPoint.y;
         var landTiles = arena != null ? arena.GetTilesNear(target, jumpLandRadius) : new List<FloorTile>();
 
-        // 警告：落點的地板閃紅，越閃越快
-        float t = 0f, phase = 0f;
-        while (t < arriveWarnTime)
-        {
-            float k = t / arriveWarnTime;
-            phase += Time.deltaTime * Mathf.Lerp(2f, 9f, k);
-            float blink = 0.5f + 0.5f * Mathf.Sin(phase * Mathf.PI * 2f);
-            Color c = Color.Lerp(jumpTelegraphColor * 0.4f, jumpTelegraphColor, blink);
-            foreach (var tile in landTiles) tile.SetTelegraph(c);
-            t += Time.deltaTime;
-            yield return null;
-        }
-        foreach (var tile in landTiles) tile.SetTelegraph(jumpTelegraphColor);
+        // 警告：落點出現紅色圓圈，裡面的顏色長滿的那一刻 Boss 砸到地面
+        ShowLandMark(target, arriveWarnTime + arriveFallTime);
+        yield return new WaitForSeconds(arriveWarnTime);
 
         // 出現在高空，加速砸下來
         health.Invulnerable = true;
@@ -419,7 +475,7 @@ public class BossController : MonoBehaviour
         SetHidden(false);
         SetBodyScale(new Vector3(0.9f, 1.15f, 0.9f));
         GameAudio.Play("SFX/RPG/knifeSlice2", target + Vector3.up * 3f, 1f * sfxVolume, 0.3f, 0f, 0.3f, 90f);
-        t = 0f;
+        float t = 0f;
         while (t < arriveFallTime)
         {
             t += Time.deltaTime;
@@ -469,6 +525,8 @@ public class BossController : MonoBehaviour
             bodyPivot.localScale = Vector3.one;
         }
         transform.SetPositionAndRotation(startPosition, startRotation);
+        ClearSummons(false);
+        HideLandMark(false);
         if (visual != null) visual.ResetVisual();
         health.ResetHealth();
         health.ShowBar = false;
@@ -484,6 +542,8 @@ public class BossController : MonoBehaviour
         FightActive = false;
         StopAllCoroutines();
         HideBeam();
+        ClearSummons(true); // 召喚者死了，召喚出來的小怪一起倒下
+        HideLandMark(false);
         if (arena != null)
             foreach (var t in arena.Tiles) t.SetTelegraph(null);
         CurrentAction = "擊敗";
@@ -492,6 +552,8 @@ public class BossController : MonoBehaviour
         health.Invulnerable = false;
         if (rage != null) rage.SetRage(0f); // 死掉時紅光慢慢熄滅
         PlayAnim("Death");
+        health.ShowDefeatLabel = !showVictoryBanner; // 有大標題就不用血條那邊的小標題
+        if (showVictoryBanner) VictoryBanner.SlowMotion(victorySlowMotion, victorySlowMotionTime); // 最後一擊的瞬間慢下來
         StartCoroutine(DeathRoutine());
         OnDefeated?.Invoke();
     }
@@ -510,6 +572,11 @@ public class BossController : MonoBehaviour
         yield return Lean(-85f, 1.4f, true); // 往後倒下（不管有沒有模型動畫都完整倒下）
         PlayImpact(0.7f, 1f);                 // 倒地
         ThirdPersonCamera.ShakeMain(0.4f, 0.5f);
+
+        // 過關的大標題 + 勝利音效
+        if (showVictoryBanner)
+            VictoryBanner.Show(victoryTitle, victorySubtitle, victoryColor, victoryDelay,
+                               GameAudio.Pick(victorySound, "SFX/victory_stinger"), victoryVolume);
     }
 
     // =====================================================================
@@ -519,7 +586,9 @@ public class BossController : MonoBehaviour
     IEnumerator Brain()
     {
         CurrentAction = "甦醒";
-        yield return new WaitForSeconds(startDelay);
+        // 這段時間原本是等岩石從地面升起來；岩石關掉的時候不用等那麼久
+        bool rocksRising = generateTerrainOnStart && arena != null && arena.spawnRocks;
+        yield return new WaitForSeconds(rocksRising ? startDelay : Mathf.Min(startDelay, 1.5f));
 
         while (!dead)
         {
@@ -548,6 +617,7 @@ public class BossController : MonoBehaviour
                 case Special.Roar: yield return Roar(); break;
                 case Special.Beam: yield return BeamAttack(); break;
                 case Special.Jump: yield return JumpSlam(); break;
+                case Special.Summon: yield return Summon(); break;
             }
 
             CurrentAction = "喘息";
@@ -628,8 +698,11 @@ public class BossController : MonoBehaviour
 
     Special PickSpecial()
     {
-        var options = new List<Special> { Special.Slam, Special.Roar, Special.Beam, Special.Jump };
-        if (lastSpecial.HasValue) options.Remove(lastSpecial.Value);
+        var options = new List<Special> { Special.Slam, Special.Roar, Special.Jump };
+        if (enableBeam) options.Add(Special.Beam);
+        // 場上的小怪快滿了就不再召喚
+        if (enableSummon && summonGruntPrefab != null && summoned.Count <= summonMaxAlive - 3) options.Add(Special.Summon);
+        if (lastSpecial.HasValue && options.Count > 1) options.Remove(lastSpecial.Value);
         return options[Random.Range(0, options.Count)];
     }
 
@@ -807,6 +880,166 @@ public class BossController : MonoBehaviour
         yield return StretchBody(Vector3.one, 0.3f);
         yield return Lean(0f, 0.3f);
         EndAnim();
+    }
+
+    // =====================================================================
+    //  召喚：舉起雙手，從地底叫出一批小怪
+    // =====================================================================
+
+    IEnumerator Summon()
+    {
+        CurrentAction = "召喚";
+
+        // 這次叫幾隻、各自在第幾秒冒出來：第一隻在雙手舉起來的那一刻，其餘的間隔有長有短
+        int want = Random.Range(Mathf.Min(summonCount.x, summonCount.y), Mathf.Max(summonCount.x, summonCount.y) + 1);
+        int usual = Mathf.Max(1, Mathf.Min(summonCount.x, summonCount.y));
+        want = Mathf.Min(want, summonMaxAlive - summoned.Count);
+        if (want <= 0) yield break; // 場上已經滿了（只有用測試鍵硬叫才會發生）
+        float duration = Mathf.Max(summonDuration, summonWindup + 0.5f);
+        // 名額快滿、這次只叫得出兩三隻的時候，不用在那邊舉手舉滿五秒
+        if (want < usual) duration = Mathf.Lerp(summonWindup + 1f, duration, want / (float)usual);
+        var times = SummonTimes(want, summonWindup, duration - 0.4f);
+
+        // 彎腰抓向地面 → 舉起雙手，之後一直重複「往下抓、往上拉」直到整招結束
+        PlayAnim("Summon", summonWindup);
+        GameAudio.PlayAt(GameAudio.Pick(summonSound, "SFX/roar_rock_crumble"), transform.position + Vector3.up * 4f,
+                         0.8f * sfxVolume, 0.6f, 0.5f, 90f);
+        ThirdPersonCamera.ShakeMain(0.08f, duration);
+        StartCoroutine(Lean(-12f, summonWindup));
+
+        Vector3 home = arena != null ? arena.Center + Vector3.up : transform.position;
+        float t = 0f;
+        int next = 0;
+        bool looping = false;
+        // 召喚到一半血量掉到二階段門檻：不繼續站著挨打，直接中斷去變身
+        while (t < duration && !phase2Pending)
+        {
+            t += Time.deltaTime;
+            if (PlayerAlive) FaceTowards(FlatTo(player.position), TurnSpeed * (t < 0.3f ? 2f : 0.4f)); // 一開始轉向玩家，之後慢慢跟著轉
+            if (!looping && t >= summonWindup)
+            {
+                looping = true;
+                if (visual != null) visual.LoopAction("SummonLoop");
+            }
+
+            while (next < times.Count && t >= times[next])
+            {
+                next++;
+                // 位置在冒出來的當下才決定：玩家一直在動、地板也可能已經塌了
+                if (summoned.Count >= summonMaxAlive || !TryPickSummonSpot(out Vector3 ground)) continue;
+                bool ambusher = summonAmbusherPrefab != null && Random.value < summonAmbusherChance;
+                if (summonContainer == null) summonContainer = new GameObject("BossSummons").transform;
+                var ai = EnemySpawner.SpawnFromGround(ambusher ? summonAmbusherPrefab : summonGruntPrefab, ground, home, summonContainer, player);
+                if (ai != null) summoned.Add(ai);
+            }
+            yield return null;
+        }
+
+        yield return Lean(0f, 0.4f);
+        if (visual != null) visual.EndAction(0.4f); // 舉高的雙手慢一點放下來
+    }
+
+    /// <summary>
+    /// count 隻小怪各自在第幾秒冒出來（由小到大）：第一隻在 first，最後一隻在 last，
+    /// 中間的間隔隨機拉長或縮短，看起來是陸陸續續冒出來，不是整齊地一秒一隻。
+    /// </summary>
+    static List<float> SummonTimes(int count, float first, float last)
+    {
+        var times = new List<float>();
+        if (count <= 0) return times;
+        times.Add(first);
+        if (count == 1) return times;
+
+        var gaps = new float[count - 1];
+        float total = 0f;
+        for (int i = 0; i < gaps.Length; i++)
+        {
+            gaps[i] = Random.Range(0.25f, 1.75f);
+            total += gaps[i];
+        }
+        float span = Mathf.Max(last - first, 0f), t = first;
+        for (int i = 0; i < gaps.Length; i++)
+        {
+            t += gaps[i] / total * span;
+            times.Add(t);
+        }
+        return times;
+    }
+
+    /// <summary>
+    /// 隨機挑一個可以冒出小怪的位置（地面上的點）：地板完好、離玩家和 Boss 有一段距離、不在岩石上、不跟別隻召喚小怪擠在一起。
+    /// 試了很多次都找不到（地板塌掉太多）就回傳 false。
+    /// </summary>
+    bool TryPickSummonSpot(out Vector3 ground)
+    {
+        Vector3 center = arena != null ? arena.Center : transform.position;
+        float maxR = arena != null ? arena.radius - 3f : 14f;
+        for (int tries = 0; tries < 40; tries++)
+        {
+            float a = Random.Range(0f, Mathf.PI * 2f);
+            float r = Mathf.Sqrt(Random.value) * maxR;
+            Vector3 p = center + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * r;
+            if (!SummonSpotOk(p, summonMinPlayerDistance)) continue;
+            bool crowded = false;
+            foreach (var e in summoned)
+                if (e != null && ArenaFloor.FlatDistance(e.transform.position, p) < 2.5f) { crowded = true; break; }
+            if (crowded) continue;
+
+            ground = p;
+            if (arena != null && arena.TryGetGroundHeight(p, out float gy)) ground.y = gy;
+            return true;
+        }
+        ground = Vector3.zero;
+        return false;
+    }
+
+    bool SummonSpotOk(Vector3 p, float minPlayerDistance)
+    {
+        if (player != null && ArenaFloor.FlatDistance(p, player.position) < minPlayerDistance) return false;
+        if (ArenaFloor.FlatDistance(p, transform.position) < bodyRadius + 2f) return false;
+        if (arena == null) return true;
+
+        var tile = arena.GetTileAt(p);
+        if (tile == null || !tile.IsSolid || !tile.canCollapse) return false;
+        if (tile.CurrentState == FloorTile.State.Warning || tile.CurrentState == FloorTile.State.Fallen
+            || tile.CurrentState == FloorTile.State.Restoring) return false;
+        foreach (var rock in arena.Rocks)
+            if (rock != null && ArenaFloor.FlatDistance(rock.transform.position, p) < rock.radius + 1f) return false;
+        return true;
+    }
+
+    /// <summary>死掉的召喚小怪：等倒地動畫播完就移除</summary>
+    void PruneSummons()
+    {
+        for (int i = summoned.Count - 1; i >= 0; i--)
+        {
+            var e = summoned[i];
+            if (e == null) { summoned.RemoveAt(i); continue; }
+            if (e.CurrentState == EnemyAI.State.Dead)
+            {
+                e.enabled = false; // 不然玩家這時候重生的話，牠會被自己的重置機制復活
+                Destroy(e.gameObject, 3f);
+                summoned.RemoveAt(i);
+            }
+        }
+    }
+
+    /// <summary>清掉召喚出來的小怪。kill = true：讓牠們倒下（Boss 被打倒時）；false：直接消失（戰鬥重置時）</summary>
+    void ClearSummons(bool kill)
+    {
+        foreach (var e in summoned)
+        {
+            if (e == null) continue;
+            var h = e.GetComponent<EnemyHealth>();
+            if (kill && h != null)
+            {
+                h.Kill();
+                e.enabled = false;
+                Destroy(e.gameObject, 4f);
+            }
+            else Destroy(e.gameObject);
+        }
+        summoned.Clear();
     }
 
     // =====================================================================
@@ -1093,8 +1326,9 @@ public class BossController : MonoBehaviour
         Vector3 target = ClampInArena(player.position);
         target.y = arena != null && arena.TryGetGroundHeight(target, out float g) ? g : transform.position.y;
 
+        // 落點出現紅色圓圈：圈裡面會被直接砸中，裡面的顏色長滿的那一刻落地
         var landTiles = arena != null ? arena.GetTilesNear(target, jumpLandRadius) : new List<FloorTile>();
-        foreach (var tile in landTiles) tile.SetTelegraph(jumpTelegraphColor);
+        ShowLandMark(target, jumpFlightTime);
 
         // 飛行：拋物線
         CurrentAction = "跳躍砸地";
@@ -1123,6 +1357,19 @@ public class BossController : MonoBehaviour
         EndAnim();
     }
 
+    /// <summary>在落點的地面上畫出圓形警戒區（半徑 = 直接砸中的範圍），seconds 秒後落地</summary>
+    void ShowLandMark(Vector3 target, float seconds)
+    {
+        HideLandMark(false);
+        landMark = GroundTelegraph.Show(target, jumpLandRadius, landCircleColor, seconds);
+    }
+
+    void HideLandMark(bool flash)
+    {
+        if (landMark != null) landMark.Hide(flash);
+        landMark = null;
+    }
+
     /// <summary>
     /// 砸到地上：隕石坑、直接砸中的傷害、往外擴散的衝擊波（跳砸和登場共用）。
     /// power = 震動的強度倍率。
@@ -1130,6 +1377,7 @@ public class BossController : MonoBehaviour
     IEnumerator LandImpact(Vector3 target, List<FloorTile> landTiles, float power)
     {
         // 落地！
+        HideLandMark(true);
         PlayAnim("JumpLand");
         SetBodyScale(new Vector3(1.25f, 0.7f, 1.25f));
         ThirdPersonCamera.ShakeMain(0.5f * power, 0.6f * power);
@@ -1348,7 +1596,7 @@ public class BossController : MonoBehaviour
         if (debugKeys)
         {
             var small = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.UpperCenter };
-            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：1 拍地 / 2 怒吼塌陷 / 3 光束 / 4 跳砸 / 5 打到二階段 / 6 直接擊敗", small);
+            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：1 拍地 / 2 怒吼塌陷 / 3 " + (enableBeam ? "光束" : "召喚") + " / 4 跳砸 / 5 打到二階段 / 6 直接擊敗 / 8 召喚", small);
         }
     }
 

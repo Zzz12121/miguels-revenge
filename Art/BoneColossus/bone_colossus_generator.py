@@ -8,7 +8,7 @@ GeminiGrowUp — 骸骨巨像 Boss 產生器（Blender 4.x）
   3. 會產生：
        - GolemRig      骨架（Generic，不是 Humanoid）
        - Golem_Body    由一塊塊骨頭組成的身體（每一塊 100% 綁在一根骨頭上，不需要調權重）
-       - 動作：Idle / Walk / Swipe / Slam / Roar / Beam / Jump / JumpLand / Death
+       - 動作：Idle / Walk / Swipe / Slam / Roar / Beam / Jump / JumpLand / Summon / SummonLoop / Death
          （名稱要維持 Golem_ 開頭，Unity 的安裝工具靠名稱對應到 Boss 的招式）
   4. 匯出到 Unity：選取 GolemRig 和 Golem_Body → File → Export → FBX
        Apply Scalings = FBX All、Forward = -Z、Up = Y、
@@ -659,6 +659,50 @@ def pose_beam(rig):
     set_rot(rig, "thigh.R", (1, 0, 0), 8)
 
 
+def pose_summon_gather(rig):
+    """召喚的前半：彎腰低頭，雙手往前下方伸向地面，像在把地底的東西抓起來"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 22)
+    set_rot(rig, "spine", (1, 0, 0), 8)
+    set_rot(rig, "head", (1, 0, 0), 18)
+    for s, sign in (("L", -1), ("R", 1)):
+        set_rot_multi(rig, f"upper_arm.{s}", [((1, 0, 0), -38), ((0, 1, 0), sign * 12)])
+        set_rot(rig, f"forearm.{s}", (1, 0, 0), -20)
+        set_rot(rig, f"hand.{s}", (1, 0, 0), -25)
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -22)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 32)
+    rig.pose.bones["hips"].location = Vector((0, -0.3, 0))
+
+
+def pose_summon_raise(rig):
+    """召喚的後半：挺身仰頭，雙手往上往外張開成 V 字，把小怪從地底「拉」出來"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), -16)
+    set_rot(rig, "head", (1, 0, 0), -24)
+    for s, sign in (("L", -1), ("R", 1)):
+        # 手臂已經舉過肩膀，所以往外張開的方向跟手垂著的時候相反
+        set_rot_multi(rig, f"upper_arm.{s}", [((1, 0, 0), -140), ((0, 1, 0), -sign * 42)])
+        set_rot(rig, f"forearm.{s}", (0, 1, 0), -sign * 18)
+        set_rot(rig, f"hand.{s}", (1, 0, 0), 25)
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -6)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 10)
+
+
+def pose_summon_heave(rig):
+    """召喚持續中：雙手從高處往前下方沉，身體跟著前傾微蹲，像抓住地底的東西準備再往上拉一次"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 10)
+    set_rot(rig, "spine", (1, 0, 0), 4)
+    set_rot(rig, "head", (1, 0, 0), 6)
+    for s, sign in (("L", -1), ("R", 1)):
+        set_rot_multi(rig, f"upper_arm.{s}", [((1, 0, 0), -88), ((0, 1, 0), -sign * 14)])
+        set_rot(rig, f"forearm.{s}", (1, 0, 0), -38)
+        set_rot(rig, f"hand.{s}", (1, 0, 0), -20)
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -16)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 24)
+    rig.pose.bones["hips"].location = Vector((0, -0.22, 0))
+
+
 def pose_jump_crouch(rig):
     reset_pose(rig)
     set_rot(rig, "chest", (1, 0, 0), 22)
@@ -771,6 +815,20 @@ def build_actions(rig):
         (1, reset_pose),
         (12, pose_beam),
         (24, pose_beam),
+    ])
+    make_action(rig, "Golem_Summon", [      # 第 30 格雙手舉到最高（小怪這時候鑽出來）
+        (1, reset_pose),
+        (14, pose_summon_gather),
+        (20, pose_summon_gather),
+        (30, pose_summon_raise),
+        (46, pose_summon_raise),
+        (60, reset_pose),
+    ])
+    make_action(rig, "Golem_SummonLoop", [  # 循環：32 格 = 1.33 秒一次「往下抓 → 往上拉」，接在 Summon 第 30 格之後
+        (1, pose_summon_raise),
+        (13, pose_summon_heave),            # 慢慢沉下去
+        (19, pose_summon_raise),            # 一口氣拉起來
+        (33, pose_summon_raise),            # 舉著停一下
     ])
     make_action(rig, "Golem_Jump", [        # 第 17 格起跳，之後維持空中姿勢
         (1, reset_pose),

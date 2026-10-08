@@ -44,6 +44,10 @@ public class ArenaWaves : MonoBehaviour
     [Tooltip("從天上掉下來的小怪（不填 = 用場景裡的陷阱小怪，沒有就用一般小怪）")]
     public GameObject ambusherPrefab;
 
+    [Header("要打哪幾波（兩個都取消 = 關門後 Boss 直接從天而降）")]
+    public bool playWave1 = true;
+    public bool playWave2 = true;
+
     [Header("第一波")]
     public WaveSettings wave1 = new WaveSettings
     { duration = 30f, spawnInterval = new Vector2(3.5f, 6.5f), minGroup = 1, maxGroup = 2, maxAlive = 5, dropChance = 0.45f };
@@ -223,12 +227,15 @@ public class ArenaWaves : MonoBehaviour
         phase = Phase.Intro;
         yield return new WaitForSeconds(introDelay);
 
-        yield return RunWave(Phase.Wave1, wave1, wave1Title, wave1Subtitle, false);
+        if (playWave1) yield return RunWave(Phase.Wave1, wave1, wave1Title, wave1Subtitle, false);
 
-        phase = Phase.Break;
-        yield return new WaitForSeconds(betweenWaveDelay);
+        if (playWave1 && playWave2)
+        {
+            phase = Phase.Break;
+            yield return new WaitForSeconds(betweenWaveDelay);
+        }
 
-        yield return RunWave(Phase.Wave2, wave2, wave2Title, wave2Subtitle, true);
+        if (playWave2) yield return RunWave(Phase.Wave2, wave2, wave2Title, wave2Subtitle, true);
 
         // 清場：給玩家一點時間打完剩下的小怪
         phase = Phase.Clearing;
