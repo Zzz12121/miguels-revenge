@@ -22,6 +22,12 @@ public class VikingBoat : MonoBehaviour
         Transitioning   // 抵達目標地點，漸層淡出換關中
     }
 
+    [Header("Debug 快速測試")]
+    [Tooltip("勾選後一按下 Play 就會直接將玩家傳送到船上並進入駕駛狀態！")]
+    public bool autoBoardOnStart = false;
+    [Tooltip("按快捷鍵快速傳送登船（預設為 [B] 鍵，遊戲中隨時可按）")]
+    public bool enableShortcutToBoard = true;
+
     [Header("狀態設定")]
     public BoatState currentState = BoatState.Locked;
     [Tooltip("登船互動半徑 (公尺)")]
@@ -51,7 +57,7 @@ public class VikingBoat : MonoBehaviour
 
     [Header("目的地設定")]
     [Tooltip("駛向的目的地座標（外海開闊航道）")]
-    public Vector3 destinationPoint = new Vector3(-85f, 1.3f, 85f);
+    public Vector3 destinationPoint = new Vector3(260f, 1.3f, 120f);
     [Tooltip("進入目的地的觸發半徑")]
     public float destinationRadius = 16.0f;
 
@@ -65,17 +71,38 @@ public class VikingBoat : MonoBehaviour
     [Tooltip("船上未解鎖 / 解鎖時的指示標記物件（例如金色光柱）")]
     public GameObject objectiveIndicator;
 
+    [Header("敵人追擊船")]
+    [Tooltip("敵人追擊船的船體 Prefab（留空時會用玩家船相同的 pf_build_boat_01 複製）")]
+    public GameObject enemyBoatPrefab;
+    [Tooltip("要生成幾艘敵艦（0 = 不生成）")]
+    public int enemyBoatCount = 3;
+    [Tooltip("開船出發多少公尺後才在海上觸發敵艦追擊")]
+    public float triggerPursuitDistance = 15.0f;
+    [Tooltip("敵艦出現時離玩家船後方多遠（公尺）")]
+    public float enemyBoatSpawnDistance = 100f;
+    [Tooltip("敵艦追擊速度（m/s）")]
+    public float enemyBoatChaseSpeed = 11.5f;
+    [Tooltip("敵艦血量")]
+    public float enemyBoatHealth = 80f;
+    [Tooltip("敵艦船首偏移（與 boatForwardOffsetAngle 保持一致）")]
+    public float enemyBoatForwardOffset = 90f;
+
     // 運行期私有變數
     GameObject playerObj;
-    float currentSpeed = 0f;
+    public float currentSpeed = 0f;
     float currentYaw = 0f;
     float baseWaterY;
     float fadeAlpha = 0f;
     bool isTransitioning = false;
     string lockedReason = "村莊內仍有湧出的敵人，請先擊潰所有敵人才能啟航！";
+    Vector3 boardedStartPosition;
+    bool hasTriggeredPursuit = false;
 
     void Awake()
     {
+        // 確保場景即使先前序列化為 0 或 1，運行時也強制保證 3 艘敵艦追擊
+        if (enemyBoatCount < 3) enemyBoatCount = 3;
+        if (Mathf.Abs(enemyBoatForwardOffset) < 1f) enemyBoatForwardOffset = -90f;
         baseWaterY = 1.3f; // 維京村莊海平面高度為 y = 1.3
         currentYaw = transform.eulerAngles.y;
         Vector3 p = transform.position;
@@ -86,6 +113,23 @@ public class VikingBoat : MonoBehaviour
     void Start()
     {
         UpdateIndicator();
+
+        if (autoBoardOnStart)
+        {
+            StartCoroutine(AutoBoardRoutine());
+        }
+    }
+
+    IEnumerator AutoBoardRoutine()
+    {
+        // 等候 1 幀讓玩家等物件皆生成完畢
+        yield return null;
+        if (playerObj == null) playerObj = GameObject.FindWithTag("Player");
+        if (playerObj != null)
+        {
+            Debug.Log("[VikingBoat] 【Debug 模式】自動登船駕駛！");
+            BoardAndDrive(playerObj);
+        }
     }
 
     /// <summary>
@@ -111,6 +155,26 @@ public class VikingBoat : MonoBehaviour
 
     void Update()
     {
+        // Debug 快捷鍵：任何時候按 [B] 鍵直接傳送到船上開始駕駛
+        if (enableShortcutToBoard && currentState != BoatState.Driving && currentState != BoatState.Transitioning)
+        {
+            bool bPressed = false;
+            var kb = Keyboard.current;
+            if (kb != null) bPressed = kb.bKey.wasPressedThisFrame;
+#if ENABLE_LEGACY_INPUT_MANAGER
+            if (!bPressed) bPressed = Input.GetKeyDown(KeyCode.B);
+#endif
+            if (bPressed)
+            {
+                if (playerObj == null) playerObj = GameObject.FindWithTag("Player");
+                if (playerObj != null)
+                {
+                    Debug.Log("[VikingBoat] 【Debug 快捷鍵 B】立即傳送登船！");
+                    BoardAndDrive(playerObj);
+                }
+            }
+        }
+
         switch (currentState)
         {
             case BoatState.Locked:
@@ -184,7 +248,7 @@ public class VikingBoat : MonoBehaviour
         if (cc != null) cc.enabled = false;
 
         var combat = player.GetComponent<PlayerCombat>();
-        if (combat != null) combat.enabled = false; // 登船時鎖定戰鬥揮劍，避免揮劍轉向
+        if (combat != null) combat.enabled = true; // 登船後允許戰鬥，可以反擊追來的敵艦
 
         // 2. 將角色固定在船隻掌舵站立點上，並依據站立點或設定角度精確朝向船頭前方
         player.transform.SetParent(transform);
@@ -220,8 +284,87 @@ public class VikingBoat : MonoBehaviour
             }
         }
 
+        // 4. 記錄啟航初始位置，等待玩家真正開船駛向外海後再生成敵艦追擊
+        boardedStartPosition = transform.position;
+        hasTriggeredPursuit = false;
+
         GameAudio.Play("SFX/RPG/drawSword", transform.position, 1f, 0.9f);
         Debug.Log("[VikingBoat] 玩家已登船掌舵！可用 W/S 前進倒退，A/D 轉向！");
+    }
+
+    /// <summary>
+    /// 延遲生成追擊敵艦，從玩家船尾後方出現
+    /// </summary>
+    System.Collections.IEnumerator SpawnEnemyBoatsDelayed(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        // 計算船尾方向（視覺船首的反方向）
+        Vector3 bowDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
+        Vector3 sternDir = -bowDir;
+
+        // 計算垂直於航向的右方橫向向量 (用以保持船與船之間橫向 10 公尺間距)
+        Vector3 sternRight = Vector3.Cross(Vector3.up, sternDir).normalized;
+
+        for (int i = 0; i < enemyBoatCount; i++)
+        {
+            // 基礎位置在身後 100 公尺處，每艘船之間間隔 30 公尺（呈左右展開陣型）
+            float lateralOffset = (i - (enemyBoatCount - 1) * 0.5f) * 30.0f;
+            Vector3 spawnOffset = (sternDir * enemyBoatSpawnDistance) + (sternRight * lateralOffset);
+            Vector3 spawnPos = transform.position + spawnOffset;
+            spawnPos.y = 1.3f; // 固定在海平面
+
+            GameObject boatObj = null;
+
+            // 優先用指定 prefab；其次複製玩家自己的船體 mesh
+            if (enemyBoatPrefab != null)
+            {
+                boatObj = Instantiate(enemyBoatPrefab, spawnPos, Quaternion.identity);
+            }
+            else
+            {
+                // 從 Resources 載入相同船體
+                var bPrefab = Resources.Load<GameObject>("Prefabs/pf_build_boat_01");
+                if (bPrefab != null)
+                {
+                    boatObj = Instantiate(bPrefab, spawnPos, Quaternion.identity);
+                    VikingBoat.SetStaticRecursively(boatObj, false);
+                    foreach (var col in boatObj.GetComponentsInChildren<Collider>())
+                        col.enabled = false;
+                }
+                else
+                {
+                    // 最後退路：建立一個簡單的 Cube 當佔位
+                    boatObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    boatObj.transform.localScale = new Vector3(3f, 1f, 7f);
+                    boatObj.transform.position = spawnPos;
+                    Destroy(boatObj.GetComponent<Collider>());
+                    var mr = boatObj.GetComponent<MeshRenderer>();
+                    if (mr != null)
+                    {
+                        var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+                        mat.color = new Color(0.6f, 0.25f, 0.1f);
+                        mr.sharedMaterial = mat;
+                    }
+                }
+            }
+
+            if (boatObj == null) continue;
+            boatObj.name = $"EnemyBoat_{i + 1}";
+
+            // 附加 EnemyBoat 腳本
+            var eb = boatObj.AddComponent<EnemyBoat>();
+            eb.targetBoat = this.transform;
+            eb.chaseSpeed = enemyBoatChaseSpeed;
+            eb.maxHealth  = enemyBoatHealth;
+            eb.boatForwardOffsetAngle = enemyBoatForwardOffset;
+            eb.waveFrequency = waveFrequency;
+            eb.waveAmplitude = waveAmplitude * 0.8f;
+            eb.pitchAmount   = pitchAmount   * 0.8f;
+            eb.rollAmount    = rollAmount    * 0.8f;
+
+            Debug.Log($"[VikingBoat] 敵艦 {boatObj.name} 已從船尾後方生成，正在追擊玩家！");
+        }
     }
 
     /// <summary>
@@ -265,6 +408,18 @@ public class VikingBoat : MonoBehaviour
         // 前進推進（依 currentYaw 與 boatForwardOffsetAngle 計算精確的視覺船首方向）
         Vector3 forwardDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
         transform.position += forwardDir * (currentSpeed * dt);
+
+        // 檢查是否開船出海，達到一定距離後觸發身後追擊
+        if (!hasTriggeredPursuit && enemyBoatCount > 0)
+        {
+            float sailedDistance = Vector3.Distance(new Vector3(transform.position.x, 0f, transform.position.z),
+                                                   new Vector3(boardedStartPosition.x, 0f, boardedStartPosition.z));
+            if (sailedDistance >= triggerPursuitDistance)
+            {
+                hasTriggeredPursuit = true;
+                StartCoroutine(SpawnEnemyBoatsDelayed(1.0f));
+            }
+        }
 
         // 加上海浪顛簸與浮動效果
         ApplyWaveFloating(currentSpeed);
@@ -349,19 +504,39 @@ public class VikingBoat : MonoBehaviour
     
     void LateUpdate()
     {
-        // 駕駛或過場中，強制讓主角維持站在站立點並始終面向船頭前方
+        // 駕駛或過場中，強制讓主角維持在站立點位置
         if ((currentState == BoatState.Driving || currentState == BoatState.Transitioning) && playerObj != null)
         {
-            Quaternion targetRot = (playerStandingPoint != null && useStandingPointRotation)
-                ? playerStandingPoint.localRotation * Quaternion.Euler(0f, playerFacingOffsetAngle, 0f)
-                : Quaternion.Euler(0f, playerFacingOffsetAngle, 0f);
-            playerObj.transform.localRotation = targetRot;
+            if (playerStandingPoint != null)
+                playerObj.transform.position = playerStandingPoint.position;
+
+            // 若玩家沒有在揮劍攻擊，則自動校正面向船首；攻擊時則允許隨鏡頭/滑鼠瞄準方向揮劍反擊
+            var combat = playerObj.GetComponent<PlayerCombat>();
+            bool isAttacking = combat != null && combat.IsAttacking;
+
+            if (!isAttacking)
+            {
+                Quaternion targetRot = (playerStandingPoint != null && useStandingPointRotation)
+                    ? playerStandingPoint.localRotation * Quaternion.Euler(0f, playerFacingOffsetAngle, 0f)
+                    : Quaternion.Euler(0f, playerFacingOffsetAngle, 0f);
+                playerObj.transform.localRotation = targetRot;
+            }
         }
     }
 
     void OnGUI()
     {
         var cam = Camera.main;
+
+        // Debug 提示與按鈕（非駕駛模式時顯示在左下角）
+        if (currentState != BoatState.Driving && currentState != BoatState.Transitioning)
+        {
+            if (GUI.Button(new Rect(16f, Screen.height - 48f, 210f, 32f), "⛵ [Debug] 直接瞬移登船 (B)"))
+            {
+                if (playerObj == null) playerObj = GameObject.FindWithTag("Player");
+                if (playerObj != null) BoardAndDrive(playerObj);
+            }
+        }
 
         // 1. 靠近船隻時的登船提示 HUD
         if ((currentState == BoatState.Locked || currentState == BoatState.ReadyToBoard) && playerObj != null)
@@ -401,7 +576,7 @@ public class VikingBoat : MonoBehaviour
         if (currentState == BoatState.Driving)
         {
             // 頂部操控說明條
-            float hudW = 560f, hudH = 38f;
+            float hudW = 680f, hudH = 38f;
             float hx = (Screen.width - hudW) * 0.5f;
             float hy = 58f; // 避開頂部可能重疊的任務文字
 
@@ -415,7 +590,7 @@ public class VikingBoat : MonoBehaviour
                 fontStyle = FontStyle.Bold
             };
             GUI.color = Color.white;
-            GUI.Label(new Rect(hx, hy, hudW, hudH), "⛵ 【W】加速航行　【S】倒退減速　【A / D】掌舵轉向", controlStyle);
+            GUI.Label(new Rect(hx, hy, hudW, hudH), "⛵ 【W/S/A/D】航行駕駛　|　⚔【左鍵】近戰揮劍　🎯【右鍵】遠程劍氣反擊敵艦", controlStyle);
 
             // 目的地距離提示
             Vector2 boatPos2D = new Vector2(transform.position.x, transform.position.z);
@@ -609,11 +784,11 @@ public class VikingBoat : MonoBehaviour
             waveMgr.autoStartDelay = 2.0f;
             waveMgr.spawnPoints = new List<Vector3>
             {
-                new Vector3(19f, 20f, 9f),
-                new Vector3(8f, 20f, 13f),
-                new Vector3(9f, 20f, -1f),
-                new Vector3(20f, 20f, 2f),
-                new Vector3(14f, 20f, 15f)
+                new Vector3(12f, 5f, 9f),
+                new Vector3(-30f, 9f, 13f),
+                new Vector3(-35f, 9f, -8f),
+                new Vector3(25f, 9f, -10f),
+                new Vector3(-50f, 10f, 20f)
             };
         }
     }

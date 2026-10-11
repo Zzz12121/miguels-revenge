@@ -3,20 +3,28 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 玩家基本攻擊：滑鼠左鍵揮劍，連按可以打出三段連擊（第三段傷害較高）。
-/// - 攻擊方向 = 鏡頭面向的方向（照企劃書「滑鼠瞄準攻擊方向」）
-/// - 攻擊時移動變慢、角色會往前小踏一步
-/// - 打中任何實作 IDamageable 的東西（Boss、小怪…）都會扣血
-/// 揮劍的動作與判定寫在共用的 MeleeCombat 裡，小怪也用同一套。
+/// 玩家基本攻擊與遠程反擊：
+/// - 滑鼠左鍵：近戰揮劍連擊（三段連擊）
+/// - 滑鼠右鍵：遠程劍氣/投射物反擊（可反擊後方追擊的敵艦！）
+/// - 攻擊方向 = 鏡頭/準心朝向
 /// </summary>
 public class PlayerCombat : MeleeCombat
 {
-    [Header("測試")]
-    [Tooltip("玩家攻擊力倍率。測試 Boss 二階段 / 死亡時可以調成 10 之類的大數字，正式遊玩記得改回 1")]
+    [Header("測試與倍率")]
+    [Tooltip("玩家攻擊力倍率")]
     public float damageMultiplier = 1f;
+
+    [Header("遠程反擊設定")]
+    [Tooltip("是否開啟滑鼠右鍵遠程攻擊")]
+    public bool enableRangedAttack = true;
+    [Tooltip("遠程投射物傷害")]
+    public float rangedDamage = 35f;
+    [Tooltip("遠程冷卻時間 (秒)")]
+    public float rangedCooldown = 0.5f;
 
     PlayerHealth health;
     bool attackQueued;
+    float nextRangedTime;
 
     protected override void Awake()
     {
@@ -29,23 +37,65 @@ public class PlayerCombat : MeleeCombat
         if (health != null && health.IsDead) return;
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        bool attackPressed = false;
+        bool leftClick = false;
+        bool rightClick = false;
+
         var mouse = Mouse.current;
         if (mouse != null)
         {
-            attackPressed = mouse.leftButton.wasPressedThisFrame;
+            leftClick = mouse.leftButton.wasPressedThisFrame;
+            rightClick = mouse.rightButton.wasPressedThisFrame;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
         {
-            attackPressed = Input.GetMouseButtonDown(0);
+            leftClick = Input.GetMouseButtonDown(0);
+            rightClick = Input.GetMouseButtonDown(1);
         }
 #endif
 
-        if (attackPressed)
+        // 左鍵：近戰連擊
+        if (leftClick)
         {
-            if (!BeginAttack()) attackQueued = true; // 攻擊中再按 = 預約下一段
+            if (!BeginAttack()) attackQueued = true;
         }
+
+        // 右鍵：遠程反擊投射物
+        if (rightClick && enableRangedAttack && Time.time >= nextRangedTime)
+        {
+            FireRangedAttack();
+        }
+    }
+
+    void FireRangedAttack()
+    {
+        nextRangedTime = Time.time + rangedCooldown;
+
+        Vector3 aimDir = GetAimDirection();
+        Vector3 spawnPos = transform.position + Vector3.up * 1.3f + aimDir * 0.8f;
+
+        var projObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        projObj.name = "PlayerRangedSlash";
+        projObj.transform.position = spawnPos;
+        projObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+
+        var col = projObj.GetComponent<Collider>();
+        if (col != null) col.isTrigger = true;
+
+        var mr = projObj.GetComponent<MeshRenderer>();
+        if (mr != null)
+        {
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+            mat.color = new Color(0.2f, 0.9f, 1f); // 亮青藍色劍氣
+            mr.sharedMaterial = mat;
+        }
+
+        var proj = projObj.AddComponent<PlayerProjectile>();
+        proj.damage = rangedDamage * damageMultiplier;
+        proj.direction = aimDir.normalized;
+
+        // 音效
+        GameAudio.Play("SFX/RPG/knifeSlice2", spawnPos, 0.85f, 1.35f, 0.08f, 1f, 35f);
     }
 
     protected override void OnSwingStart(int index) => attackQueued = false;
@@ -54,7 +104,8 @@ public class PlayerCombat : MeleeCombat
 
     protected override Vector3 GetAimDirection()
     {
-        Transform cam = controller.cameraTransform;
+        Transform cam = controller != null ? controller.cameraTransform : null;
+        if (cam == null && Camera.main != null) cam = Camera.main.transform;
         return cam != null ? cam.forward : transform.forward;
     }
 

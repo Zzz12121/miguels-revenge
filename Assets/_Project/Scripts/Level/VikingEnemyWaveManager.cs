@@ -57,11 +57,11 @@ public class VikingEnemyWaveManager : MonoBehaviour
             // 廣場周遭預設生成點
             spawnPoints = new List<Vector3>
             {
-                new Vector3(19f, 20f, 9f),
-                new Vector3(8f, 20f, 13f),
-                new Vector3(9f, 20f, -1f),
-                new Vector3(20f, 20f, 2f),
-                new Vector3(14f, 20f, 15f)
+                new Vector3(12f, 5f, 9f),
+                new Vector3(-30f, 9f, 13f),
+                new Vector3(-35f, 9f, -8f),
+                new Vector3(25f, 9f, -10f),
+                new Vector3(-50f, 10f, 20f)
             };
         }
 
