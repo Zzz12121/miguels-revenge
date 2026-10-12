@@ -24,7 +24,7 @@ public class VikingEnemyWaveManager : MonoBehaviour
     [Tooltip("遊戲開始後幾秒自動湧出敵人（0 代表等待玩家進入觸發區）")]
     public float autoStartDelay = 2.0f;
     [Tooltip("是否一開始就自動觸發追擊玩家")]
-    public bool alertPlayerOnSpawn = true;
+    public bool alertPlayerOnSpawn = false;
 
     [Header("狀態追蹤")]
     public bool waveStarted = false;
@@ -39,6 +39,11 @@ public class VikingEnemyWaveManager : MonoBehaviour
 
     void Awake()
     {
+        // 每次進入遊戲或重新開始，自動重置波次狀態，確保敵人正常湧出
+        waveStarted = false;
+        waveCleared = false;
+        activeEnemies.Clear();
+
         if (enemyPrefab == null)
             enemyPrefab = Resources.Load<GameObject>("Prefabs/Enemy_Grunt");
         if (targetBoat == null)
@@ -52,11 +57,11 @@ public class VikingEnemyWaveManager : MonoBehaviour
             // 廣場周遭預設生成點
             spawnPoints = new List<Vector3>
             {
-                new Vector3(19f, 20f, 9f),
-                new Vector3(8f, 20f, 13f),
-                new Vector3(9f, 20f, -1f),
-                new Vector3(20f, 20f, 2f),
-                new Vector3(14f, 20f, 15f)
+                new Vector3(12f, 5f, 9f),
+                new Vector3(-30f, 9f, 13f),
+                new Vector3(-35f, 9f, -8f),
+                new Vector3(25f, 9f, -10f),
+                new Vector3(-50f, 10f, 20f)
             };
         }
 
@@ -117,12 +122,17 @@ public class VikingEnemyWaveManager : MonoBehaviour
 
             // 讓敵人直接進入警戒 / 衝刺狀態追擊玩家
             var ai = enemy.GetComponent<EnemyAI>();
-            if (ai != null && alertPlayerOnSpawn && player != null)
+            if (ai != null)
             {
                 ai.leashRadius = 60f;
                 ai.giveUpDistance = 50f;
                 ai.sprintDistance = 5f;
-                ai.Alert(true);
+                ai.enableWander = true;
+                ai.wanderRadius = 12f; // 在廣場與村莊周圍較大範圍巡邏走動
+                if (alertPlayerOnSpawn && player != null)
+                {
+                    ai.Alert(true);
+                }
             }
         }
 

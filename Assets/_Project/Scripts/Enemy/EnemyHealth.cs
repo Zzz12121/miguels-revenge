@@ -15,8 +15,10 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public float hitKnockback = 4f;
     [Tooltip("被打中後的硬直時間 (秒)，期間不能移動和攻擊")]
     public float staggerTime = 0.35f;
-    [Tooltip("被打時身體閃白的時間 (秒)")]
+    [Tooltip("被打時身體閃一下的時間 (秒)")]
     public float flashTime = 0.08f;
+    [Tooltip("被打時閃的顏色。有貼圖的模型閃白色看不出來，要用紅色之類的顏色")]
+    public Color flashColor = Color.white;
 
     [Header("頭上血條")]
     public bool showHealthBar = true;
@@ -39,6 +41,7 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     Renderer[] renderers;
     MaterialPropertyBlock mpb;
     bool flashing;
+    static readonly RaycastHit[] fallHits = new RaycastHit[8];
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     static readonly int ColorId = Shader.PropertyToID("_Color");
 
@@ -46,7 +49,10 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     {
         cc = GetComponent<CharacterController>();
         controller = GetComponent<ThirdPersonController>();
-        renderers = GetComponentsInChildren<Renderer>(true);
+        // 只管「一開始就有顯示」的部分（裝了模型之後，被關掉的膠囊不要在復活時又跑出來）
+        var all = new System.Collections.Generic.List<Renderer>(GetComponentsInChildren<Renderer>(true));
+        all.RemoveAll(r => !r.enabled);
+        renderers = all.ToArray();
         mpb = new MaterialPropertyBlock();
         Health = maxHealth;
     }
@@ -96,17 +102,48 @@ public class EnemyHealth : MonoBehaviour, IDamageable
         cc.enabled = false;
         SetFlash(false);
 
-        // 往後倒
-        Quaternion from = transform.rotation;
-        Quaternion to = from * Quaternion.Euler(-80f, 0f, 0f);
-        float t = 0f;
-        while (t < 0.4f)
+        // 在空中被打死（跳躍 / 從天而降途中）：先掉到地面；下面是洞就一直掉下去
+        float feetOffset = cc.height * 0.5f - cc.center.y;
+        float vy = 0f, fallen = 0f;
+        while (fallen < 3f)
         {
-            t += Time.deltaTime;
-            transform.rotation = Quaternion.Slerp(from, to, t / 0.4f);
+            Vector3 feet = transform.position + Vector3.down * feetOffset;
+            float step = Mathf.Max(0f, -vy * Time.deltaTime);
+            int n = Physics.RaycastNonAlloc(feet + Vector3.up * 0.3f, Vector3.down, fallHits, 0.4f + step, ~0, QueryTriggerInteraction.Ignore);
+            float ground = float.NegativeInfinity;
+            for (int i = 0; i < n; i++)
+                if (!(fallHits[i].collider is CharacterController) && fallHits[i].point.y > ground) ground = fallHits[i].point.y;
+            if (!float.IsNegativeInfinity(ground))
+            {
+                transform.position += Vector3.up * (ground - feet.y);
+                break;
+            }
+            vy -= 25f * Time.deltaTime;
+            transform.position += Vector3.up * vy * Time.deltaTime;
+            fallen += Time.deltaTime;
             yield return null;
         }
-        yield return new WaitForSeconds(1f);
+
+        float t = 0f;
+        var visual = GetComponent<EnemyVisual>();
+        if (visual != null && visual.HasAnimator)
+        {
+            // 有模型：等死亡動畫播完
+            yield return new WaitForSeconds(visual.deathDuration + 0.5f);
+        }
+        else
+        {
+            // 沒有模型（膠囊）：整個往後倒
+            Quaternion from = transform.rotation;
+            Quaternion to = from * Quaternion.Euler(-80f, 0f, 0f);
+            while (t < 0.4f)
+            {
+                t += Time.deltaTime;
+                transform.rotation = Quaternion.Slerp(from, to, t / 0.4f);
+                yield return null;
+            }
+            yield return new WaitForSeconds(1f);
+        }
 
         // 沉入地面後消失
         Vector3 p = transform.position;
@@ -149,8 +186,8 @@ public class EnemyHealth : MonoBehaviour, IDamageable
             mpb.Clear();
             if (on)
             {
-                mpb.SetColor(BaseColorId, Color.white);
-                mpb.SetColor(ColorId, Color.white);
+                mpb.SetColor(BaseColorId, flashColor);
+                mpb.SetColor(ColorId, flashColor);
             }
             r.SetPropertyBlock(mpb);
         }

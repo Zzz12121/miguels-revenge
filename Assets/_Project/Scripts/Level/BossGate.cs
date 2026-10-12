@@ -5,7 +5,8 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// Boss 房的大門。
 ///   1. 玩家走到門前 → 顯示「按 E 推開大門」→ 門沉入地面
-///   2. 玩家走進競技場（越過門線 enterDepth 公尺）→ 門升起封住退路，Boss 戰開始
+///   2. 玩家走進競技場（越過門線 enterDepth 公尺）→ 門升起封住退路，
+///      先打兩波小怪（ArenaWaves），打完 Boss 才從天而降；關掉 Waves Before Boss 就跟以前一樣直接開打
 ///   3. Boss 被擊敗 → 門打開
 ///   4. 玩家死亡重生 → 門關回去，等玩家再次推開
 ///
@@ -18,6 +19,12 @@ public class BossGate : MonoBehaviour
     public BossController boss;
     [Tooltip("會升降的門板")]
     public Transform door;
+
+    [Header("波次戰")]
+    [Tooltip("進門後先打兩波小怪，Boss 才登場。取消勾選 = 進門直接打 Boss（測試 Boss 用）")]
+    public bool wavesBeforeBoss = true;
+    [Tooltip("波次控制（不填會自動加在這個物件上）")]
+    public ArenaWaves waves;
 
     [Header("互動")]
     public Key interactKey = Key.E;
@@ -50,6 +57,21 @@ public class BossGate : MonoBehaviour
             playerHealth = p.GetComponent<PlayerHealth>();
         }
         if (door != null) doorClosedLocal = door.localPosition;
+
+        if (wavesBeforeBoss && boss != null)
+        {
+            if (waves == null) waves = GetComponent<ArenaWaves>();
+            if (waves == null) waves = gameObject.AddComponent<ArenaWaves>();
+            if (waves.boss == null) waves.boss = boss;
+        }
+    }
+
+    /// <summary>大門關上：有波次戰就先打小怪，沒有就直接打 Boss</summary>
+    void StartEncounter()
+    {
+        if (boss == null) return;
+        if (wavesBeforeBoss && waves != null) waves.Begin();
+        else boss.BeginFight();
     }
 
     void Start()
@@ -64,7 +86,7 @@ public class BossGate : MonoBehaviour
         if (player != null && PlayerDepth() > enterDepth && boss != null && !boss.FightActive)
         {
             state = GateState.Sealed;
-            boss.BeginFight();
+            StartEncounter();
         }
     }
 
@@ -112,7 +134,7 @@ public class BossGate : MonoBehaviour
                     GameAudio.Play("SFX/RPG/doorClose_4", door != null ? door.position : transform.position, 1f, 0.5f, 0f, 1f, 60f);
                     GameAudio.Play("SFX/rock_hit", door != null ? door.position : transform.position, 0.5f, 1.2f, 0f, 1f, 60f);
                     ThirdPersonCamera.ShakeMain(0.2f, 0.3f);
-                    if (boss != null) boss.BeginFight();
+                    StartEncounter();
                 }
                 break;
         }

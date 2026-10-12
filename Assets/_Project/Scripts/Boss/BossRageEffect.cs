@@ -439,7 +439,7 @@ public class BossRageEffect : MonoBehaviour
     //  程式產生的貼圖和材質
     // =====================================================================
 
-    static Texture2D SoftDot()
+    internal static Texture2D SoftDot()
     {
         return MakeTexture(64, d => { float a = Mathf.Clamp01(1f - d); return a * a; });
     }
@@ -471,7 +471,7 @@ public class BossRageEffect : MonoBehaviour
     }
 
     /// <summary>additive = true：疊加發光（火焰、火花）；false：一般半透明（黑煙）</summary>
-    static Material CreateParticleMaterial(Texture2D tex, bool additive)
+    internal static Material CreateParticleMaterial(Texture2D tex, bool additive)
     {
         Shader sh = Shader.Find("Universal Render Pipeline/Particles/Unlit");
         Material m;

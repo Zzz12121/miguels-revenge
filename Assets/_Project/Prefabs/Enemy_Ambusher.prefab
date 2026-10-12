@@ -8,10 +8,22 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 2664217271218008922, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 1001b7c0126acbb4e85f41b854c8cd08, type: 2}
+    - target: {fileID: 3032468977366038447, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 1001b7c0126acbb4e85f41b854c8cd08, type: 2}
     - target: {fileID: 4330986778754430036, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
       propertyPath: m_Name
       value: Enemy_Ambusher
       objectReference: {fileID: 0}
+    - target: {fileID: 5666684940777130521, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 1001b7c0126acbb4e85f41b854c8cd08, type: 2}
     - target: {fileID: 6262138695611585745, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

@@ -48,6 +48,15 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
     public Transform cameraTransform;
 
+    [Header("推石頭")]
+    [Tooltip("頂著可以推的岩石（ArenaRock）走時會把它推動，自己的速度會變慢。小怪（AI 控制）不會推")]
+    public bool canPushRocks = true;
+
+    float pushFactor = 1f;
+    float pushUntil = float.NegativeInfinity;
+    /// <summary>正在推石頭（之後做推的動畫時可以讀這個值）</summary>
+    public bool IsPushing => Time.time < pushUntil;
+
     [Header("AI 控制（小怪用）")]
     [Tooltip("勾選後不讀鍵盤，改由程式（EnemyAI）呼叫 SetAIInput 控制")]
     public bool aiControlled = false;
@@ -63,6 +72,8 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("腳步聲（不填 = Kenney RPG Audio 的 footstep00~09）")]
     public AudioClip[] footstepSounds;
     [Range(0f, 1f)] public float footstepVolume = 0.35f;
+    [Tooltip("AI 控制（小怪）時腳步聲的音量倍率。小怪數量多，要比玩家小聲很多才不會吵")]
+    [Range(0f, 1f)] public float aiFootstepScale = 0.2f;
     [Tooltip("走幾公尺響一次")]
     public float stepDistance = 1.9f;
     float stepTravel;
@@ -78,7 +89,7 @@ public class ThirdPersonController : MonoBehaviour
     void Footstep(float volume)
     {
         // 小怪的腳步聲小一點、低一點，不然一群小怪會很吵
-        float v = volume * (aiControlled ? 0.5f : 1f);
+        float v = volume * (aiControlled ? aiFootstepScale : 1f);
         float pitch = (aiControlled ? 0.85f : 1f) * Random.Range(0.9f, 1.1f);
         GameAudio.PlayAt(GameAudio.Pick(footstepSounds, DefaultSteps), transform.position, v, pitch, 1f, 25f);
     }
@@ -139,6 +150,39 @@ public class ThirdPersonController : MonoBehaviour
     {
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
+        ballistic = false;
+    }
+
+    bool ballistic;
+    /// <summary>正在拋物線飛行中（Launch 之後、落地之前）</summary>
+    public bool IsBallistic => ballistic;
+
+    /// <summary>
+    /// 以指定的速度起跳（拋物線）。飛行中不受移動輸入影響，落地後恢復正常。
+    /// 小怪跳過缺口 / 撲向玩家時使用。
+    /// </summary>
+    public void Launch(Vector3 velocity)
+    {
+        horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        verticalVelocity = velocity.y;
+        ballistic = true;
+        lastGroundedTime = float.NegativeInfinity;
+        lastJumpPressedTime = float.NegativeInfinity;
+    }
+
+    /// <summary>
+    /// 算出「跳到 target」需要的起跳速度。apex = 拋物線最高點比起跳點高多少 (m)。
+    /// </summary>
+    public Vector3 LaunchVelocityTo(Vector3 target, float apex)
+    {
+        float g = -gravity;
+        Vector3 flat = target - transform.position;
+        float rise = flat.y;               // 落點比起跳點高多少
+        flat.y = 0f;
+        apex = Mathf.Max(apex, rise + 0.5f, 0.5f);
+        float vy = Mathf.Sqrt(2f * g * apex);
+        float time = vy / g + Mathf.Sqrt(2f * (apex - rise) / g);
+        return flat / Mathf.Max(time, 0.05f) + Vector3.up * vy;
     }
 
     void Awake()
@@ -179,10 +223,16 @@ public class ThirdPersonController : MonoBehaviour
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier;
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
-        horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
+        if (ballistic)
+        {
+            // 拋物線飛行中：水平速度不變，落地（或撞到東西停下來）才恢復控制
+            // 上升中 verticalVelocity > 0，所以起跳那一幀「還在地上」不會誤判成落地
+            if (controller.isGrounded && verticalVelocity <= 0f) ballistic = false;
+        }
+        else horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
 
         // ---- 3. 角色轉向移動方向 ----
         if (moveDir.sqrMagnitude > 0.001f && !lockRotation)
@@ -219,6 +269,55 @@ public class ThirdPersonController : MonoBehaviour
             verticalVelocity = 0f;
 
         UpdateFootsteps(dt);
+    }
+
+    /// <summary>
+    /// CharacterController 移動時撞到東西就會呼叫。
+    /// 撞到木桶 / 木箱 / 掉在地上的火把（Knockable）：把它往前頂開、踢飛。
+    /// 撞到可以推的岩石、而且是朝著它走：把岩石往前推一小段，並讓自己接下來一小段時間變慢（岩石越重越慢）。
+    /// </summary>
+    void OnControllerColliderHit(ControllerColliderHit hit)
+    {
+        Rigidbody hitBody = hit.collider.attachedRigidbody;
+        if (hitBody == null) return;     // 地板、牆壁沒有 Rigidbody，馬上就跳過了
+
+        // 木桶、木箱、掉在地上的火把：玩家和小怪用走的都能把它頂開 / 踢飛（不然翻倒的木桶會把路堵住）
+        if (hitBody.TryGetComponent(out Knockable prop))
+        {
+            // 重的東西會把推的人拖慢（跟推岩石一樣的機制）
+            float slow = prop.Shove(transform.position, horizontalVelocity, hit.normal, sprintSpeed);
+            if (slow < 1f)
+            {
+                pushFactor = slow;
+                pushUntil = Time.time + 0.15f;
+            }
+            return;
+        }
+
+        if (hit.normal.y > 0.6f) return; // 踩在上面，不是從旁邊推
+        if (aiControlled || !canPushRocks || ballistic) return;
+        var rock = ArenaRock.From(hit.collider);
+        if (rock == null || !rock.pushable) return;
+        if (hit.point.y > rock.transform.position.y + rock.height * 0.6f) return; // 站在石頭的肩膀上，不算推
+
+        Vector3 move = horizontalVelocity;
+        float speed = move.magnitude;
+        if (speed < 0.2f) return;
+
+        Vector3 toRock = rock.transform.position - transform.position;
+        toRock.y = 0f;
+        if (toRock.sqrMagnitude < 0.0001f) return;
+        toRock.Normalize();
+        if (Vector3.Dot(move / speed, toRock) < 0.35f) return; // 只是從旁邊擦過去
+
+        // 岩石每一幀往前挪「比玩家這一幀想走的距離少一點」，玩家下一幀跟上去時一定還頂得到它，
+        // 才不會推一下、空一幀、再推一下地卡頓
+        float pushSpeed = Mathf.Min(speed, sprintSpeed * rock.pushSpeedFactor);
+        if (rock.Push(toRock, pushSpeed * Time.deltaTime * 0.85f, controller))
+        {
+            pushFactor = rock.pushSpeedFactor;
+            pushUntil = Time.time + 0.15f;
+        }
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed)

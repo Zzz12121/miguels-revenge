@@ -43,11 +43,16 @@ public class ThirdPersonCamera : MonoBehaviour
     public float collisionRadius = 0.25f;
     [Tooltip("被牆擋住後，鏡頭拉回原距離的速度")]
     public float returnSpeed = 6f;
+    [Tooltip("注視點至少離天花板 / 牆多遠 (m)。注視點在角色頭頂上方，在矮門洞或隧道裡跳起來時，" +
+             "它不會跟著頂進天花板裡（頂進去的話鏡頭就會穿牆）。0 = 關閉這個保護")]
+    public float pivotClearance = 0.6f;
 
     [HideInInspector] public float yaw, pitch;
     float currentDistance;
     Vector3 smoothedPivot, pivotVelocity;
     readonly RaycastHit[] hits = new RaycastHit[16];
+    CharacterController targetBody;
+    Transform targetBodyOwner;
     float shakeAmplitude, shakeDuration, shakeTimer;
 
     /// <summary>畫面震動（Boss 拍地、怒吼時使用）</summary>
@@ -89,7 +94,7 @@ public class ThirdPersonCamera : MonoBehaviour
             : pivot;
 
         Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
-        Vector3 lookPoint = smoothedPivot + rotation * Vector3.right * shoulderOffset;
+        Vector3 lookPoint = ClampPivot(smoothedPivot + rotation * Vector3.right * shoulderOffset);
         Vector3 backDir = rotation * Vector3.back;
 
         // 防穿牆：從注視點往鏡頭方向做球形射線
@@ -101,6 +106,7 @@ public class ThirdPersonCamera : MonoBehaviour
             if (hits[i].transform.IsChildOf(target)) continue; // 忽略玩家自己
             if (hits[i].collider is CharacterController) continue; // 小怪擋在中間不拉近鏡頭
             if (hits[i].distance <= 0f) continue;              // 起點就重疊的忽略
+            if (IsLooseProp(hits[i])) continue;                // 被打飛的木桶、火把飛過鏡頭前面不拉近鏡頭
             allowed = Mathf.Min(allowed, Mathf.Max(hits[i].distance - 0.05f, 0.3f));
         }
 
@@ -117,6 +123,53 @@ public class ThirdPersonCamera : MonoBehaviour
         }
 
         transform.SetPositionAndRotation(lookPoint + backDir * currentDistance + shake, rotation);
+    }
+
+    /// <summary>
+    /// 注視點在角色頭頂上方，本身可能跑進天花板或牆裡（例如在矮門洞底下跳起來）。
+    /// 一旦它在牆裡，下面「從注視點往後」的防穿牆射線就偵測不到那面牆，鏡頭會直接穿過去。
+    /// 所以先從角色身體的中心（一定在空的地方）往注視點掃一次：路上有東西，就把注視點壓低到離它 pivotClearance 的位置。
+    /// </summary>
+    Vector3 ClampPivot(Vector3 lookPoint)
+    {
+        if (pivotClearance <= 0f) return lookPoint;
+
+        if (targetBodyOwner != target)
+        {
+            targetBodyOwner = target;
+            targetBody = target.GetComponent<CharacterController>();
+        }
+        Vector3 origin = targetBody != null ? target.TransformPoint(targetBody.center) : target.position;
+        Vector3 to = lookPoint - origin;
+        float dist = to.magnitude;
+        if (dist < 0.01f) return lookPoint;
+        Vector3 dir = to / dist;
+
+        float nearest = float.MaxValue;
+        int count = Physics.SphereCastNonAlloc(origin, collisionRadius, dir, hits, dist + pivotClearance,
+                                               collisionMask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < count; i++)
+        {
+            if (hits[i].transform.IsChildOf(target)) continue;
+            if (hits[i].collider is CharacterController) continue;
+            if (hits[i].distance <= 0f) continue;
+            if (IsLooseProp(hits[i])) continue;
+            nearest = Mathf.Min(nearest, hits[i].distance);
+        }
+        if (nearest == float.MaxValue) return lookPoint;
+        return origin + dir * Mathf.Min(dist, Mathf.Max(nearest - pivotClearance, 0f));
+    }
+
+    /// <summary>
+    /// 正在飛 / 正在滾的擺設（被打飛的木桶、掉下來的火把）。它們飛過角色和鏡頭中間時如果算成障礙物，
+    /// 鏡頭會瞬間拉近（或注視點瞬間被壓低）再慢慢退回去，畫面看起來像頓了一下，所以移動中的不讓它們擋鏡頭。
+    /// 停下來之後、以及還沒被碰過固定不動的擺設，照樣會擋。
+    /// </summary>
+    static bool IsLooseProp(RaycastHit hit)
+    {
+        Rigidbody body = hit.rigidbody;
+        if (body == null || body.isKinematic || !body.TryGetComponent(out Knockable _)) return false;
+        return body.linearVelocity.sqrMagnitude > 0.09f || body.angularVelocity.sqrMagnitude > 0.25f;
     }
 
     void HandleInput()

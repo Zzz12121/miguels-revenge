@@ -18,6 +18,8 @@ public class BossHealth : MonoBehaviour, IDamageable
     public bool IsDead { get; private set; }
     /// <summary>要不要顯示畫面下方的血條（戰鬥開始才顯示）</summary>
     public bool ShowBar { get; set; }
+    /// <summary>被打倒時在畫面上顯示「強敵已擊敗」的小標題。有過關大標題（VictoryBanner）時 BossController 會把它關掉，兩個才不會疊在一起</summary>
+    public bool ShowDefeatLabel { get; set; } = true;
     /// <summary>無敵（例如進入二階段的怒吼時）</summary>
     public bool Invulnerable { get; set; }
     public event System.Action OnDied;
@@ -129,7 +131,7 @@ public class BossHealth : MonoBehaviour, IDamageable
         GUI.color = new Color(0.7f, 0.08f, 0.08f);
         GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
 
-        if (IsDead)
+        if (IsDead && ShowDefeatLabel)
         {
             GUI.color = new Color(1f, 0.85f, 0.4f);
             var style = new GUIStyle(GUI.skin.label) { fontSize = 52, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };

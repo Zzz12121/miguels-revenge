@@ -2,20 +2,36 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 地板上的一個小方塊。由 ArenaFloor 產生，負責自己的動畫：
-/// - SetHeight：升高 / 降低（地形起伏、柱子）。升高時方塊會往下加長，底下不會出現空隙
+/// 地板上的一塊石板（不規則的凸多邊形）。由 ArenaFloor 產生，負責自己的動畫：
 /// - Dent：被拍地衝擊波打到時往下凹，之後慢慢回來
 /// - Collapse：閃爍＋抖動預警 → 掉下去 → 一段時間後升回原位
-/// - SetTint：暫時改顏色（例如 Boss 攻擊範圍預警）
+/// - SetTelegraph：暫時改顏色（例如 Boss 攻擊範圍預警）
+///
+/// 石板的模型不會存在 Prefab 裡，而是每次載入時用 outline（輪廓）重新產生，
+/// 所以專案不會多出一大堆模型檔。物件的位置 = 石板上表面的中心。
 /// </summary>
-[RequireComponent(typeof(Renderer), typeof(Collider))]
+[ExecuteAlways]
 public class FloorTile : MonoBehaviour
 {
-    public enum State { Normal, Shifting, Dented, Warning, Fallen, Restoring }
+    public enum State { Normal, Dented, Warning, Fallen, Restoring }
 
-    [Tooltip("在格子中的座標（由 ArenaFloor 自動設定）")]
-    public int gridX, gridZ;
-    [Tooltip("可不可以被塌陷 / 凹陷 / 升高（貼著牆壁的外圈會設為 false）")]
+    // ---- 形狀（由 ArenaFloor 自動設定，不用手動改） ----
+    /// <summary>石板的種子點（在地板座標裡的位置）。查「某個位置屬於哪一塊」時用</summary>
+    [HideInInspector] public Vector2 site;
+    /// <summary>輪廓：相對於這塊石板中心的凸多邊形（x→X、y→Z）</summary>
+    [HideInInspector] public Vector2[] outline;
+    /// <summary>石板中心在整個地板上的位置（貼圖用，讓相鄰石板的貼圖接得起來）</summary>
+    [HideInInspector] public Vector2 uvOrigin;
+
+    [Header("石板")]
+    public float thickness = 2.5f;
+    [Tooltip("上緣斜角的寬度 (m)，石板之間的溝就是這個")]
+    public float bevel = 0.07f;
+    [Tooltip("貼圖每幾公尺重複一次")]
+    public float uvSize = 1.5f;
+    [Tooltip("這塊石板的明暗（1 = 材質原本的顏色）。每塊稍微不一樣，才看得出一塊一塊的")]
+    public float shade = 1f;
+    [Tooltip("可不可以被塌陷 / 凹陷（貼著牆壁的外圈會設為 false）")]
     public bool canCollapse = true;
 
     [Header("塌陷外觀")]
@@ -26,68 +42,161 @@ public class FloorTile : MonoBehaviour
 
     public State CurrentState { get; private set; } = State.Normal;
     public bool IsSolid => col != null && col.enabled;
-    /// <summary>是不是柱子（光束會被柱子擋住）</summary>
-    public bool IsPillar { get; private set; }
-    /// <summary>目前設定的高度（相對原本地面）</summary>
-    public float Height { get; private set; }
 
-    /// <summary>靜止時的中心位置（已經算進高度）</summary>
-    public Vector3 RestPosition =>
-        basePosition + Vector3.up * (Height - Mathf.Max(Height, 0f) * 0.5f);
-    /// <summary>靜止時的大小（升高時往下加長）</summary>
-    public Vector3 RestScale =>
-        new Vector3(baseScale.x, baseScale.y + Mathf.Max(Height, 0f), baseScale.z);
+    /// <summary>有沒有不規則石板的資料（false = 還是舊版的方塊）</summary>
+    public bool HasShape => outline != null && outline.Length >= 3;
+    /// <summary>種子點（舊版方塊地板沒有這個資料，就用方塊的位置）</summary>
+    public Vector2 Site => HasShape ? site : new Vector2(transform.localPosition.x, transform.localPosition.z);
+
+    /// <summary>靜止時的中心位置（水平位置拿來算距離）</summary>
+    public Vector3 RestPosition => basePosition;
     /// <summary>靜止時上表面的高度</summary>
-    public float RestTopY => basePosition.y + baseScale.y * 0.5f + Height;
+    public float RestTopY => basePosition.y + topOffset;
     /// <summary>目前實際上表面的高度（凹陷時會變低）</summary>
-    public float CurrentTopY => transform.position.y + transform.lossyScale.y * 0.5f;
+    public float CurrentTopY => transform.position.y + topOffset;
 
     Renderer rend;
     Collider col;
     MaterialPropertyBlock mpb;
     Color baseColor = Color.gray;
     Coroutine routine;
-    Color? telegraph;          // Boss 攻擊範圍預警色（不管方塊正在做什麼動畫都要顯示）
+    Color? telegraph;          // Boss 攻擊範圍預警色（不管石板正在做什麼動畫都要顯示）
     Vector3 basePosition;
-    Vector3 baseScale;
+    float topOffset;           // 物件位置到上表面的距離（不規則石板 = 0；舊版方塊的原點在正中央）
+    Vector3 boundsCenter, boundsHalf; // 石板的大概範圍（升回來之前檢查玩家有沒有卡在洞裡）
+    Mesh renderMesh, colliderMesh;
+    bool initialized;
 
     static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     static readonly int ColorId = Shader.PropertyToID("_Color");
 
-    void Awake()
+    void Awake() => Init();
+
+    void OnEnable()
     {
+        // 編輯模式下重新載入場景 / 重新編譯之後，模型要再產生一次才看得到
+        if (!initialized) Init();
+        else EnsureMeshAssigned();
+    }
+
+    /// <summary>
+    /// 模型不見了就補回來。編輯模式下 Prefab 被重新存檔時，Unity 會把場景裡的石板還原成 Prefab 的內容，
+    /// 而模型沒有存在 Prefab 裡，所以會變成空的（ArenaFloor 在編輯模式下會定期呼叫這個檢查）。
+    /// </summary>
+    public void EnsureMeshAssigned()
+    {
+        if (!HasShape) return;
+        if (!initialized) { Init(); return; }
+        bool ok = renderMesh != null && colliderMesh != null;
+        if (ok && TryGetComponent(out MeshFilter filter) && filter.sharedMesh != renderMesh) ok = false;
+        if (ok && col is MeshCollider meshCollider && meshCollider.sharedMesh != colliderMesh) ok = false;
+        if (!ok) Rebuild();
+    }
+
+    void OnDestroy()
+    {
+        DestroyMesh(renderMesh);
+        DestroyMesh(colliderMesh);
+    }
+
+    void Init()
+    {
+        initialized = true;
         rend = GetComponent<Renderer>();
         col = GetComponent<Collider>();
-        mpb = new MaterialPropertyBlock();
+        if (mpb == null) mpb = new MaterialPropertyBlock();
         basePosition = transform.position;
-        baseScale = transform.localScale;
 
-        var mat = rend.sharedMaterial;
-        if (mat != null)
+        if (rend != null && rend.sharedMaterial != null)
         {
+            var mat = rend.sharedMaterial;
             if (mat.HasProperty(BaseColorId)) baseColor = mat.GetColor(BaseColorId);
             else if (mat.HasProperty(ColorId)) baseColor = mat.GetColor(ColorId);
         }
+        Rebuild();
+    }
+
+    // ---------------- 模型 ----------------
+
+    /// <summary>用 outline 重新產生外觀和碰撞模型（ArenaFloor 設定好形狀之後也會呼叫）</summary>
+    public void Rebuild()
+    {
+        if (rend == null) rend = GetComponent<Renderer>();
+        if (col == null) col = GetComponent<Collider>();
+        if (mpb == null) mpb = new MaterialPropertyBlock();
+
+        if (!HasShape)
+        {
+            // 舊版的方塊：原點在方塊正中央
+            topOffset = transform.lossyScale.y * 0.5f;
+            boundsCenter = Vector3.zero;
+            boundsHalf = transform.lossyScale * 0.45f;
+            return;
+        }
+
+        DestroyMesh(renderMesh);
+        DestroyMesh(colliderMesh);
+        renderMesh = ArenaMeshes.BuildSlab(outline, thickness, bevel, uvOrigin, uvSize);
+        colliderMesh = ArenaMeshes.BuildSlabCollider(outline, thickness);
+        // 不存進場景 / Prefab，載入時再產生
+        renderMesh.hideFlags = ArenaMeshes.GeneratedFlags;
+        colliderMesh.hideFlags = ArenaMeshes.GeneratedFlags;
+
+        if (TryGetComponent(out MeshFilter filter)) filter.sharedMesh = renderMesh;
+        if (col is MeshCollider meshCollider)
+        {
+            meshCollider.convex = true;
+            meshCollider.sharedMesh = colliderMesh;
+        }
+        // 地板是平的，不需要投射陰影（還是會接收岩石和角色的陰影），少畫一千多次
+        if (rend != null) rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+        Vector2 min = outline[0], max = outline[0];
+        foreach (var p in outline)
+        {
+            min = Vector2.Min(min, p);
+            max = Vector2.Max(max, p);
+        }
+        topOffset = 0f;
+        boundsCenter = new Vector3((min.x + max.x) * 0.5f, -thickness * 0.5f, (min.y + max.y) * 0.5f);
+        boundsHalf = new Vector3((max.x - min.x) * 0.4f, thickness * 0.45f, (max.y - min.y) * 0.4f);
+
+        if (CurrentState != State.Warning && CurrentState != State.Fallen) SetTint(telegraph);
+    }
+
+    static void DestroyMesh(Mesh mesh)
+    {
+        if (mesh == null) return;
+        if (Application.isPlaying) Destroy(mesh);
+        else DestroyImmediate(mesh);
     }
 
     // ---------------- 顏色 ----------------
 
-    /// <summary>改顏色；傳 null 恢復原本材質顏色</summary>
+    /// <summary>這塊石板平常的顏色（材質顏色 × 自己的明暗）</summary>
+    Color OwnColor => new Color(baseColor.r * shade, baseColor.g * shade, baseColor.b * shade, baseColor.a);
+
+    /// <summary>改顏色；傳 null 恢復平常的顏色</summary>
     public void SetTint(Color? color)
     {
-        mpb.Clear();
-        if (color.HasValue)
+        if (rend == null) return;
+        if (!color.HasValue && Mathf.Abs(shade - 1f) < 0.001f)
         {
-            mpb.SetColor(BaseColorId, color.Value);
-            mpb.SetColor(ColorId, color.Value);
+            // 就是材質原本的顏色：不用個別設定，Unity 才能把石板合在一起畫（比較省效能）
+            rend.SetPropertyBlock(null);
+            return;
         }
+        Color c = color ?? OwnColor;
+        mpb.Clear();
+        mpb.SetColor(BaseColorId, c);
+        mpb.SetColor(ColorId, c);
         rend.SetPropertyBlock(mpb);
     }
 
     /// <summary>
     /// 設定 / 清除 Boss 攻擊範圍的預警色。
-    /// 方塊正在升起、恢復、凹陷中也會顯示；只有塌陷閃爍中（Warning）和掉下去（Fallen）時
-    /// 先記住，等方塊回來時再套用。
+    /// 石板正在恢復、凹陷中也會顯示；只有塌陷閃爍中（Warning）和掉下去（Fallen）時
+    /// 先記住，等石板回來時再套用。
     /// </summary>
     public void SetTelegraph(Color? color)
     {
@@ -95,108 +204,15 @@ public class FloorTile : MonoBehaviour
         if (CurrentState != State.Warning && CurrentState != State.Fallen) SetTint(color);
     }
 
-    // ---------------- 地形高度 ----------------
-
-    /// <summary>把方塊升高 / 降低到 height，delay 秒後開始、花 duration 秒完成</summary>
-    public void SetHeight(float height, bool isPillar, float delay, float duration)
-    {
-        if (!canCollapse) { height = 0f; isPillar = false; }
-        ForceVisible();
-        Vector3 fromPos = transform.position, fromScale = transform.localScale;
-        Height = height;
-        IsPillar = isPillar;
-        Run(ShiftRoutine(fromPos, fromScale, delay, duration));
-    }
-
-    IEnumerator ShiftRoutine(Vector3 fromPos, Vector3 fromScale, float delay, float duration)
-    {
-        CurrentState = State.Shifting;
-        if (delay > 0f) yield return new WaitForSeconds(delay);
-
-        Vector3 toPos = RestPosition, toScale = RestScale;
-        float t = 0f;
-        while (t < duration)
-        {
-            t += Time.deltaTime;
-            float k = Mathf.SmoothStep(0f, 1f, t / duration);
-            transform.position = Vector3.Lerp(fromPos, toPos, k);
-            transform.localScale = Vector3.Lerp(fromScale, toScale, k);
-            yield return null;
-        }
-        transform.position = toPos;
-        transform.localScale = toScale;
-        CurrentState = State.Normal;
-        routine = null;
-    }
-
-    // ---------------- 柱子被破壞 ----------------
-
-    /// <summary>柱子正在碎裂中（還沒倒，仍然會擋光束）</summary>
-    public bool IsCracking { get; private set; }
-
-    /// <summary>柱子立刻被打爆（這場戰鬥內不會再長回來）</summary>
-    public void Shatter() => ShatterAfter(0f);
-
-    /// <summary>
-    /// 柱子被打中：先閃爍抖動 delay 秒（這段時間仍然擋得住光束），然後崩塌回地面。
-    /// 已經在碎裂中就忽略。
-    /// </summary>
-    public void ShatterAfter(float delay)
-    {
-        if (!IsPillar || IsCracking) return;
-        IsCracking = true;
-        ForceVisible();
-        Run(ShatterRoutine(delay));
-    }
-
-    IEnumerator ShatterRoutine(float delay)
-    {
-        CurrentState = State.Shifting;
-        Vector3 fromPos = transform.position, fromScale = transform.localScale;
-
-        float crack = Mathf.Max(delay, 0.1f);
-        float t = 0f;
-        while (t < crack) // 閃白 + 抖動（還擋得住光束）
-        {
-            SetTint(Color.Lerp(warningColor, Color.white, Mathf.PingPong(t * 12f, 1f)));
-            transform.position = fromPos + Random.insideUnitSphere * 0.12f;
-            t += Time.deltaTime;
-            yield return null;
-        }
-
-        // 真正倒下：不再是柱子，高度歸零
-        IsPillar = false;
-        IsCracking = false;
-        Height = 0f;
-        SetTint(warningColor);
-
-        Vector3 toPos = RestPosition, toScale = RestScale;
-        t = 0f;
-        while (t < 0.35f) // 快速崩塌回地面
-        {
-            t += Time.deltaTime;
-            float k = t / 0.35f;
-            k *= k;
-            transform.position = Vector3.Lerp(fromPos, toPos, k);
-            transform.localScale = Vector3.Lerp(fromScale, toScale, k);
-            yield return null;
-        }
-        transform.position = toPos;
-        transform.localScale = toScale;
-        SetTint(telegraph);
-        CurrentState = State.Normal;
-        routine = null;
-    }
-
     // ---------------- 凹陷 ----------------
 
     /// <summary>
-    /// 往下凹。正在升起、正在恢復、已經凹陷中的方塊也會被打斷改成凹陷，
-    /// 只有正在塌陷 / 已經掉下去 / 還在地底等待升起的方塊不受影響。
+    /// 往下凹。正在恢復、已經凹陷中的石板也會被打斷改成凹陷，
+    /// 只有正在塌陷 / 已經掉下去 / 還在地底等待升起的石板不受影響。
     /// </summary>
     public void Dent(float delay, float depth, float holdTime, float recoverTime)
     {
-        if (!canCollapse || IsCracking) return;
+        if (!canCollapse) return;
         if (CurrentState == State.Warning || CurrentState == State.Fallen) return;
         if (CurrentState == State.Restoring && !rend.enabled) return;
         Run(DentRoutine(delay, depth, holdTime, recoverTime));
@@ -207,8 +223,7 @@ public class FloorTile : MonoBehaviour
         CurrentState = State.Dented;
         if (delay > 0f) yield return new WaitForSeconds(delay);
 
-        // 如果是打斷了升起 / 恢復的動畫，先把大小和碰撞恢復正常
-        transform.localScale = RestScale;
+        // 如果是打斷了恢復的動畫，先把顯示和碰撞恢復正常
         rend.enabled = true;
         col.enabled = true;
         SetTint(telegraph);
@@ -235,7 +250,7 @@ public class FloorTile : MonoBehaviour
     IEnumerator CollapseRoutine(float warnTime, float downTime)
     {
         Vector3 rest = RestPosition;
-        transform.localScale = RestScale;
+        Color own = OwnColor;
 
         // 1) 預警：越閃越快、越抖越大、慢慢下沉
         CurrentState = State.Warning;
@@ -245,7 +260,7 @@ public class FloorTile : MonoBehaviour
             float k = t / warnTime;
             float freq = Mathf.Lerp(1.5f, 10f, k * k);
             float blink = (Mathf.Sin(t * freq * Mathf.PI * 2f) + 1f) * 0.5f;
-            SetTint(Color.Lerp(baseColor, warningColor, Mathf.Lerp(0.35f, 1f, k) * blink));
+            SetTint(Color.Lerp(own, warningColor, Mathf.Lerp(0.35f, 1f, k) * blink));
 
             Vector3 shake = new Vector3(Random.Range(-1f, 1f), 0f, Random.Range(-1f, 1f)) * shakeAmount * k;
             transform.position = rest + shake + Vector3.down * warningSink * k;
@@ -273,12 +288,11 @@ public class FloorTile : MonoBehaviour
 
         // 3) 升回原位（如果玩家剛好卡在這個位置就先等一下）
         CurrentState = State.Restoring;
-        Vector3 half = RestScale * 0.45f;
-        while (PlayerOverlaps(RestPosition, half)) yield return null;
+        while (PlayerOverlaps(RestPosition + boundsCenter, boundsHalf)) yield return null;
 
         rend.enabled = true;
         SetTint(telegraph);
-        yield return MoveTo(RestPosition + Vector3.down * (RestScale.y + 1f), RestPosition, 0.8f);
+        yield return MoveTo(RestPosition + Vector3.down * (thickness + 1f), RestPosition, 0.8f);
         col.enabled = true;
         CurrentState = State.Normal;
         routine = null;
@@ -292,26 +306,55 @@ public class FloorTile : MonoBehaviour
         return false;
     }
 
-    /// <summary>立刻恢復成正常狀態；flatten = true 時連高度也歸零</summary>
+    /// <summary>
+    /// 掉下去（或正要掉下去）的石板提早升回來，不等原本的時間。好好的石板不受影響。
+    /// Boss 登場時用，讓波次戰留下的洞補起來。
+    /// </summary>
+    public void RestoreNow(float delay = 0f)
+    {
+        if (CurrentState == State.Warning)
+        {
+            // 還在閃、還沒掉：取消就好（上面可能還站著人，碰撞不能關）
+            if (routine != null) StopCoroutine(routine);
+            routine = null;
+            transform.position = RestPosition;
+            rend.enabled = true;
+            col.enabled = true;
+            SetTint(telegraph);
+            CurrentState = State.Normal;
+            return;
+        }
+        if (CurrentState != State.Fallen && CurrentState != State.Restoring) return;
+        Run(RestoreRoutine(delay));
+    }
+
+    IEnumerator RestoreRoutine(float delay)
+    {
+        CurrentState = State.Restoring;
+        col.enabled = false;
+        if (delay > 0f) yield return new WaitForSeconds(delay);
+        rend.enabled = true;
+        SetTint(telegraph);
+        Vector3 from = transform.position;
+        Vector3 below = RestPosition + Vector3.down * (thickness + 1f);
+        if (from.y < below.y) from = below;
+        yield return MoveTo(from, RestPosition, 0.8f);
+        col.enabled = true;
+        CurrentState = State.Normal;
+        routine = null;
+    }
+
+    /// <summary>立刻恢復成正常狀態（flatten 是舊版地形用的參數，現在地板一直是平的）</summary>
     public void ResetTile(bool flatten = false)
     {
         if (routine != null) StopCoroutine(routine);
         routine = null;
-        if (flatten) { Height = 0f; IsPillar = false; }
-        IsCracking = false;
         telegraph = null;
-        ForceVisible();
-        transform.position = RestPosition;
-        transform.localScale = RestScale;
-        SetTint(null);
-        CurrentState = State.Normal;
-    }
-
-    void ForceVisible()
-    {
         rend.enabled = true;
         col.enabled = true;
-        SetTint(telegraph);
+        transform.position = RestPosition;
+        SetTint(null);
+        CurrentState = State.Normal;
     }
 
     // ---------------- 工具 ----------------

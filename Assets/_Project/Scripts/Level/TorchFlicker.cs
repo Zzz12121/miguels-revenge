@@ -11,6 +11,9 @@ public class TorchFlicker : MonoBehaviour
     [Tooltip("閃爍的速度")]
     public float speed = 6f;
 
+    /// <summary>整體亮度倍率（0 = 完全熄滅）。火把被打掉、慢慢熄滅時由 KnockableTorch 控制</summary>
+    [HideInInspector] public float dim = 1f;
+
     Light torchLight;
     Transform flame;
     float baseIntensity;
@@ -29,12 +32,12 @@ public class TorchFlicker : MonoBehaviour
     void Update()
     {
         float n = Mathf.PerlinNoise(seed, Time.time * speed);   // 0~1
-        float k = 1f - amount + amount * 2f * n;                 // 約 (1 - amount) ~ (1 + amount)
+        float k = (1f - amount + amount * 2f * n) * dim;         // 約 (1 - amount) ~ (1 + amount)
         if (torchLight != null) torchLight.intensity = baseIntensity * k;
         if (flame != null)
         {
             float stretch = Mathf.PerlinNoise(seed + 7f, Time.time * speed * 1.3f);
-            flame.localScale = new Vector3(baseFlameScale.x * k, baseFlameScale.y * (0.8f + 0.4f * stretch), baseFlameScale.z * k);
+            flame.localScale = new Vector3(baseFlameScale.x * k, baseFlameScale.y * (0.8f + 0.4f * stretch) * dim, baseFlameScale.z * k);
         }
     }
 }

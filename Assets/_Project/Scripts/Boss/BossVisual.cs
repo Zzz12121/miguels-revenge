@@ -8,7 +8,7 @@ using UnityEngine;
 /// - 出招結束：BossController 呼叫 EndAction，回到 Idle / Walk
 ///
 /// Animator 裡的狀態名稱要跟招式名稱一樣：
-///   Idle、Walk、Swipe、Slam、Roar、Beam、Jump、JumpLand、Death
+///   Idle、Walk、Swipe、Slam、Roar、Beam、Jump、JumpLand、Summon、SummonLoop、Death
 /// 沒有這個元件時，Boss 就照舊只用程式做前傾 / 後仰。
 /// </summary>
 public class BossVisual : MonoBehaviour
@@ -48,6 +48,7 @@ public class BossVisual : MonoBehaviour
     public string CurrentState { get; private set; } = "";
 
     bool actionActive;
+    float exitFade = -1f;   // 這次招式結束後回到 Idle / Walk 要花多久（-1 = 用 crossFade）
     Vector3 lastPos;
     float smoothedSpeed;
 
@@ -72,14 +73,21 @@ public class BossVisual : MonoBehaviour
 
         if (smoothedSpeed > walkThreshold)
         {
-            if (CurrentState != "Walk") Go("Walk", crossFade);
+            if (CurrentState != "Walk") Go("Walk", TakeExitFade());
             animator.speed = Mathf.Clamp(smoothedSpeed / Mathf.Max(walkAnimSpeed, 0.01f), 0.5f, 2.5f);
         }
         else
         {
-            if (CurrentState != "Idle") Go("Idle", crossFade);
+            if (CurrentState != "Idle") Go("Idle", TakeExitFade());
             animator.speed = 1f;
         }
+    }
+
+    float TakeExitFade()
+    {
+        float f = exitFade > 0f ? exitFade : crossFade;
+        exitFade = -1f;
+        return f;
     }
 
     /// <summary>
@@ -98,10 +106,39 @@ public class BossVisual : MonoBehaviour
         Go(state, crossFade * 0.5f);
     }
 
-    /// <summary>招式結束，回到 Idle / Walk</summary>
-    public void EndAction()
+    /// <summary>
+    /// 招式進行到「持續」的階段：切到一個循環播放的動畫（例如 SummonLoop），用原本的速度播到 EndAction 為止。
+    /// Animator 裡還沒有這個狀態時（模型還沒重新安裝），就把目前的動作定格，不會整個壞掉。
+    /// </summary>
+    public void LoopAction(string state, float fade = 0.2f)
+    {
+        if (!HasAnimator) return;
+        actionActive = true;
+        if (HasState(state))
+        {
+            animator.speed = 1f;
+            Go(state, fade);
+        }
+        else
+        {
+            animator.speed = 0f;
+            if (!warnedMissingLoop)
+            {
+                warnedMissingLoop = true;
+                Debug.LogWarning($"[BossVisual] Animator 裡沒有「{state}」這個狀態，先用定格代替。請執行選單「GeminiGrowUp > 安裝 或 更新 Boss 模型（骸骨巨像）」。");
+            }
+        }
+    }
+    bool warnedMissingLoop;
+
+    public bool HasState(string state) =>
+        HasAnimator && animator.HasState(0, Animator.StringToHash(state));
+
+    /// <summary>招式結束，回到 Idle / Walk。fade = 這次要花多久過渡回去（-1 = 用預設的 crossFade）</summary>
+    public void EndAction(float fade = -1f)
     {
         actionActive = false;
+        exitFade = fade;
         if (HasAnimator) animator.speed = 1f;
     }
 
@@ -109,6 +146,7 @@ public class BossVisual : MonoBehaviour
     public void ResetVisual()
     {
         actionActive = false;
+        exitFade = -1f;
         smoothedSpeed = 0f;
         lastPos = transform.position;
         if (!HasAnimator) return;
@@ -121,6 +159,8 @@ public class BossVisual : MonoBehaviour
         if (timings == null) return 0f;
         foreach (var t in timings)
             if (t.state == state) return t.hitTime;
+        // 後來才加的招式：Prefab 裡存的清單沒有它，用這裡的預設值
+        if (state == "Summon") return 30f / 24f; // 第 30 格雙手舉到最高
         return 0f;
     }
 

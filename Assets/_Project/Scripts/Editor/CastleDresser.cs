@@ -372,7 +372,7 @@ public static class CastleDresser
             Vector3 center = floor.transform.position;
             float r = floor.radius;
 
-            // ---------- 地板方塊：換成石板貼圖（每塊方塊一張圖） ----------
+            // ---------- 地板：換成石板貼圖（每 tileSize 公尺重複一次，整片接在一起） ----------
             ApplyTexture(floor.tileMaterial, "cobblestoneAlternative", Vector2.one, new Color(0.72f, 0.7f, 0.74f));
 
             // ---------- 原本的環形牆：保留碰撞、隱藏外觀 ----------

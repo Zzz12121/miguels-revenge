@@ -6,13 +6,21 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 選單：GeminiGrowUp > 安裝 / 更新石像 Boss 模型
+/// 選單：GeminiGrowUp > 安裝 或 更新 Boss 模型（骸骨巨像）
 ///
-/// 每次在 Blender 改完石像、重新匯出 Golem.fbx 覆蓋 Assets/_Project/Models/Golem/Golem.fbx 之後，
+/// Boss 的外型現在是「骸骨巨像」（Art/bone_colossus_generator.py 產生的）。
+/// 檔名、骨頭、動畫、材質的名稱都沿用石像時期的（Golem.fbx、Golem_Slam、M_GolemStone…），
+/// 這樣 BossRoom.prefab 裡的參照不會斷，所以下面還是到處看得到 Golem 這個字。
+///
+/// 每次在 Blender 改完模型、重新匯出覆蓋 Assets/_Project/Models/Golem/Golem.fbx 之後，
 /// 再執行一次這個選單就會：
-///   1. 設定 FBX 匯入：Generic 骨架、動畫名稱（Golem_Slam → Slam）、Idle / Walk 循環、材質換成 URP 材質（眼睛 / 核心會發光）
+///   1. 設定 FBX 匯入：Generic 骨架、動畫名稱（Golem_Slam → Slam）、Idle / Walk / SummonLoop 循環、材質換成 URP 材質（眼睛 / 核心會發光）
 ///   2. 重建 Golem.controller（Animator，每個動畫一個狀態，名稱跟招式一樣）
-///   3. 修改 BossRoom.prefab：拿掉膠囊，換成石像模型，並加上 BossVisual
+///   3. 修改 BossRoom.prefab：拿掉舊的身體，換成新模型，並加上 BossVisual
+///
+/// 材質對應：M_GolemStone = 骨頭、M_GolemStoneDark = 關節 / 角 / 爪、M_GolemEye = 眼睛（綠光）、
+///           M_GolemCore = 胸口核心和手臂的能量（綠光）、M_GolemVoid = 眼窩和裂痕（黑）
+/// 想換顏色就改 ConfigureImporter 裡的數字再執行一次選單（直接改 .mat 會在下次執行時被蓋掉）。
 /// </summary>
 public static class GolemInstaller
 {
@@ -23,9 +31,9 @@ public static class GolemInstaller
     // Blender 匯出的模型在 Unity 裡會面向 -Z，轉 180 度讓臉朝向 Boss 的前方（+Z）
     const float ModelYaw = 180f;
 
-    static readonly string[] LoopingClips = { "Idle", "Walk" };
+    static readonly string[] LoopingClips = { "Idle", "Walk", "SummonLoop" };
 
-    [MenuItem("GeminiGrowUp/安裝 或 更新石像 Boss 模型")]
+    [MenuItem("GeminiGrowUp/安裝 或 更新 Boss 模型（骸骨巨像）")]
     public static void Install()
     {
         if (AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath) == null)
@@ -39,18 +47,58 @@ public static class GolemInstaller
             EditorUtility.DisplayDialog("找不到 BossRoom", "專案裡找不到名為 BossRoom 的 Prefab。", "OK");
             return;
         }
-        if (!EditorUtility.DisplayDialog("安裝石像 Boss 模型",
-                "會設定 Golem.fbx 的匯入方式、重建 Golem.controller，並把 BossRoom.prefab 裡的 Boss 換成石像模型。\n" +
+        if (!EditorUtility.DisplayDialog("安裝 Boss 模型（骸骨巨像）",
+                "會設定 Golem.fbx 的匯入方式和材質顏色、重建 Golem.controller，並把 BossRoom.prefab 裡的 Boss 換成最新的模型。\n" +
                 "Boss 的招式數值不會被改動。建議先 commit。要繼續嗎？",
                 "繼續", "取消"))
             return;
 
+        if (Reinstall()) Debug.Log("[GeminiGrowUp] Boss 模型（骸骨巨像）已安裝到 BossRoom。按 Play 測試，數字鍵 1~4 可以叫 Boss 放招。");
+    }
+
+    /// <summary>
+    /// 不跳視窗，直接重新安裝一次（別的安裝選單在 Golem.fbx 多了新動畫之後會呼叫這個）。
+    /// 回傳有沒有成功。
+    /// </summary>
+    internal static bool Reinstall()
+    {
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(FbxPath) == null) return false;
+        string bossRoomPath = Floor02Builder.FindBossRoomPrefab();
+        if (bossRoomPath == null) return false;
+
         ConfigureImporter();
         var controller = BuildController();
         bool ok = PutModelIntoBossRoom(bossRoomPath, controller);
-
         AssetDatabase.SaveAssets();
-        if (ok) Debug.Log("[GeminiGrowUp] 石像模型已安裝到 BossRoom。按 Play 測試，數字鍵 1~4 可以叫 Boss 放招。");
+        return ok;
+    }
+
+    /// <summary>
+    /// Golem.fbx 裡已經有召喚動畫（Summon / SummonLoop）、但目前的 Animator 還沒有 → 需要重新安裝一次。
+    /// 還沒安裝過模型（沒有 Golem.controller）或 FBX 是舊的（沒有這些動畫）時回傳 false。
+    /// </summary>
+    internal static bool NeedsSummonUpdate()
+    {
+        if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath) == null) return false;
+        var imp = AssetImporter.GetAtPath(FbxPath) as ModelImporter;
+        if (imp == null) return false;
+        foreach (string need in new[] { "Summon", "SummonLoop" })
+        {
+            if (ControllerHasState(need)) continue;
+            foreach (var clip in imp.defaultClipAnimations)
+                if (clip.takeName.EndsWith("_" + need)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Golem.controller 裡有沒有某個招式的動畫狀態</summary>
+    internal static bool ControllerHasState(string stateName)
+    {
+        var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (controller == null || controller.layers.Length == 0) return false;
+        foreach (var s in controller.layers[0].stateMachine.states)
+            if (s.state != null && s.state.name == stateName) return true;
+        return false;
     }
 
     // =====================================================================
@@ -66,7 +114,7 @@ public static class GolemInstaller
         imp.globalScale = 1f;
         imp.useFileScale = true;
 
-        // 動畫：Golem_Slam → Slam，Idle / Walk 設成循環
+        // 動畫：Golem_Slam → Slam，Idle / Walk / SummonLoop 設成循環
         var clips = imp.defaultClipAnimations;
         foreach (var clip in clips)
         {
@@ -78,10 +126,11 @@ public static class GolemInstaller
         imp.clipAnimations = clips;
 
         // 材質：換成 URP 材質（FBX 內建的材質不會發光）
-        RemapMaterial(imp, "M_GolemStone", new Color(0.25f, 0.235f, 0.22f), null);
-        RemapMaterial(imp, "M_GolemStoneDark", new Color(0.14f, 0.13f, 0.13f), null);
-        RemapMaterial(imp, "M_GolemEye", new Color(1f, 0.8f, 0.25f), new Color(1f, 0.75f, 0.2f) * 4f);
-        RemapMaterial(imp, "M_GolemCore", new Color(1f, 0.35f, 0.1f), new Color(1f, 0.3f, 0.05f) * 5f);
+        RemapMaterial(imp, "M_GolemStone", new Color(0.8f, 0.76f, 0.66f), null);                                    // 骨頭
+        RemapMaterial(imp, "M_GolemStoneDark", new Color(0.58f, 0.54f, 0.47f), null);                               // 關節、角、爪
+        RemapMaterial(imp, "M_GolemEye", new Color(0.4f, 1f, 0.55f), new Color(0.15f, 1f, 0.35f) * 4f);             // 眼睛（綠光）
+        RemapMaterial(imp, "M_GolemCore", new Color(0.3f, 1f, 0.6f), new Color(0.1f, 1f, 0.4f) * 3f);               // 核心、手臂能量（綠光）
+        RemapMaterial(imp, "M_GolemVoid", new Color(0.02f, 0.02f, 0.025f), null);                                   // 眼窩、裂痕（黑）
 
         imp.SaveAndReimport();
     }
@@ -135,7 +184,7 @@ public static class GolemInstaller
         }
 
         var missing = new List<string>();
-        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Death" })
+        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Summon", "SummonLoop", "Death" })
             if (!clips.Any(c => c.name == need)) missing.Add(need);
         if (missing.Count > 0)
             Debug.LogWarning("[GeminiGrowUp] Golem.fbx 裡少了這些動畫（Boss 放這些招式時會沒有動作）：" + string.Join("、", missing));
@@ -171,7 +220,7 @@ public static class GolemInstaller
                     remove.Add(child.gameObject);
             foreach (var go in remove) Object.DestroyImmediate(go);
 
-            // 放入石像模型
+            // 放入 Boss 模型
             var model = (GameObject)PrefabUtility.InstantiatePrefab(fbx, root.scene);
             model.name = ModelName;
             model.transform.SetParent(pivot, false);

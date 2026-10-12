@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// 小怪的攻擊：和玩家一樣的三段揮劍（共用 MeleeCombat），由 EnemyAI 決定一輪要打幾下。
-/// 只會打到玩家，不會打到其他小怪。
+/// 只會打到玩家，不會打到其他小怪（揮劍時掃到場景裡的木桶、火把會把它們打翻）。
 /// 預設的抬手時間比玩家長，讓玩家看得出來、來得及閃。
 /// </summary>
 public class EnemyCombat : MeleeCombat
@@ -36,6 +36,16 @@ public class EnemyCombat : MeleeCombat
 
     protected override bool TryDamage(Collider c, float damage, Vector3 hitPoint, HashSet<object> alreadyHit)
     {
+        // 場景裡的木桶、火把：小怪不會特地去打，但揮劍時掃到一樣會打翻
+        var prop = c.GetComponentInParent<Knockable>();
+        if (prop != null)
+        {
+            if (prop.IsDead || alreadyHit.Contains(prop)) return false;
+            alreadyHit.Add(prop);
+            prop.Knock(transform.position, damage);
+            return true;
+        }
+
         var player = c.GetComponentInParent<PlayerHealth>();
         if (player == null || player.IsDead || alreadyHit.Contains(player)) return false;
 

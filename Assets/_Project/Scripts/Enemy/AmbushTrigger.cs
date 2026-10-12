@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 陷阱：玩家走進觸發範圍（紅色線框）時，隱藏的小怪會從天上掉到玩家附近。
-/// - 地上會先出現紅圈，標示小怪要落下的位置，紅圈會越來越大
-/// - 第一隻直接瞄準玩家當下的位置，其他的落在玩家周圍
-/// - 落地時會砸傷附近的玩家，之後就跟一般小怪一樣追著打
+/// 陷阱：玩家走進觸發範圍（紅色線框）時，隱藏的小怪會從玩家周圍的地底鑽出來，然後追著打。
+/// - 預設沒有紅圈、鑽出來不會傷到玩家（就是突然被包圍）
+/// - 勾選 Warn With Red Circle：地上先出現紅圈，鑽出來時站在紅圈裡會受傷，第一隻可以直接瞄準玩家腳下
+/// - 小怪沒有模型動畫（膠囊）的話，改成從天上掉下來（有紅圈、會砸傷）
 /// 玩家死亡重生時，陷阱會重新布置（小怪再次隱藏、可以再觸發一次）。
 ///
 /// 使用方式：把要埋伏的小怪放在這個物件底下並設為隱藏（取消勾選），拖進 Ambushers 清單。
@@ -18,8 +18,12 @@ public class AmbushTrigger : MonoBehaviour
     [Tooltip("觸發時從天上掉下來的小怪（平常會隱藏）")]
     public List<EnemyAI> ambushers = new List<EnemyAI>();
 
-    [Header("落下")]
-    [Tooltip("從多高的地方掉下來 (m)")]
+    [Header("出現方式")]
+    [Tooltip("關閉（預設）= 直接從玩家周圍的地底鑽出來，沒有紅圈也不會傷到玩家。開啟 = 先顯示紅圈，鑽出來時站在紅圈裡會受傷")]
+    public bool warnWithRedCircle = false;
+    [Tooltip("（開啟紅圈時）紅圈顯示幾秒後才鑽出來")]
+    public float emergeWarnTime = 1f;
+    [Tooltip("（小怪沒有模型動畫時改成從天而降）從多高的地方掉下來 (m)")]
     public float dropHeight = 14f;
     [Tooltip("落在玩家周圍多遠 (m，隨機範圍)")]
     public Vector2 dropDistance = new Vector2(2f, 4f);
@@ -71,16 +75,23 @@ public class AmbushTrigger : MonoBehaviour
             var a = ambushers[i];
             if (a == null) continue;
 
+            a.gameObject.SetActive(true);
+            var visual = a.GetComponent<EnemyVisual>();
+            bool animated = visual != null && visual.HasAnimator;
+            bool noWarning = animated && !warnWithRedCircle;
+
             Vector3 p = player.position;
-            if (!(i == 0 && firstOnPlayer))
+            // 沒有紅圈預警的時候，不要直接從玩家腳下冒出來
+            if (noWarning || !(i == 0 && firstOnPlayer))
             {
                 float angle = Random.Range(0f, 360f);
                 float dist = Random.Range(dropDistance.x, dropDistance.y);
                 p += Quaternion.Euler(0f, angle, 0f) * Vector3.forward * dist;
             }
 
-            a.gameObject.SetActive(true);
-            a.BeginDrop(ClampInside(p), dropHeight);
+            if (noWarning) a.BeginSpawnAt(ClampInside(p), visual.spawnDuration);
+            else if (animated) a.BeginEmerge(ClampInside(p), emergeWarnTime);
+            else a.BeginDrop(ClampInside(p), dropHeight);
             yield return new WaitForSeconds(dropInterval);
         }
     }
