@@ -32,8 +32,8 @@ public class VikingBoat : MonoBehaviour
     public BoatState currentState = BoatState.Locked;
     [Tooltip("登船互動半徑 (公尺)")]
     public float interactionRadius = 6.5f;
-    [Tooltip("下一關場景名稱（需加入 Build Settings）")]
-    public string nextSceneName = "Floor02";
+    [Tooltip("指定要去的場景名稱；留空 = 依 GameManager 的關卡順序前往下一關")]
+    public string nextSceneName = "";
 
     [Header("玩家站立點與朝向")]
     [Tooltip("玩家站在船上的位置，留空會自動抓船隻中心")]
@@ -497,8 +497,9 @@ public class VikingBoat : MonoBehaviour
             yield return null;
         }
 
-        Debug.Log($"[VikingBoat] 抵達指定航行海域，切換場景至：{nextSceneName}");
-        SceneManager.LoadScene(nextSceneName);
+        Debug.Log($"[VikingBoat] 抵達指定航行海域，前往：{(string.IsNullOrEmpty(nextSceneName) ? "下一關" : nextSceneName)}");
+        if (string.IsNullOrEmpty(nextSceneName)) GameManager.Instance.LoadNextLevel();
+        else GameManager.Instance.LoadLevel(nextSceneName);
     }
 
     
@@ -731,7 +732,6 @@ public class VikingBoat : MonoBehaviour
             existingBoat.forwardSpeed = 9.5f;
             existingBoat.reverseSpeed = 3.5f;
             existingBoat.steeringTurnSpeed = 42.0f;
-            existingBoat.nextSceneName = "Floor02";
             existingBoat.destinationPoint = new Vector3(-85f, 1.3f, 85f);
             existingBoat.destinationRadius = 16f;
 

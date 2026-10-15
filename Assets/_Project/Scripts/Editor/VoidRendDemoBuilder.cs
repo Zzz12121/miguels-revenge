@@ -14,7 +14,7 @@ public static class VoidRendDemoBuilder
     const string ScenePath = "Assets/_Project/Scenes/VFX_VoidRend_Bocchi.unity";
     const string PrefabPath = PrefabDir + "/PF_VoidRendSkill.prefab";
     const string ProfilePath = Root + "/VP_VoidRend.asset";
-    const string BocchiPath = "Assets/bocchi/source/bo pi 1.fbx";
+    const string BocchiPath = "Assets/_Project/ThirdParty/bocchi/source/bo pi 1.fbx";
 
     [MenuItem("VFX/Void Rend/Build Bocchi Demo Scene")]
     public static void Build()

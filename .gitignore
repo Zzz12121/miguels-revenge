@@ -38,3 +38,6 @@ crashlytics-build.properties
 
 # Asset Store tools
 /[Aa]ssets/AssetStoreTools*
+
+# macOS
+.DS_Store

@@ -78,6 +78,13 @@ public class PlayerHealth : MonoBehaviour
         if (!IsDead) Health = maxHealth;
     }
 
+    /// <summary>提高最大生命，並補上同樣的血量（能力植物使用）</summary>
+    public void IncreaseMaxHealth(float amount)
+    {
+        maxHealth += amount;
+        if (!IsDead) Health = Mathf.Min(maxHealth, Health + amount);
+    }
+
     /// <summary>回復指定血量（篝火互動使用）</summary>
     public void Heal(float amount)
     {
