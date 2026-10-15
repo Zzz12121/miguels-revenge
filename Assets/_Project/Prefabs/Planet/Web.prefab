@@ -270,5 +270,5 @@ MonoBehaviour:
   enableRoot: 1
   slowMultiplier: 0.5
   effectDuration: 2.5
-  webStunEffectPrefab: {fileID: 0}
+  webStunEffectPrefab: {fileID: 8545000161541226200, guid: 3cf9a919b327bdb499d6471e1373cfc8, type: 3}
   lineRenderer: {fileID: 8880112441975008558}
