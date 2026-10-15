@@ -2,7 +2,8 @@
 *.cs        text eol=lf
 *.unity     text eol=lf
 *.prefab    text eol=lf
-*.asset     text eol=lf
+# .asset 有些是二進位檔（地形、光照資料），用 text=auto 讓 git 自己判斷；強制 text 會刪掉資料裡的 CR 位元組，檔案就壞了
+*.asset     text=auto eol=lf
 *.mat       text eol=lf
 *.meta      text eol=lf
 *.controller text eol=lf

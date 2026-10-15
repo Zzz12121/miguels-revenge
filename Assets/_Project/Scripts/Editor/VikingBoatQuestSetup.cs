@@ -6,10 +6,10 @@ using UnityEngine.SceneManagement;
 
 public static class VikingBoatQuestSetup
 {
-    const string ScenePath = "Assets/_Project/Viking Village/Scenes/The_Viking_Village.unity";
+    const string ScenePath = "Assets/_Project/Scenes/The_Viking_Village.unity";
     const string NextScenePath = "Assets/_Project/Scenes/Floor02.unity";
     const string PlayerPrefabPath = "Assets/_Project/Prefabs/PlayerRig.prefab";
-    const string BoatPrefabPath = "Assets/_Project/Viking Village/Prefabs/Buildings/pf_build_boat_01.prefab";
+    const string BoatPrefabPath = "Assets/_Project/ThirdParty/Viking Village/Prefabs/Buildings/pf_build_boat_01.prefab";
     const string EnemyPrefabPath = "Assets/_Project/Prefabs/Enemy_Grunt.prefab";
 
     [MenuItem("GeminiGrowUp/設定維京村莊「擊敗敵人搭船過關」機制 (Setup Boat Quest)")]
@@ -80,7 +80,7 @@ public static class VikingBoatQuestSetup
         boatScript.forwardSpeed = 9.0f;
         boatScript.reverseSpeed = 3.5f;
         boatScript.steeringTurnSpeed = 42.0f;
-        boatScript.nextSceneName = "Floor02";
+        boatScript.nextSceneName = ""; // 交給 GameManager 的關卡順序
         boatScript.destinationPoint = new Vector3(-75f, 1.3f, 85f);
         boatScript.destinationRadius = 15f;
 

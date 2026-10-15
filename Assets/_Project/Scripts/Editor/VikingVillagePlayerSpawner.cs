@@ -5,7 +5,7 @@ using UnityEngine.SceneManagement;
 
 public static class VikingVillagePlayerSpawner
 {
-    const string ScenePath = "Assets/_Project/Viking Village/Scenes/The_Viking_Village.unity";
+    const string ScenePath = "Assets/_Project/Scenes/The_Viking_Village.unity";
     const string PlayerPrefabPath = "Assets/_Project/Prefabs/PlayerRig.prefab";
 
     [MenuItem("GeminiGrowUp/在維京村莊加入第三人稱主角 (Add Player to Viking Village)")]

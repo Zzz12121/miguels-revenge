@@ -437,6 +437,8 @@ MonoBehaviour:
   extraEnemiesInBigRoom: 1
   extraEnemiesPerDepth: 0.5
   ambusherChance: 0.3
+  roomClearTitle: COMPLETE
+  roomClearSubtitle: "\u623F\u9593\u5DF2\u6E05\u7A7A"
   kit:
     wall: {fileID: 919132149155446097, guid: 3545fbf1bd4f5074fbc126752ac00645, type: 3}
     wallWindow: {fileID: 919132149155446097, guid: 57abc68757d3dbd44b9fc55b8f3996ca, type: 3}
