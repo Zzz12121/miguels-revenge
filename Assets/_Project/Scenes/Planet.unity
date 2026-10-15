@@ -3143,15 +3143,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5582457813797752160, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 628
+      value: 600
       objectReference: {fileID: 0}
     - target: {fileID: 5582457813797752160, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 2.4
+      value: 100
       objectReference: {fileID: 0}
     - target: {fileID: 5582457813797752160, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 536.9
+      value: 500
       objectReference: {fileID: 0}
     - target: {fileID: 5582457813797752160, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalRotation.w
@@ -3830,38 +3830,13 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: cd528df9644f0c548b06085e53706115, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 677950739}
+    m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: cd528df9644f0c548b06085e53706115, type: 3}
 --- !u!4 &677950737 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: cd528df9644f0c548b06085e53706115, type: 3}
   m_PrefabInstance: {fileID: 677950736}
   m_PrefabAsset: {fileID: 0}
---- !u!1 &677950738 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: cd528df9644f0c548b06085e53706115, type: 3}
-  m_PrefabInstance: {fileID: 677950736}
-  m_PrefabAsset: {fileID: 0}
---- !u!114 &677950739
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 677950738}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 16d9be7b497db4fd696c4e0e628cd303, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UpgradePlant
-  interactKey: 19
-  interactRange: 3
-  speedBonus: 0.15
-  attackBonus: 0.25
-  healthBonus: 30
 --- !u!1 &806908293
 GameObject:
   m_ObjectHideFlags: 0
@@ -3877,7 +3852,6 @@ GameObject:
   - component: {fileID: 806908300}
   - component: {fileID: 806908299}
   - component: {fileID: 806908301}
-  - component: {fileID: 806908302}
   m_Layer: 0
   m_Name: DarkSoul
   m_TagString: Untagged
@@ -3999,15 +3973,18 @@ MonoBehaviour:
   maxX: 700
   minZ: 480
   maxZ: 560
-  clockPrefab: {fileID: 7357477267232481418, guid: 17dbe8be702332d4f942aa8af2109702, type: 3}
   summonInterval: 2
-  summonRange: 10
-  dashCooldown: 2
-  dashSpeed: 20
+  phaseTwoSummonInterval: 2
+  clockPrefab: {fileID: 7357477267232481418, guid: 17dbe8be702332d4f942aa8af2109702, type: 3}
+  summonRange: 20
+  dashSpeed: 30
   dashDuration: 1.2
   dashDamage: 25
-  retreatDistance: 8
+  retreatDistance: 10
   retreatSpeed: 6
+  dashHeightOffset: 0
+  shockwaveForce: 30
+  shieldClockOffset: 2.5
 --- !u!143 &806908300
 CharacterController:
   m_ObjectHideFlags: 0
@@ -4045,30 +4022,26 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 17d5087b1db1abe47bf3f42e4d6348c0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ClockEnemyHealth
+  enemyName: "\u6642\u9593\u4EA4\u6613\u8005"
   maxHealth: 800
   hitKnockback: 3
+  invincibleTime: 1
   flashTime: 0.08
   flashColor: {r: 1, g: 1, b: 1, a: 1}
-  showHealthBar: 1
-  barHeightOffset: 1.8
-  barShowTime: 4
---- !u!114 &806908302
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 806908293}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d99d7ff2e2f2f4ad3b18f913345437e5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SpawnOnDeath
-  prefab: {fileID: 8848914383714668889, guid: 06cd04fe9c734454291e6fcefede39a5, type: 3}
-  delay: 2.5
-  growTime: 1.2
-  facePlayer: 1
-  announceText: "\u50B3\u9001\u9580\u51FA\u73FE\u4E86\uFF01"
+  portalPrefab: {fileID: 8848914383714668889, guid: 06cd04fe9c734454291e6fcefede39a5, type: 3}
+  portalSpawnPosition: {x: 680, y: 1, z: 570}
+  dialogueList:
+  - "\u300C\u6642\u9593\u6B63\u6D41\u901D...\u300D"
+  - "\u300C\u4F60\u5011\u7684\u6399\u624E\uFF0C\u6BEB\u7121\u610F\u7FA9\u3002\u300D"
+  - "\u300C\u611F\u53D7\u6642\u9593\u7684\u5BE9\u5224\u5427\uFF01\u300D"
+  - "\u300C\u5728\u7D55\u5C0D\u7684\u6642\u9418\u9818\u57DF\u4E2D\u81E3\u670D\u5427\uFF01\u300D"
+  - "\u300C\u53EF\u5225\u9072\u5230\u4E86\uFF01\u300D"
+  phaseTwoDialogueList:
+  - "\u300C\u6642\u9593\u958B\u59CB\u52A0\u901F\u4E86\uFF01\u300D"
+  - "\u300C\u751F\u547D\u6B63\u8FC5\u901F\u5012\u6578\uFF01\u300D"
+  - "\u300C\u611F\u53D7\u6642\u9593\u88AB\u525D\u596A\u7684\u7D55\u671B\u5427\uFF01\u300D"
+  dialogueInterval: 6
+  dialogueShowDuration: 3
 --- !u!1 &821406827
 GameObject:
   m_ObjectHideFlags: 0

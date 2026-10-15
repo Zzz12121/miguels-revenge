@@ -31,7 +31,7 @@ public class GameManager : MonoBehaviour
     [Tooltip("關卡順序，傳送門的「下一關」就是照這個順序")]
     public Level[] levels =
     {
-        new Level { sceneName = "Planet",             title = "第一關　星球" },
+        new Level { sceneName = "Planet",             title = "第一關　沙漠" },
         new Level { sceneName = "The_Viking_Village", title = "第二關　維京村莊" },
         new Level { sceneName = "Floor02",            title = "第三關　地下城" },
     };

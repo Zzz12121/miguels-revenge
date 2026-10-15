@@ -2,41 +2,43 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 時鐘敵人控制器：限定在指定區域（X: 600~700, Z: 480~560）內才會開始召喚與攻擊
+/// 時鐘敵人控制器：鎖定平地高度、衝刺面向玩家、二階段四方向保護時鐘與震飛
 /// </summary>
 [RequireComponent(typeof(CharacterController), typeof(ClockEnemyHealth))]
 public class ClockEnemyController : MonoBehaviour
 {
     [Header("啟動區域設定")]
-    [Tooltip("區域 X 軸最小值")]
     public float minX = 600f;
-    [Tooltip("區域 X 軸最大值")]
     public float maxX = 700f;
-    [Tooltip("區域 Z 軸最小值")]
     public float minZ = 480f;
-    [Tooltip("區域 Z 軸最大值")]
     public float maxZ = 560f;
 
     [Header("召喚時鐘設定")]
-    public GameObject clockPrefab;
     public float summonInterval = 4.0f;
+    public float phaseTwoSummonInterval = 2.0f;
+    public GameObject clockPrefab;
     public float summonRange = 6.0f;
 
     [Header("衝刺與後撤設定")]
-    public float dashCooldown = 6.0f;
     public float dashSpeed = 16f;
     public float dashDuration = 0.6f;
     public float dashDamage = 25f;
-    [Tooltip("衝刺結束後，要後撤退開的目標安全距離 (m)")]
     public float retreatDistance = 5.0f;
-    [Tooltip("後撤移動速度")]
     public float retreatSpeed = 6.0f;
+    [Tooltip("衝刺時的額外高度補正（若地形會亂飄可設為 0 或負值貼地）")]
+    public float dashHeightOffset = 0f;
+
+    [Header("二階段設定 (血量低於 40%)")]
+    public float shockwaveForce = 8.0f;
+    [Tooltip("二階段四周保護時鐘距離敵人的距離 (m)")]
+    public float shieldClockOffset = 2.5f;
 
     private Transform player;
     private CharacterController cc;
     private ClockEnemyHealth enemyHealth;
     private bool isActing = false;
-    private bool hasActivated = false; // 紀錄是否已經進入過區域並啟動
+    private bool hasActivated = false;
+    private bool phaseTwoTriggered = false; // 確保二階段四方時鐘只在進入時生成一次
 
     void Start()
     {
@@ -44,26 +46,35 @@ public class ClockEnemyController : MonoBehaviour
         enemyHealth = GetComponent<ClockEnemyHealth>();
         var p = GameObject.FindWithTag("Player");
         if (p != null) player = p.transform;
+
+        enemyHealth.OnEnterPhaseTwo += OnEnterPhaseTwoHandler;
+    }
+
+    void OnDestroy()
+    {
+        if (enemyHealth != null)
+        {
+            enemyHealth.OnEnterPhaseTwo -= OnEnterPhaseTwoHandler;
+        }
     }
 
     void Update()
     {
         if (enemyHealth.IsDead || player == null) return;
 
-        // 如果還沒啟動過，檢查玩家是否進入指定區域
         if (!hasActivated)
         {
             if (IsPlayerInActivationArea())
             {
                 hasActivated = true;
-                Debug.Log("玩家已進入指定區域，時鐘敵人啟動攻擊！");
+                enemyHealth.ShowBar = true;
+                Debug.Log("玩家已進入指定區域，時鐘 Boss 戰開始！");
                 StartCoroutine(SummonClockRoutine());
                 StartCoroutine(CombatLoopRoutine());
             }
         }
     }
 
-    // 檢查玩家座標是否在 X: 600~700, Z: 480~560 範圍內
     bool IsPlayerInActivationArea()
     {
         Vector3 pPos = player.position;
@@ -74,7 +85,8 @@ public class ClockEnemyController : MonoBehaviour
     {
         while (true)
         {
-            yield return new WaitForSeconds(summonInterval);
+            float currentInterval = enemyHealth.IsPhaseTwo ? phaseTwoSummonInterval : summonInterval;
+            yield return new WaitForSeconds(currentInterval);
 
             if (!enemyHealth.IsDead && clockPrefab != null)
             {
@@ -85,11 +97,55 @@ public class ClockEnemyController : MonoBehaviour
         }
     }
 
+    // 當進入二階段時觸發：震飛玩家 + 在自身四周生成四方向保護時鐘
+    void OnEnterPhaseTwoHandler()
+    {
+        if (phaseTwoTriggered || player == null) return;
+        phaseTwoTriggered = true;
+
+        // 1. 震飛玩家
+        var playerController = player.GetComponent<ThirdPersonController>();
+        if (playerController != null)
+        {
+            Vector3 pushDir = (player.position - transform.position).normalized;
+            pushDir.y = 0.3f;
+            playerController.AddImpulse(pushDir * shockwaveForce + Vector3.up * 4f);
+        }
+
+        // 2. 在自身四周（前後左右四個方向）生成保護時鐘
+        SpawnShieldClocks();
+        Debug.Log("【二階段爆發】Boss 釋放震波，並在身邊展開四方向保護時鐘！");
+    }
+
+    void SpawnShieldClocks()
+    {
+        if (clockPrefab == null) return;
+
+        Vector3 center = transform.position;
+        float d = shieldClockOffset;
+
+        // 四個方向：前、後、左、右
+        Vector3[] directions = new Vector3[]
+        {
+            transform.forward * d,
+            -transform.forward * d,
+            -transform.right * d,
+            transform.right * d
+        };
+
+        foreach (var dir in directions)
+        {
+            Vector3 spawnPos = center + dir;
+            spawnPos.y = center.y; // 保持與敵人同高度
+            Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+        }
+    }
+
     IEnumerator CombatLoopRoutine()
     {
         while (true)
         {
-            yield return new WaitForSeconds(dashCooldown);
+            yield return new WaitForSeconds(4.0f); // 衝刺冷卻
 
             if (!enemyHealth.IsDead && player != null && !isActing)
             {
@@ -98,28 +154,41 @@ public class ClockEnemyController : MonoBehaviour
         }
     }
 
-    // 執行：衝刺 -> 撞擊 -> 自動後退遠離玩家
     IEnumerator PerformDashAndRetreat()
     {
         isActing = true;
 
-        // 1. 轉向玩家並衝刺
-        Vector3 dashDir = (player.position - transform.position).normalized;
-        dashDir.y = 0f;
-        transform.rotation = Quaternion.LookRotation(dashDir);
+        // 1. 記錄剛開始衝刺時的方向（只鎖定一次，之後衝刺途中不會再跟著玩家轉向）
+        Vector3 dashDir = (player.position - transform.position);
+        dashDir.y = dashHeightOffset;
+        dashDir = dashDir.normalized;
+
+        if (dashDir.sqrMagnitude > 0.001f)
+        {
+            transform.rotation = Quaternion.LookRotation(new Vector3(dashDir.x, 0f, dashDir.z));
+        }
 
         float timer = 0f;
         while (timer < dashDuration)
         {
-            if (enemyHealth.IsDead) yield break;
+            if (enemyHealth.IsDead || player == null) yield break;
             timer += Time.deltaTime;
+
+            // 2. 衝刺過程中，直接朝著一開始鎖定的方向直線前進，不再每一幀更新旋轉
             cc.Move(dashDir * dashSpeed * Time.deltaTime);
             yield return null;
         }
 
-        // 2. 衝刺結束後，計算「遠離玩家」的方向並自動後退
-        Vector3 retreatDir = (transform.position - player.position).normalized;
+        // 3. 如果是二階段，衝刺後會在玩家與敵人之間放一排時鐘
+        if (enemyHealth.IsPhaseTwo && clockPrefab != null)
+        {
+            SpawnClocksBetweenEnemyAndPlayer();
+        }
+
+        // 4. 自動後退遠離玩家
+        Vector3 retreatDir = (transform.position - player.position);
         retreatDir.y = 0f;
+        retreatDir = retreatDir.normalized;
         if (retreatDir.sqrMagnitude < 0.0001f) retreatDir = -transform.forward;
 
         transform.rotation = Quaternion.LookRotation(-retreatDir);
@@ -137,6 +206,24 @@ public class ClockEnemyController : MonoBehaviour
         }
 
         isActing = false;
+    }
+
+    void SpawnClocksBetweenEnemyAndPlayer()
+    {
+        if (clockPrefab == null || player == null) return;
+
+        Vector3 start = transform.position;
+        Vector3 end = player.position;
+        Vector3 direction = (end - start).normalized;
+        float distance = Vector3.Distance(start, end);
+
+        int numClocks = Mathf.FloorToInt(distance / 2.0f); // 每隔 2 公尺生成一個時鐘
+        for (int i = 1; i <= numClocks; i++)
+        {
+            Vector3 spawnPos = start + direction * (i * 2.0f);
+            spawnPos.y = start.y; // 保持與敵人同高度
+            Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+        }
     }
 
     void OnControllerColliderHit(ControllerColliderHit hit)
