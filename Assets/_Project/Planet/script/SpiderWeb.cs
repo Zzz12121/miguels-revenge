@@ -20,6 +20,10 @@ public class SpiderWeb : MonoBehaviour
     [Tooltip("緩速或定身的持續時間 (秒)")]
     public float effectDuration = 2.5f;
 
+    [Header("特效設定")]
+    [Tooltip("當玩家被蜘蛛絲纏住/定身時，生成在玩家身上的粒子特效 Prefab")]
+    public GameObject webStunEffectPrefab;
+
     [Header("絲線視覺")]
     public LineRenderer lineRenderer;
     private Vector3 originPoint;
@@ -76,61 +80,73 @@ public class SpiderWeb : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // 如果撞到的是蜘蛛自己或其它小怪，直接忽略，不作任何處理
+        // 如果撞到的是蜘蛛自己或其它小怪，直接忽略，不作任何處理[cite: 5]
         if (other.GetComponentInParent<EnemyAI>() != null || other.CompareTag("Enemy"))
             return;
 
-        // 擊中玩家處理
+        // 擊中玩家處理[cite: 5]
         var playerHealth = other.GetComponentInParent<PlayerHealth>();
         if (playerHealth != null && !playerHealth.IsDead)
         {
             Vector3 hitDir = (other.transform.position - transform.position).normalized;
             hitDir.y = 0.2f;
 
-            // 1. 對玩家造成傷害與少量擊退
+            // 1. 對玩家造成傷害與少量擊退[cite: 5]
             playerHealth.TakeDamage(damage, hitDir * knockback);
 
-            // 2. 套用緩速或定身效果
+            // 2. 套用緩速或定身效果[cite: 5]
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
-                StartCoroutine(ApplyWebEffectRoutine(playerController));
+                StartCoroutine(ApplyWebEffectRoutine(playerController, other.transform));
             }
 
-            Destroy(gameObject); // 擊中玩家後銷毀網子本體
+            Destroy(gameObject); // 擊中玩家後銷毀網子本體[cite: 5]
         }
         else if (!other.isTrigger)
         {
-            // 擊中其他非 Trigger 物件（如牆壁、地板）時銷毀
+            // 擊中其他非 Trigger 物件（如牆壁、地板）時銷毀[cite: 5]
             Destroy(gameObject);
         }
     }
 
-
-    
-    IEnumerator ApplyWebEffectRoutine(ThirdPersonController controller)
+    IEnumerator ApplyWebEffectRoutine(ThirdPersonController controller, Transform playerTransform)
     {
-        // 記錄原本的速度倍率
+        // 記錄原本的速度倍率[cite: 5]
         float originalMultiplier = controller.speedMultiplier;
+
+        // 生成在玩家身上的粒子特效物件
+        GameObject activeEffect = null;
+        if (webStunEffectPrefab != null)
+        {
+            // 以玩家為父物件，讓特效跟著玩家移動
+            activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f, Quaternion.identity, playerTransform);
+        }
 
         if (enableRoot)
         {
-            // 定身：將速度倍率歸零
+            // 定身：將速度倍率歸零[cite: 5]
             controller.speedMultiplier = 0f;
         }
         else
         {
-            // 緩速：將速度倍率乘上緩速比例
+            // 緩速：將速度倍率乘上緩速比例[cite: 5]
             controller.speedMultiplier *= slowMultiplier;
         }
 
-        // 等待持續時間結束
+        // 等待持續時間結束[cite: 5]
         yield return new WaitForSeconds(effectDuration);
 
-        // 恢復原本的速度倍率
+        // 恢復原本的速度倍率[cite: 5]
         if (controller != null)
         {
             controller.speedMultiplier = originalMultiplier;
+        }
+
+        // 銷毀身上的定身特效
+        if (activeEffect != null)
+        {
+            Destroy(activeEffect);
         }
     }
 }
