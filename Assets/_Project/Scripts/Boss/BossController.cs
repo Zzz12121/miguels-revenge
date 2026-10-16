@@ -577,6 +577,11 @@ public class BossController : MonoBehaviour
         if (showVictoryBanner)
             VictoryBanner.Show(victoryTitle, victorySubtitle, victoryColor, victoryDelay,
                                GameAudio.Pick(victorySound, "SFX/victory_stinger"), victoryVolume);
+
+        // 最後一關的 Boss：等大標題播完再顯示通關畫面（重新開始 / 回主選單）
+        var gm = GameManager.Instance;
+        if (gm != null && gm.IsFinalLevel)
+            gm.TriggerGameWin(showVictoryBanner ? victoryDelay + 6.5f : 2f);
     }
 
     // =====================================================================
