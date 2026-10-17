@@ -3,6 +3,8 @@ using UnityEngine;
 
 /// <summary>
 /// 玩家血量：受傷、無敵時間、掉出場地死亡、自動重生，並用 OnGUI 畫一個簡單血條。
+/// 每次倒下會扣 GameManager 的一條命，命用完就不再重生，改由 GameManager 顯示 Game Over。
+/// 在維京村莊（有水的關卡）會自動加上 PlayerOxygen（氧氣條）。
 /// </summary>
 [RequireComponent(typeof(ThirdPersonController))]
 public class PlayerHealth : MonoBehaviour
@@ -46,6 +48,10 @@ public class PlayerHealth : MonoBehaviour
             gameObject.AddComponent<PlayerCombat>();
             Debug.Log("[Player] 沒有 PlayerCombat，已自動加上。想調整攻擊數值請在 Player 上手動 Add Component → PlayerCombat。");
         }
+
+        // 有水的關卡：潛到水裡要消耗氧氣
+        if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
+            gameObject.AddComponent<PlayerOxygen>();
     }
 
     void Update()
@@ -55,7 +61,9 @@ public class PlayerHealth : MonoBehaviour
 
     /// <summary>造成傷害；回傳 true 代表這次真的有打到（不在無敵時間內）</summary>
     /// <param name="ignoreInvincibility">true = 持續傷害（例如光束），不受也不觸發受傷後的無敵時間</param>
-    public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false)
+    /// <param name="deathReason">這一下把玩家打死時，死亡畫面顯示的原因</param>
+    public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false,
+                           string deathReason = "被打倒了")
     {
         if (IsDead) return false;
         if (!ignoreInvincibility)
@@ -68,7 +76,7 @@ public class PlayerHealth : MonoBehaviour
         controller.AddImpulse(knockback);
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
-        if (Health <= 0f) Die("被打倒了");
+        if (Health <= 0f) Die(deathReason);
         return true;
     }
 
@@ -76,6 +84,14 @@ public class PlayerHealth : MonoBehaviour
     public void HealFull()
     {
         if (!IsDead) Health = maxHealth;
+    }
+
+    /// <summary>直接設定最大生命和目前血量（換關卡 / 讀檔時由 GameManager 套用）</summary>
+    public void SetHealth(float max, float current)
+    {
+        maxHealth = Mathf.Max(1f, max);
+        Health = Mathf.Clamp(current, 1f, maxHealth);
+        IsDead = false;
     }
 
     /// <summary>提高最大生命，並補上同樣的血量（能力植物使用）</summary>
@@ -100,6 +116,10 @@ public class PlayerHealth : MonoBehaviour
         deathReason = reason;
         controller.inputEnabled = false;
         OnDied?.Invoke();
+
+        // 扣一條命；命用完就不重生，GameManager 會在 respawnDelay 秒後顯示 Game Over
+        var gm = GameManager.Instance;
+        if (gm != null && !gm.OnPlayerDied(reason, respawnDelay)) return;
         StartCoroutine(RespawnRoutine());
     }
 
@@ -132,6 +152,14 @@ public class PlayerHealth : MonoBehaviour
         GUI.color = Color.white;
         GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
 
+        var gm = GameManager.Instance;
+        if (gm != null)
+        {
+            GUI.color = new Color(1f, 0.55f, 0.55f);
+            GUI.Label(new Rect(x + w + 12, y, 200, h + 4), $"生命 × {gm.Lives}");
+            GUI.color = Color.white;
+        }
+
         // 受傷時畫面閃紅
         float flash = 1f - Mathf.Clamp01((Time.time - lastFlashTime) / 0.3f);
         if (flash > 0f && !IsDead)
@@ -140,7 +168,7 @@ public class PlayerHealth : MonoBehaviour
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
         }
 
-        if (IsDead)
+        if (IsDead && (gm == null || !gm.IsOverlayOpen))
         {
             GUI.color = new Color(0f, 0f, 0f, 0.5f);
             GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
@@ -150,6 +178,12 @@ public class PlayerHealth : MonoBehaviour
                 fontSize = 48, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold
             };
             GUI.Label(new Rect(0, 0, Screen.width, Screen.height), $"你死了（{deathReason}）", style);
+            if (gm != null && gm.Lives > 0)
+            {
+                style.fontSize = 24;
+                style.fontStyle = FontStyle.Normal;
+                GUI.Label(new Rect(0, 70, Screen.width, Screen.height), $"剩餘生命 {gm.Lives}，即將在檢查點復活…", style);
+            }
         }
         GUI.color = Color.white;
     }

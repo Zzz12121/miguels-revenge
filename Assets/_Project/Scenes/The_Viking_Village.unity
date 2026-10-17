@@ -50160,7 +50160,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VikingEnemyWaveManager
   targetBoat: {fileID: 365149639}
-  enemyPrefab: {fileID: 4330986778754430036, guid: 9a5d3b9420596774d84fc8550ffca997, type: 3}
+  enemyPrefab: {fileID: 4330986778754430036, guid: ee4a63f547b484b6cb5be74b7657c19f, type: 3}
   spawnPoints:
   - {x: 12, y: 5, z: 9}
   - {x: -30, y: 9, z: 13}

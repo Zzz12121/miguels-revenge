@@ -18,6 +18,12 @@ public class PlayerInventory : MonoBehaviour
         return resources.ContainsKey(name) ? resources[name] : 0;
     }
 
+    /// <summary>所有資源的複本（換關卡 / 存檔用）</summary>
+    public Dictionary<string, int> GetAll() => new Dictionary<string, int>(resources);
+
+    /// <summary>整個背包換成指定內容（換關卡 / 讀檔用）</summary>
+    public void SetAll(Dictionary<string, int> all) => resources = new Dictionary<string, int>(all);
+
     public bool ConsumeResource(string name, int amount)
     {
         if (GetResource(name) >= amount)

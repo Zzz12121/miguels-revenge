@@ -8,7 +8,7 @@ using UnityEngine;
 /// 選單：GeminiGrowUp > 設定關卡流程（傳送門、能力植物）
 ///
 /// 1. 建立傳送門外觀用的材質與 Assets/_Project/Prefabs/Portal.prefab（已經有就沿用）
-/// 2. Build Settings 設成三個關卡：星球 → 維京村莊 → 地下城（順序要和 GameManager.levels 一樣）
+/// 2. Build Settings 設成：主選單 → 星球 → 維京村莊 → 地下城（關卡順序要和 GameManager.levels 一樣）
 /// 3. 星球：
 ///      - 時鐘敵人（ClockEnemyHealth）掛上 SpawnOnDeath，死掉後在原地長出傳送門 → 維京村莊
 ///      - 蜘蛛（SpiderWebAttack）附近 PlantSearchRadius 公尺內的植物（Succulent 開頭、不是 Herb 採集點）
@@ -24,6 +24,8 @@ public static class PortalInstaller
     const string SurfaceMatPath = Root + "/Materials/M_PortalSurface.mat";
     const float PlantSearchRadius = 35f;
 
+    const string MainMenuScene = Root + "/Scenes/MainMenu.unity";
+
     static readonly string[] LevelScenes =
     {
         Root + "/Scenes/Planet.unity",
@@ -38,7 +40,7 @@ public static class PortalInstaller
         {
             if (!EditorUtility.DisplayDialog("設定關卡流程",
                     "會做這些事：\n" +
-                    "・Build Settings 改成：星球 → 維京村莊 → 地下城\n" +
+                    "・Build Settings 改成：主選單 → 星球 → 維京村莊 → 地下城\n" +
                     "・星球：時鐘敵人死後生成傳送門；蜘蛛附近的植物改成三選一能力植物\n" +
                     "・刪掉場景裡原本擺好的傳送門\n" +
                     "・維京村莊的船改成依關卡順序前往下一關\n\n" +
@@ -49,7 +51,8 @@ public static class PortalInstaller
 
         var prefab = EnsurePrefab();
 
-        EditorBuildSettings.scenes = LevelScenes.Select(p => new EditorBuildSettingsScene(p, true)).ToArray();
+        EditorBuildSettings.scenes = new[] { MainMenuScene }.Concat(LevelScenes)
+            .Select(p => new EditorBuildSettingsScene(p, true)).ToArray();
 
         SetupScene(LevelScenes[0], () =>
         {
