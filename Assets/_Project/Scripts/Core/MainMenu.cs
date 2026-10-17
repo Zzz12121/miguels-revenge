@@ -7,6 +7,7 @@ using UnityEngine.UI;
 /// 主選單（MainMenu 場景）：
 ///   - 遊戲標題
 ///   - 用 GUI Text 說明遊戲規則和操作
+///   - 有存檔時多一個「繼續遊戲」按鈕（GameManager.LoadSavedGame），Enter 預設繼續
 ///   - 「開始遊戲」按鈕進入遊玩模式（GameManager.StartNewGame）、「結束遊戲」按鈕關閉遊戲
 ///
 /// 畫面全部用程式碼產生，場景裡只要有一個掛著這個元件的物件就好；
@@ -39,12 +40,14 @@ public class MainMenu : MonoBehaviour
         "滑鼠左鍵　　近戰連擊\n" +
         "滑鼠右鍵　　遠程斬擊\n" +
         "E　　　　　互動 / 傳送門 / 上船\n" +
-        "Esc　　　　暫停選單";
+        "M　　　　　顯示 / 隱藏小地圖\n" +
+        "Esc　　　　暫停選單（存檔 / 讀檔）";
 
     public Color backgroundColor = new Color(0.05f, 0.06f, 0.1f);
 
     Canvas canvas;
     Button startButton;
+    Button continueButton;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void Bootstrap()
@@ -104,25 +107,54 @@ public class MainMenu : MonoBehaviour
         UIKit.Label("Controls", root, controlsText, 28, Color.white, new Vector2(520f, 20f), new Vector2(440f, 520f),
                     TextAnchor.UpperLeft).lineSpacing = 1.15f;
 
-        startButton = UIKit.Button("StartButton", root, "開始遊戲", new Vector2(-180f, -420f), new Vector2(320f, 90f),
-                                   OnStartClicked, 40);
-        UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(180f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
-
-        UIKit.Label("Hint", root, "Enter 也可以開始遊戲", 22, new Color(1f, 1f, 1f, 0.5f), new Vector2(0f, -500f),
-                    new Vector2(800f, 40f));
+        string save = GameManager.Instance != null ? GameManager.Instance.DescribeSave() : null;
+        if (save != null)
+        {
+            continueButton = UIKit.Button("ContinueButton", root, "繼續遊戲", new Vector2(-360f, -420f),
+                                          new Vector2(320f, 90f), OnContinueClicked, 40);
+            startButton = UIKit.Button("StartButton", root, "開始新遊戲", new Vector2(0f, -420f), new Vector2(320f, 90f),
+                                       OnStartClicked, 40);
+            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(360f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
+            UIKit.Label("Hint", root, $"存檔：{save}　　Enter 繼續遊戲", 22, new Color(1f, 1f, 1f, 0.55f),
+                        new Vector2(0f, -500f), new Vector2(1200f, 40f));
+        }
+        else
+        {
+            startButton = UIKit.Button("StartButton", root, "開始遊戲", new Vector2(-180f, -420f), new Vector2(320f, 90f),
+                                       OnStartClicked, 40);
+            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(180f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
+            UIKit.Label("Hint", root, "Enter 也可以開始遊戲", 22, new Color(1f, 1f, 1f, 0.5f), new Vector2(0f, -500f),
+                        new Vector2(800f, 40f));
+        }
     }
 
     void Update()
     {
         var kb = Keyboard.current;
         if (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
-            OnStartClicked();
+        {
+            if (continueButton != null) OnContinueClicked();
+            else OnStartClicked();
+        }
+    }
+
+    void OnContinueClicked()
+    {
+        var gm = GameManager.Instance;
+        if (gm == null || gm.IsLoading) return;
+        GameAudio.Play("SFX/RPG/metalClick", Vector3.zero, 1f, 1f, 0f, 0f);
+        if (gm.LoadSavedGame())
+        {
+            if (continueButton != null) continueButton.interactable = false;
+            if (startButton != null) startButton.interactable = false;
+        }
     }
 
     void OnStartClicked()
     {
         if (GameManager.Instance == null || GameManager.Instance.IsLoading) return;
         if (startButton != null) startButton.interactable = false;
+        if (continueButton != null) continueButton.interactable = false;
         GameAudio.Play("SFX/RPG/metalClick", Vector3.zero, 1f, 1f, 0f, 0f);
         GameManager.Instance.StartNewGame();
     }

@@ -86,6 +86,14 @@ public class PlayerHealth : MonoBehaviour
         if (!IsDead) Health = maxHealth;
     }
 
+    /// <summary>直接設定最大生命和目前血量（換關卡 / 讀檔時由 GameManager 套用）</summary>
+    public void SetHealth(float max, float current)
+    {
+        maxHealth = Mathf.Max(1f, max);
+        Health = Mathf.Clamp(current, 1f, maxHealth);
+        IsDead = false;
+    }
+
     /// <summary>提高最大生命，並補上同樣的血量（能力植物使用）</summary>
     public void IncreaseMaxHealth(float amount)
     {
