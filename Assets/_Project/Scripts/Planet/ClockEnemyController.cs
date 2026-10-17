@@ -179,6 +179,19 @@ public class ClockEnemyController : MonoBehaviour
             yield return null;
         }
 
+        // === 新增：檢查衝刺結束時的 Y 高度是否大於 5 ===
+        // === 新增：檢查衝刺結束時的 Y 高度是否大於 5 ===
+        if (transform.position.y > 4f)
+        {
+            Debug.Log("【Boss 落地震擊】衝刺高度過高，開始回歸地面！");
+            
+            // 讓 Boss 以協程方式帶重力往下掉，直到碰到地面
+            yield return StartCoroutine(FallToGroundRoutine());
+
+            // 落地瞬間震開周遭玩家
+            TriggerLandingShockwave();
+        }
+
         // 3. 如果是二階段，衝刺後會在玩家與敵人之間放一排時鐘
         if (enemyHealth.IsPhaseTwo && clockPrefab != null)
         {
@@ -208,6 +221,51 @@ public class ClockEnemyController : MonoBehaviour
         isActing = false;
     }
 
+    // 讓 Boss 帶重力下落直到觸地
+    IEnumerator FallToGroundRoutine()
+    {
+        float fallSpeed = 0f;
+        float gravity = 25f;
+
+        // 持續往下掉，直到 CharacterController 偵測到落地（isGrounded）或超過最大下落時間
+        float timeout = 2.0f;
+        float elapsed = 0f;
+
+        while (!cc.isGrounded && elapsed < timeout)
+        {
+            if (enemyHealth.IsDead) yield break;
+            
+            elapsed += Time.deltaTime;
+            fallSpeed += gravity * Time.deltaTime;
+
+            // 往下移動
+            Vector3 fallMove = new Vector3(0f, -fallSpeed * Time.deltaTime, 0f);
+            cc.Move(fallMove);
+
+            yield return null;
+        }
+    }
+
+    // 落地震開周遭玩家的輔助方法
+    void TriggerLandingShockwave()
+    {
+        if (player == null) return;
+
+        // 判斷玩家是否在落地震波的有效半徑內（例如 5 公尺內）
+        float shockwaveRadius = 5.0f;
+        float distToPlayer = Vector3.Distance(transform.position, player.position);
+
+        if (distToPlayer <= shockwaveRadius)
+        {
+            var playerController = player.GetComponent<ThirdPersonController>();
+            if (playerController != null)
+            {
+                Vector3 pushDir = (player.position - transform.position).normalized;
+                pushDir.y = 0.4f; // 稍微帶點向上斜角
+                playerController.AddImpulse(pushDir * shockwaveForce + Vector3.up * 3f);
+            }
+        }
+    }
     void SpawnClocksBetweenEnemyAndPlayer()
     {
         if (clockPrefab == null || player == null) return;

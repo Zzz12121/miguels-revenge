@@ -4,6 +4,11 @@ using TMPro;
 
 public class ShopUIManager : MonoBehaviour
 {
+    [Header("玩家參考 (可直接從 Inspector 拖入)")]
+    public PlayerInventory playerInventory;
+    public ThirdPersonController playerController;
+    public MeleeCombat playerCombat;
+
     [Header("資源顯示 (左上方)")]
     public TextMeshProUGUI resourceText; // 請將畫面上的 ResourceText 拖進這裡
     public string resourceName = "Herb";
@@ -15,10 +20,6 @@ public class ShopUIManager : MonoBehaviour
     [Header("商人立繪與對話")]
     public Image shopperPortraitImage;
     public TextMeshProUGUI dialogueText;
-
-    private PlayerInventory playerInventory;
-    private ThirdPersonController playerController;
-    private MeleeCombat playerCombat;
 
     void OnEnable()
     {
@@ -35,21 +36,21 @@ public class ShopUIManager : MonoBehaviour
 
     void InitPlayerReferences()
     {
-        if (playerInventory != null) return; // 已經抓過了就不用重複抓
+        // 如果已經在 Inspector 裡面拉好了，就直接跳過
+        if (playerInventory != null && playerController != null && playerCombat != null) return;
 
-        var player = GameObject.FindWithTag("Player");
-        if (player != null)
+        // 備用防呆：如果忘記在 Inspector 拖曳，改用精準的 FindFirstObjectByType 搜尋
+        var inventoryComp = FindAnyObjectByType<PlayerInventory>();
+        if (inventoryComp != null)
         {
-            playerInventory = player.GetComponent<PlayerInventory>();
-            playerController = player.GetComponent<ThirdPersonController>();
-            playerCombat = player.GetComponent<MeleeCombat>();
-
-            if (playerInventory == null)
-                Debug.LogError("[ShopUIManager] 找到玩家物件，但玩家身上缺少 PlayerInventory 腳本！");
+            playerInventory = inventoryComp;
+            var rootObj = inventoryComp.gameObject;
+            if (playerController == null) playerController = rootObj.GetComponentInChildren<ThirdPersonController>();
+            if (playerCombat == null) playerCombat = rootObj.GetComponentInChildren<MeleeCombat>();
         }
         else
         {
-            Debug.LogError("[ShopUIManager] 找不到 Tag 為 'Player' 的玩家物件！");
+            Debug.LogError("[ShopUIManager] 場景中找不到任何掛載 PlayerInventory 腳本的物件！");
         }
     }
 
