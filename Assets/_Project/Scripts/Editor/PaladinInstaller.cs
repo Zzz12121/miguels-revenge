@@ -12,11 +12,13 @@ using UnityEngine;
 /// 把 Mixamo 的 Lite Sword and Shield Pack（Paladin 模型 + 劍盾動畫）裝成維京村莊的敵人：
 ///   1. 設定匯入：模型和動畫都用 Humanoid；待機 / 跑步 / 防禦待機設成循環，
 ///      根位移不套用在角色上（移動由 AI 控制，動畫只負責姿勢）
-///   2. 建立 Animator Controller（Assets/_Project/Models/Paladin/Paladin_Enemy.controller），
+///   2. 建立 URP 材質 M_Paladin（貼圖原本包在 FBX 裡，Unity 沒有拆出來，所以模型會是白色的；
+///      貼圖已經拆到 Textures 資料夾，這裡把它們接到材質上）
+///   3. 建立 Animator Controller（Assets/_Project/Models/Paladin/Paladin_Enemy.controller），
 ///      狀態名稱和骷髏一樣（Idle、Walk、Run、Slash01…），EnemyVisual 不用改就能用
-///   3. 複製 Enemy_Grunt 成 Enemy_Paladin.prefab：拿掉骷髏、放進聖騎士（約 PaladinHeight 公尺高）
+///   4. 複製 Enemy_Grunt 成 Enemy_Paladin.prefab：拿掉骷髏、放進聖騎士（約 PaladinHeight 公尺高）
 ///      小怪的數值和 AI 跟 Enemy_Grunt 一樣；地下城的骷髏小怪不受影響
-///   4. 維京村莊的 VikingEnemyWaveManager 改成生成 Enemy_Paladin
+///   5. 維京村莊的 VikingEnemyWaveManager 改成生成 Enemy_Paladin
 ///
 /// 可以重複執行。
 /// </summary>
@@ -26,6 +28,8 @@ public static class PaladinInstaller
     const string ModelFile = "Paladin WProp J Nordstrom";
     const string OutDir = "Assets/_Project/Models/Paladin";
     const string ControllerPath = OutDir + "/Paladin_Enemy.controller";
+    const string MaterialPath = OutDir + "/M_Paladin.mat";
+    const string TextureDir = PackDir + "/Textures";
     const string GruntPath = "Assets/_Project/Prefabs/Enemy_Grunt.prefab";
     const string PaladinPrefabPath = "Assets/_Project/Prefabs/Enemy_Paladin.prefab";
     const string VikingScene = "Assets/_Project/Scenes/The_Viking_Village.unity";
@@ -89,8 +93,9 @@ public static class PaladinInstaller
         var log = new List<string>();
 
         ConfigureImports(modelPath, log);
+        var material = BuildMaterial(log);
         var controller = BuildController(log);
-        var prefab = BuildPrefab(modelPath, controller, log);
+        var prefab = BuildPrefab(modelPath, controller, material, log);
         if (prefab == null) return;
         UseInVikingVillage(prefab, log);
 
@@ -148,6 +153,54 @@ public static class PaladinInstaller
         log.Add($"匯入設定：模型 + {n} 個動畫（Humanoid）");
     }
 
+    // ---------------------------------------------------------------- 材質
+
+    static Material BuildMaterial(List<string> log)
+    {
+        var diffuse = LoadTexture("Paladin_diffuse", false);
+        var normal = LoadTexture("Paladin_normal", true);
+        if (diffuse == null)
+        {
+            log.Add($"⚠ 找不到 {TextureDir}/Paladin_diffuse.png，聖騎士會維持白色");
+            return null;
+        }
+
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
+        if (mat == null)
+        {
+            mat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            AssetDatabase.CreateAsset(mat, MaterialPath);
+        }
+        mat.SetTexture("_BaseMap", diffuse);
+        mat.SetColor("_BaseColor", Color.white);
+        if (normal != null)
+        {
+            mat.SetTexture("_BumpMap", normal);
+            mat.SetFloat("_BumpScale", 1f);
+            mat.EnableKeyword("_NORMALMAP");
+        }
+        mat.SetFloat("_Metallic", 0.2f);
+        mat.SetFloat("_Smoothness", 0.35f);
+        EditorUtility.SetDirty(mat);
+        log.Add("材質：M_Paladin（顏色貼圖" + (normal != null ? " + 法線貼圖" : "") + "）");
+        return mat;
+    }
+
+    static Texture2D LoadTexture(string name, bool isNormal)
+    {
+        string path = $"{TextureDir}/{name}.png";
+        var imp = AssetImporter.GetAtPath(path) as TextureImporter;
+        if (imp == null) return null;
+        var wanted = isNormal ? TextureImporterType.NormalMap : TextureImporterType.Default;
+        if (imp.textureType != wanted || imp.maxTextureSize != 2048)
+        {
+            imp.textureType = wanted;
+            imp.maxTextureSize = 2048;
+            imp.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
     static AnimationClip LoadClip(string file)
     {
         string path = $"{PackDir}/{file}.fbx";
@@ -178,7 +231,7 @@ public static class PaladinInstaller
 
     // ---------------------------------------------------------------- Prefab
 
-    static GameObject BuildPrefab(string modelPath, AnimatorController controller, List<string> log)
+    static GameObject BuildPrefab(string modelPath, AnimatorController controller, Material material, List<string> log)
     {
         if (AssetDatabase.LoadAssetAtPath<GameObject>(PaladinPrefabPath) == null)
         {
@@ -233,6 +286,11 @@ public static class PaladinInstaller
             float scale = rawHeight > 0.1f ? PaladinHeight / rawHeight : 1f;
             model.transform.localScale = Vector3.one * scale;
             model.transform.localPosition = new Vector3(0f, feetLocalY, 0f);
+
+            // FBX 裡的材質沒有貼圖（白色），全部換成 M_Paladin（身體、劍、盾共用同一張貼圖）
+            if (material != null)
+                foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+                    r.sharedMaterials = Enumerable.Repeat(material, r.sharedMaterials.Length).ToArray();
 
             var animator = model.GetComponentInChildren<Animator>(true);
             if (animator == null) animator = model.AddComponent<Animator>();
