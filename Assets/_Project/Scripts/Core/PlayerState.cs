@@ -16,6 +16,10 @@ public class PlayerState
     public float[] comboDamage;
     public string[] resourceNames;
     public int[] resourceAmounts;
+    /// <summary>能力植物：第一株選的路線（PlayerPerks.Path）和拿到的特殊能力</summary>
+    public int upgradePath;
+    public string basicUpgrade;
+    public int[] perks;
 
     public static GameObject FindPlayer() => GameObject.FindWithTag("Player");
 
@@ -57,6 +61,15 @@ public class PlayerState
                 i++;
             }
         }
+        var pk = player.GetComponent<PlayerPerks>();
+        if (pk != null)
+        {
+            s.upgradePath = (int)pk.UpgradePath;
+            s.basicUpgrade = pk.BasicUpgrade;
+            var list = new List<int>();
+            foreach (var p in pk.All) list.Add((int)p);
+            s.perks = list.ToArray();
+        }
         return s;
     }
 
@@ -90,6 +103,13 @@ public class PlayerState
             for (int i = 0; i < resourceNames.Length && i < resourceAmounts.Length; i++)
                 all[resourceNames[i]] = resourceAmounts[i];
             inv.SetAll(all);
+        }
+
+        if (upgradePath != 0 || (perks != null && perks.Length > 0))
+        {
+            var list = new List<PlayerPerks.Perk>();
+            if (perks != null) foreach (int p in perks) list.Add((PlayerPerks.Perk)p);
+            PlayerPerks.For(player).SetAll((PlayerPerks.Path)upgradePath, basicUpgrade, list);
         }
     }
 }

@@ -23,6 +23,12 @@ public class PlayerHealth : MonoBehaviour
     /// <summary>腳底的世界座標高度（用來判斷有沒有跳過衝擊波 / 光束）</summary>
     public float FeetY => transform.position.y + cc.center.y - cc.height * 0.5f;
 
+    /// <summary>
+    /// 找到場景裡真正的玩家（會移動的那個物件）。
+    /// 不要用 FindWithTag("Player").transform.root：PlayerRig 的根物件不會跟著角色移動。
+    /// </summary>
+    public static PlayerHealth Find() => FindAnyObjectByType<PlayerHealth>();
+
     public event System.Action OnDied;
     public event System.Action OnRespawned;
     /// <summary>受到傷害（參數是傷害量），模型動畫用</summary>
@@ -31,6 +37,7 @@ public class PlayerHealth : MonoBehaviour
     CharacterController cc;
     ThirdPersonController controller;
     PlayerCombat combat;
+    PlayerPerks perks;
     Vector3 spawnPos;
     Quaternion spawnRot;
     float lastHitTime = float.NegativeInfinity;
@@ -52,6 +59,9 @@ public class PlayerHealth : MonoBehaviour
             combat = gameObject.AddComponent<PlayerCombat>();
             Debug.Log("[Player] 沒有 PlayerCombat，已自動加上。想調整攻擊數值請在 Player 上手動 Add Component → PlayerCombat。");
         }
+
+        // 消耗品（治癒藥水 / 火焰彈）：Q 喝藥、F 丟火焰彈
+        if (GetComponent<PlayerItems>() == null) gameObject.AddComponent<PlayerItems>();
 
         // 有水的關卡：潛到水裡要消耗氧氣
         if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
@@ -75,6 +85,9 @@ public class PlayerHealth : MonoBehaviour
             if (Time.time - lastHitTime < invincibleTime) return false;
             lastHitTime = Time.time;
         }
+        // 能力植物：閃避 / 護盾，整下傷害不算
+        if (perks == null) perks = GetComponent<PlayerPerks>();
+        if (perks != null && perks.TryNegateHit()) return false;
         lastFlashTime = Time.time;
         // 舉盾（右鍵盾擊）時正面的攻擊會被擋下大部分
         if (combat != null) amount = combat.ApplyShieldBlock(amount, knockback);

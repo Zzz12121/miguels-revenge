@@ -4,13 +4,15 @@ using UnityEngine.InputSystem; // 引入新版 Input System 命名空間
 
 /// <summary>
 /// 篝火互動：玩家靠近互動範圍內時顯示提示，按下 E 鍵後回復 20% 血量，回復完畢後粒子特效消失。
-/// 當玩家重生時會自動重置，恢復成燃燒狀態。
+/// 用過的火堆在玩家死亡重生後不會恢復，只有開新的一局（重新載入關卡）才會重置。
 /// </summary>
 public class Campfire : MonoBehaviour
 {
     [Header("設定")]
     [Tooltip("玩家靠近互動的範圍 (m)")]
     public float interactRange = 2.5f;
+    [Tooltip("勾選 = 玩家死亡重生時火堆恢復燃燒；不勾 = 用過就沒了，直到開新的一局")]
+    public bool resetOnPlayerRespawn = false;
     [Tooltip("火堆的粒子特效物件 (Particle System)")]
     public GameObject fireParticleEffect;
 
@@ -21,15 +23,14 @@ public class Campfire : MonoBehaviour
 
     void Start()
     {
-        var p = GameObject.FindWithTag("Player");
-        if (p != null)
+        playerHealth = PlayerHealth.Find();
+        if (playerHealth != null)
         {
-            player = p.transform;
-            playerHealth = p.GetComponentInChildren<PlayerHealth>();
-            
+            player = playerHealth.transform;
+
             if (playerHealth != null)
             {
-                playerHealth.OnRespawned += ResetCampfire;
+                if (resetOnPlayerRespawn) playerHealth.OnRespawned += ResetCampfire;
             }
             else
             {
