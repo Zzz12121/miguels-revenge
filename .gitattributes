@@ -18,13 +18,13 @@
 *.zip  binary
 *.wav  binary
 *.mp3  binary
-*.fbx filter=lfs diff=lfs merge=lfs -text
-*.png filter=lfs diff=lfs merge=lfs -text
-*.PNG filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
-*.jpeg filter=lfs diff=lfs merge=lfs -text
-*.JPEG filter=lfs diff=lfs merge=lfs -text
-*.zip filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.PNG filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/**/*.JPEG filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/Boss/*.zip filter=lfs diff=lfs merge=lfs -text
 *.tif filter=lfs diff=lfs merge=lfs -text
 *.hdr filter=lfs diff=lfs merge=lfs -text
 *.exr filter=lfs diff=lfs merge=lfs -text
