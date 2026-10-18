@@ -62,6 +62,10 @@ public class EnemyAI : MonoBehaviour
     [Tooltip("一輪最多打幾下（跟玩家一樣最多三段）")]
     [Range(1, 3)] public int maxComboHits = 3;
 
+    [Header("重生")]
+    [Tooltip("勾選 = 玩家死亡重生時，已經被打死的這隻不會復活（只有開新的一局才會重置）；活著的還是會回到原位")]
+    public bool stayDeadOnPlayerRespawn = false;
+
     [Header("跳躍")]
     [Tooltip("會不會跳（跨越缺口、跳上高台、撲向玩家）")]
     public bool canJump = true;
@@ -570,9 +574,10 @@ public class EnemyAI : MonoBehaviour
         ClearDropMarker();
     }
 
-    /// <summary>玩家重生時：復活並回到原位</summary>
+    /// <summary>玩家重生時：復活並回到原位（勾了 stayDeadOnPlayerRespawn 的話，已經被打死的不會復活）</summary>
     public void ResetEnemy()
     {
+        if (stayDeadOnPlayerRespawn && health.IsDead) return;
         combat.CancelAttack();
         ClearDropMarker();
         health.Revive();

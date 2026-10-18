@@ -2709,6 +2709,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!1 &259076974
 GameObject:
   m_ObjectHideFlags: 0
@@ -3121,6 +3123,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!1001 &408197126
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -3133,13 +3137,9 @@ PrefabInstance:
       propertyPath: m_Name
       value: PlayerRig
       objectReference: {fileID: 0}
-    - target: {fileID: 492688088367139355, guid: 331718634753f1049ba47f0b9de603df, type: 3}
-      propertyPath: m_TagString
-      value: Player
-      objectReference: {fileID: 0}
     - target: {fileID: 690041348421793571, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_TagString
-      value: Player
+      value: Untagged
       objectReference: {fileID: 0}
     - target: {fileID: 2993550283387907996, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalPosition.x
@@ -3371,6 +3371,7 @@ MonoBehaviour:
   attackRange: 2.4
   attackInterval: {x: 0.8, y: 1.8}
   maxComboHits: 3
+  stayDeadOnPlayerRespawn: 1
   canJump: 1
   maxJumpDistance: 9
   maxJumpUp: 1.5
@@ -3459,6 +3460,8 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  doubleJumpEnabled: 0
+  doubleJumpHeight: 1.4
   inputEnabled: 1
   speedMultiplier: 1
   lockRotation: 0
@@ -3527,6 +3530,7 @@ MonoBehaviour:
   attackRange: 2.4
   attackInterval: {x: 0.8, y: 1.8}
   maxComboHits: 3
+  stayDeadOnPlayerRespawn: 1
   canJump: 1
   maxJumpDistance: 9
   maxJumpUp: 1.5
@@ -3615,6 +3619,8 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  doubleJumpEnabled: 0
+  doubleJumpHeight: 1.4
   inputEnabled: 1
   speedMultiplier: 1
   lockRotation: 0
@@ -3649,7 +3655,7 @@ CharacterController:
   m_StepOffset: 0.3
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
-  m_Center: {x: 0, y: 1, z: 0}
+  m_Center: {x: 0, y: 1.2, z: 0}
 --- !u!1 &473550344 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 145073844085565206, guid: ed8906093dddae64d881f085a721b0a7, type: 3}
@@ -3766,6 +3772,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Campfire
   interactRange: 2.5
+  resetOnPlayerRespawn: 0
   fireParticleEffect: {fileID: 1268769526}
 --- !u!1001 &677950736
 PrefabInstance:
@@ -3894,6 +3901,8 @@ MonoBehaviour:
   speedBonus: 0.15
   attackBonus: 0.25
   healthBonus: 30
+  advanced: 0
+  copyVisualFrom: {fileID: 0}
 --- !u!1 &806908293
 GameObject:
   m_ObjectHideFlags: 0
@@ -4043,6 +4052,7 @@ MonoBehaviour:
   dashHeightOffset: 0
   shockwaveForce: 30
   shieldClockOffset: 2.5
+  fightCheckpoint: {fileID: 900000003}
 --- !u!143 &806908300
 CharacterController:
   m_ObjectHideFlags: 0
@@ -4249,6 +4259,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MerchantNPC
   interactRange: 3
   shopCanvasUI: {fileID: 2089007631}
+  interactKey: 19
+  continueKey: 1
+  resourceName: Herb
+  resourceDisplayName: "\u8349\u85E5"
+  potionCost: 4
+  fireBombCost: 6
+  speakerName: "\u6D41\u6D6A\u5546\u4EBA"
+  guideLines:
+  - "\u55B2\uFF0C\u65C5\u4EBA\uFF01\u5728\u9019\u7247\u6C99\u6F20\u9084\u80FD\u9047\u5230\u6D3B\u4EBA\uFF0C\u771F\u662F\u7A00\u5947\u3002"
+  - "\u9019\u9846\u661F\u7403\u88AB\u300C\u6642\u9593\u541E\u566C\u8005\u300D\u4F54\u64DA\u4E86\u3002\u60F3\u96E2\u958B\u9019\u88E1\uFF0C\u5C31\u5F97\u6253\u5012\u7260\u3002"
+  - "\u56DB\u8655\u9577\u8457\u7684\u8349\u85E5\u5225\u653E\u904E\u2014\u2014\u9760\u8FD1\u6309 E \u5C31\u80FD\u63A1\u96C6\u3002\u62FF\u4F86\u627E\u6211\uFF0C\u6211\u7528\u8349\u85E5\u8DDF\u4F60\u63DB\u597D\u6771\u897F\u3002"
+  - "\u9644\u8FD1\u6709\u500B\u8718\u86DB\u5DE2\u7A74\uFF0C\u5DE2\u88E1\u9577\u8457\u4E00\u682A\u5947\u7279\u7684\u80FD\u529B\u690D\u7269\u3002\u4F60\u5728\u90A3\u88E1\u9078\u64C7\u7684\u9053\u8DEF\u2026\u2026\u8DD1\u901F\u3001\u529B\u91CF\u3001\u9084\u662F\u8840\u91CF\uFF0C\u6703\u6C7A\u5B9A\u4F60\u4E4B\u5F8C\u7684\u6210\u9577\u65B9\u5411\u3002"
+  - "\u71DF\u706B\u9760\u8FD1\u6309 E \u53EF\u4EE5\u56DE\u5FA9 20% \u7684\u8840\u91CF\u3002\u4E0D\u904E\u6BCF\u5EA7\u71DF\u706B\u53EA\u80FD\u7528\u4E00\u6B21\uFF0C\u6B7B\u4E86\u4E5F\u4E0D\u6703\u518D\u71D2\u8D77\u4F86\uFF0C\u7701\u8457\u9EDE\u7528\u3002"
+  - "\u6642\u9593\u541E\u566C\u8005\u5C31\u5728\u5EE3\u5834\u6DF1\u8655\u3002\u5165\u53E3\u7ACB\u8457\u4E00\u584A\u53E4\u8001\u7684\u77F3\u7891\uFF0C\u78B0\u904E\u5B83\u4E4B\u5F8C\uFF0C\u5012\u4E0B\u6642\u6703\u5728\u77F3\u7891\u65C1\u91CD\u65B0\u7AD9\u8D77\u4F86\u3002"
+  - "\u5C0D\u4E86\uFF0CBoss \u5EE3\u5834\u7684\u71DF\u706B\u65C1\u9577\u8457\u7B2C\u4E8C\u682A\u80FD\u529B\u690D\u7269\u3002\u5B83\u6703\u547C\u61C9\u4F60\u5728\u8718\u86DB\u5DE2\u7A74\u7684\u9078\u64C7\uFF0C\u7D66\u4F60\u66F4\u5F37\u7684\u529B\u91CF\u3002"
+  - "\u597D\u5566\uFF0C\u770B\u770B\u6211\u7684\u8CA8\u5427\uFF01"
+  repeatLines:
+  - "\u53C8\u898B\u9762\u4E86\uFF0C\u65C5\u4EBA\u3002\u8349\u85E5\u5E36\u5920\u4E86\u55CE\uFF1F"
+  charsPerSecond: 40
 --- !u!1001 &836229832
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -4404,6 +4433,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!1001 &850911451
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -4505,6 +4536,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Campfire
   interactRange: 2.5
+  resetOnPlayerRespawn: 0
   fireParticleEffect: {fileID: 28224938}
 --- !u!1 &872162805
 GameObject:
@@ -4537,6 +4569,666 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1597932751}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &900000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 900000002}
+  - component: {fileID: 900000003}
+  m_Layer: 0
+  m_Name: BossCheckpoint_StoneStele
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &900000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 650, y: 0, z: 472}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &900000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd1678855fede2b44a75aaaa57f4c68f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Checkpoint
+  respawnPoint: {fileID: 0}
+  activateRadius: 2.5
+  healOnTouch: 1
+  glow: {fileID: 0}
+  inactiveColor: {r: 0.3, g: 0.25, b: 0.15, a: 1}
+  activeColor: {r: 1, g: 0.8, b: 0.3, a: 1}
+  buildStoneStele: 1
+  steleHeight: 2.6
+  runeColor: {r: 1, g: 0.12, b: 0.08, a: 1}
+  revealTime: 1.5
+  snapToGround: 1
+  respawnDistance: 2.2
+--- !u!1 &900000011
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 900000012}
+  - component: {fileID: 900000013}
+  m_Layer: 0
+  m_Name: UpgradePlant_Advanced
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &900000012
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000011}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 673.4, y: 0, z: 575}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &900000013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 900000011}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16d9be7b497db4fd696c4e0e628cd303, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UpgradePlant
+  interactKey: 19
+  interactRange: 3
+  speedBonus: 0.15
+  attackBonus: 0.25
+  healthBonus: 30
+  advanced: 1
+  copyVisualFrom: {fileID: 677950738}
+--- !u!1 &910000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000002}
+  - component: {fileID: 910000003}
+  m_Layer: 0
+  m_Name: SandFlowPath_SpiderToBoss
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 1, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 910000101}
+  - {fileID: 910000103}
+  - {fileID: 910000105}
+  - {fileID: 910000107}
+  - {fileID: 910000109}
+  - {fileID: 910000111}
+  - {fileID: 910000113}
+  - {fileID: 910000115}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &910000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5a7d3c91e2b84f06a1c9d2e3f4b5a6c7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SandFlowPath
+  spacing: 4
+  width: 1.4
+  flowSpeed: 3
+  heightOffset: 0.08
+  sandColor: {r: 0.95, g: 0.78, b: 0.45, a: 0.85}
+  glintColor: {r: 1, g: 0.85, b: 0.4, a: 0.9}
+  hideWhenReachedRadius: 6
+  boss: {fileID: 806908301}
+--- !u!1 &910000100
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000101}
+  m_Layer: 0
+  m_Name: Point_00
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000100}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 444, y: 2, z: 205}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000102
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000103}
+  m_Layer: 0
+  m_Name: Point_01
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000103
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000102}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 455, y: 8, z: 222}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000104
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000105}
+  m_Layer: 0
+  m_Name: Point_02
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000105
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000104}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 459, y: 15, z: 234}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000106
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000107}
+  m_Layer: 0
+  m_Name: Point_03
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000107
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000106}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 463, y: 22, z: 243}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000108
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000109}
+  m_Layer: 0
+  m_Name: Point_04
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000109
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000108}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 510, y: 10, z: 300}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000110
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000111}
+  m_Layer: 0
+  m_Name: Point_05
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000111
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000110}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 560, y: 5, z: 360}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000112
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000113}
+  m_Layer: 0
+  m_Name: Point_06
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000113
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000112}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 610, y: 2, z: 420}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &910000114
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 910000115}
+  m_Layer: 0
+  m_Name: Point_07
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &910000115
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 910000114}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 646, y: 1, z: 462}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 910000002}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &920000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000002}
+  - component: {fileID: 920000003}
+  m_Layer: 0
+  m_Name: Herb_BehindSpiderNest_1
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 436.47, y: 2.78, z: 207}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2315ed09a024a5f4eb79efcb08e6b14d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HarvestablePlant
+  resourceName: Herb
+  resourceAmount: 1
+  interactRange: 2
+  copyVisualFrom: {fileID: 175689347}
+  snapToTerrain: 1
+--- !u!1 &920000004
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000005}
+  - component: {fileID: 920000006}
+  m_Layer: 0
+  m_Name: Herb_BehindSpiderNest_2
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000005
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000004}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 443, y: 2, z: 211}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000006
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000004}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2315ed09a024a5f4eb79efcb08e6b14d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HarvestablePlant
+  resourceName: Herb
+  resourceAmount: 1
+  interactRange: 2
+  copyVisualFrom: {fileID: 175689347}
+  snapToTerrain: 1
+--- !u!1 &920000007
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000008}
+  - component: {fileID: 920000009}
+  m_Layer: 0
+  m_Name: Herb_BehindSpiderNest_3
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000008
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000007}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 450, y: 2, z: 207}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000009
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000007}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2315ed09a024a5f4eb79efcb08e6b14d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HarvestablePlant
+  resourceName: Herb
+  resourceAmount: 1
+  interactRange: 2
+  copyVisualFrom: {fileID: 175689347}
+  snapToTerrain: 1
+--- !u!1 &920000010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000011}
+  - component: {fileID: 920000012}
+  m_Layer: 0
+  m_Name: Herb_BehindSpiderNest_4
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000011
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000010}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 439, y: 2, z: 216}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2315ed09a024a5f4eb79efcb08e6b14d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HarvestablePlant
+  resourceName: Herb
+  resourceAmount: 1
+  interactRange: 2
+  copyVisualFrom: {fileID: 175689347}
+  snapToTerrain: 1
+--- !u!1 &920000013
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 920000014}
+  - component: {fileID: 920000015}
+  m_Layer: 0
+  m_Name: Herb_BehindSpiderNest_5
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &920000014
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000013}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 447, y: 2, z: 218}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &920000015
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 920000013}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2315ed09a024a5f4eb79efcb08e6b14d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HarvestablePlant
+  resourceName: Herb
+  resourceAmount: 1
+  interactRange: 2
+  copyVisualFrom: {fileID: 175689347}
+  snapToTerrain: 1
 --- !u!1 &950729964
 GameObject:
   m_ObjectHideFlags: 0
@@ -4825,6 +5517,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!1 &997037850
 GameObject:
   m_ObjectHideFlags: 0
@@ -5117,6 +5811,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!1001 &1053023967
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -5532,6 +6228,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!4 &1207304640 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1462438522952801231, guid: 6eda1ce2205ba9c40877344c575c7fd1, type: 3}
@@ -8071,6 +8769,8 @@ MonoBehaviour:
   resourceName: Herb
   resourceAmount: 1
   interactRange: 5
+  copyVisualFrom: {fileID: 0}
+  snapToTerrain: 0
 --- !u!4 &1281786013 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1462438522952801231, guid: 6eda1ce2205ba9c40877344c575c7fd1, type: 3}
@@ -8774,6 +9474,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Campfire
   interactRange: 2.5
+  resetOnPlayerRespawn: 0
   fireParticleEffect: {fileID: 1956256627}
 --- !u!1 &1541949001
 GameObject:
@@ -12355,6 +13056,7 @@ MonoBehaviour:
   attackRange: 2.4
   attackInterval: {x: 0.8, y: 1.8}
   maxComboHits: 3
+  stayDeadOnPlayerRespawn: 1
   canJump: 1
   maxJumpDistance: 9
   maxJumpUp: 1.5
@@ -12443,6 +13145,8 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  doubleJumpEnabled: 0
+  doubleJumpHeight: 1.4
   inputEnabled: 1
   speedMultiplier: 1
   lockRotation: 0
@@ -12768,6 +13472,14 @@ PrefabInstance:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 910000002}
+  - {fileID: 920000002}
+  - {fileID: 920000005}
+  - {fileID: 920000008}
+  - {fileID: 920000011}
+  - {fileID: 920000014}
+  - {fileID: 900000002}
+  - {fileID: 900000012}
   - {fileID: 259076976}
   - {fileID: 408197126}
   - {fileID: 1649310717}
