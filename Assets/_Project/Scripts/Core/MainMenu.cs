@@ -27,7 +27,7 @@ public class MainMenu : MonoBehaviour
         "　　　　　　　　　　　潛入水中會消耗<color=#7FD4FF>氧氣</color>，氧氣用完會開始扣血\n" +
         "　<b>第三關　地下城</b>：打倒最終 Boss 就通關！\n\n" +
         "玩家共有 <color=#FF8080>3 條命</color>，倒下後會在檢查點復活，命用完就 Game Over。\n" +
-        "受傷後可以靠檢查點和篝火回復血量。";
+        "受傷後可以撿<color=#FF6060>紅十字補血道具</color>，或靠檢查點和篝火回復血量。";
 
     [TextArea(6, 20)]
     public string controlsText =
@@ -38,7 +38,8 @@ public class MainMenu : MonoBehaviour
         "滑鼠　　　　轉動鏡頭\n" +
         "滾輪　　　　鏡頭遠近\n" +
         "滑鼠左鍵　　近戰連擊\n" +
-        "滑鼠右鍵　　遠程斬擊\n" +
+        "滑鼠右鍵　　舉盾衝撞（正面傷害減少）\n" +
+        "右鍵按住　　瞄準（在船上用弓箭時）\n" +
         "E　　　　　互動 / 傳送門 / 上船\n" +
         "M　　　　　顯示 / 隱藏小地圖\n" +
         "Esc　　　　暫停選單（存檔 / 讀檔）";
@@ -70,7 +71,8 @@ public class MainMenu : MonoBehaviour
         UIKit.ShowCursor();
         EnsureCamera();
         Build();
-        GameAudio.StopMusic(0.5f);
+        // 主選單的背景音樂（GameManager 決定播哪一首）
+        if (GameManager.Instance != null) GameManager.Instance.PlaySceneMusic();
     }
 
     void EnsureCamera()

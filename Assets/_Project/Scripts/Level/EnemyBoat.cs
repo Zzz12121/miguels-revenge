@@ -5,11 +5,12 @@ using UnityEngine;
 /// <summary>
 /// 敵人追擊船：
 /// - 當玩家登上 VikingBoat 啟航後，從船尾後方生成。
-/// - 每艘船隨機生成 2~5 個敵人站在甲板上，面向玩家並進行遠程攻擊。
+/// - 每艘船隨機生成 2~5 個弓箭手（Resources/Prefabs/BoatArcher）站在甲板上，面向玩家拉弓射箭。
+///   沒有弓箭手 Prefab 時用骷髏代替（選單 GeminiGrowUp > 安裝敵艦弓箭手 會建立）。
 /// - 敵船船頭轉向校正預設為 90 度（配合模型外觀軸向）。
 /// - 接近時仍有衝撞傷害。
-/// - 實作 IDamageable，帶有實體 Collider，可被玩家近戰與遠程劍氣擊中。
-/// - 被摧毀時播放視覺破壞效果並沉入水中。
+/// - 船身打不壞（實作 IDamageable 只是為了顯示「無效」）；要用弓箭射倒船上的弓箭手（BoatCrewMember），
+///   船員全部倒下船就會沉入水中。
 /// </summary>
 public class EnemyBoat : MonoBehaviour, IDamageable
 {
@@ -51,9 +52,15 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     public float rangedDamage = 10f;
 
     [Header("生命值")]
+    [Tooltip("（舊設定，船身現在打不壞，改成射倒全部船員才會沉）")]
     public float maxHealth = 70f;
     float health;
     bool isDead = false;
+    [Tooltip("每個船員要被射中幾次才會倒下")]
+    public int crewHitsToKill = 1;
+    int crewTotal;
+    float lastInvalidTime = float.NegativeInfinity;
+    Vector3 lastInvalidPoint;
 
     [Header("波浪起伏")]
     public float waveFrequency = 1.4f;
@@ -83,6 +90,7 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     {
         public Transform transform;
         public float nextShootTime;
+        public BoatArcherVisual visual; // 弓箭手的動畫（骷髏船員沒有）
     }
     List<ArcherMember> archers = new List<ArcherMember>();
 
@@ -128,7 +136,8 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     void SpawnVisualArchers()
     {
         int enemyCount = Random.Range(minEnemies, maxEnemies + 1);
-        var gruntPrefab = Resources.Load<GameObject>("Prefabs/Enemy_Grunt");
+        var archerPrefab = Resources.Load<GameObject>("Prefabs/BoatArcher");
+        var gruntPrefab = archerPrefab == null ? Resources.Load<GameObject>("Prefabs/Enemy_Grunt") : null;
 
         // 甲板站位槽位 (相對船體中心)
         Vector3[] slotPositions = new Vector3[]
@@ -147,7 +156,11 @@ public class EnemyBoat : MonoBehaviour, IDamageable
                 : new Vector3(Random.Range(-0.6f, 0.6f), 0.7f, Random.Range(-1.2f, 1.2f));
 
             GameObject archerObj = null;
-            if (gruntPrefab != null)
+            if (archerPrefab != null)
+            {
+                archerObj = Instantiate(archerPrefab, transform);
+            }
+            else if (gruntPrefab != null)
             {
                 archerObj = Instantiate(gruntPrefab, transform);
                 // 停用本體邏輯，僅保留外觀
@@ -168,13 +181,32 @@ public class EnemyBoat : MonoBehaviour, IDamageable
             archerObj.name = $"ShipCrew_{i + 1}";
             archerObj.transform.localPosition = localPos;
 
+            // 船員可以被箭射中：一個人形大小的膠囊碰撞體 + BoatCrewMember
+            var capsule = archerObj.AddComponent<CapsuleCollider>();
+            capsule.center = new Vector3(0f, 0.9f, 0f);
+            capsule.height = 1.8f;
+            capsule.radius = 0.35f;
+            var crew = archerObj.AddComponent<BoatCrewMember>();
+            crew.boat = this;
+            crew.hitsToKill = crewHitsToKill;
+
             var member = new ArcherMember
             {
                 transform = archerObj.transform,
-                nextShootTime = Time.time + Random.Range(1.0f, 3.0f) // 隨機錯開射擊時間
+                nextShootTime = Time.time + Random.Range(1.0f, 3.0f), // 隨機錯開射擊時間
+                visual = archerObj.GetComponent<BoatArcherVisual>(),
             };
             archers.Add(member);
         }
+        crewTotal = archers.Count;
+    }
+
+    /// <summary>船員被射倒：從射手名單拿掉；全部倒下 → 船沉</summary>
+    public void OnCrewKilled(BoatCrewMember crew)
+    {
+        archers.RemoveAll(m => m.transform == null || m.transform == crew.transform);
+        lastHitTime = Time.time;
+        if (archers.Count == 0) Die();
     }
 
     void Update()
@@ -293,14 +325,24 @@ public class EnemyBoat : MonoBehaviour, IDamageable
             if (now >= member.nextShootTime)
             {
                 member.nextShootTime = now + shootInterval + Random.Range(-0.4f, 0.4f);
-                ShootProjectileFrom(member.transform);
+                if (member.visual != null) StartCoroutine(DrawAndShoot(member));
+                else ShootProjectileFrom(member.transform, member.transform.position + Vector3.up * 1.3f);
             }
         }
     }
 
-    void ShootProjectileFrom(Transform crew)
+    /// <summary>弓箭手：先播拉弓動畫，拉滿弓放手的那一刻才射出箭</summary>
+    IEnumerator DrawAndShoot(ArcherMember member)
     {
-        Vector3 shootOrigin = crew.position + Vector3.up * 1.3f;
+        float release = member.visual.PlayDraw();
+        yield return new WaitForSeconds(release);
+        if (isDead || member.transform == null || playerTransform == null) yield break;
+        if (playerHealth != null && playerHealth.IsDead) yield break;
+        ShootProjectileFrom(member.transform, member.visual.ArrowWorldOrigin);
+    }
+
+    void ShootProjectileFrom(Transform crew, Vector3 shootOrigin)
+    {
 
         // 計算玩家當前航行移動速度與前進向量，以發射直線前置量瞄準
         Vector3 playerVelocity = Vector3.zero;
@@ -329,28 +371,53 @@ public class EnemyBoat : MonoBehaviour, IDamageable
         flightDir.y += Mathf.Clamp(dist * 0.012f, 0.03f, 0.18f);
         flightDir.Normalize();
 
-        var projObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projObj.name = "BoatProjectile";
-        projObj.transform.position = shootOrigin;
-        projObj.transform.localScale = Vector3.one * 0.42f;
-
-        var col = projObj.GetComponent<Collider>();
-        if (col != null) col.isTrigger = true;
-
-        var mr = projObj.GetComponent<MeshRenderer>();
-        if (mr != null)
-        {
-            var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-            mat.color = new Color(1.0f, 0.35f, 0.05f); // 亮橘紅火球
-            mr.sharedMaterial = mat;
-        }
-
+        var projObj = CreateArrow(shootOrigin, flightDir);
         var proj = projObj.AddComponent<BoatProjectile>();
+        proj.isArrow = true;
         proj.damage = rangedDamage;
         proj.speed = projectileSpeed;
         proj.velocity = flightDir * projectileSpeed;
 
-        GameAudio.Play("SFX/RPG/drawKnife1", shootOrigin, 0.7f, 1.3f, 0.05f, 1f, 35f);
+        // 放箭的弓弦聲 + 攻擊特效：弓前方一小團白色氣流
+        GameAudio.Play("SFX/RPG/drawKnife3", shootOrigin, 0.75f, 1.5f, 0.08f, 1f, 35f);
+        CombatVFX.Puff(shootOrigin, flightDir, new Color(0.95f, 0.95f, 0.9f, 0.6f));
+    }
+
+    static Material arrowShaftMat, arrowTipMat;
+
+    /// <summary>箭的外觀：木頭箭身 + 金屬箭頭 + 白色箭羽（沿著 +Z 方向），根物件掛觸發用的碰撞球</summary>
+    internal static GameObject CreateArrow(Vector3 position, Vector3 direction)
+    {
+        if (arrowShaftMat == null)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+            arrowShaftMat = new Material(shader) { color = new Color(0.45f, 0.3f, 0.15f) };
+            arrowTipMat = new Material(shader) { color = new Color(0.75f, 0.78f, 0.82f) };
+        }
+
+        var root = new GameObject("BoatArrow");
+        root.transform.SetPositionAndRotation(position, Quaternion.LookRotation(direction));
+        var trigger = root.AddComponent<SphereCollider>();
+        trigger.isTrigger = true;
+        trigger.radius = 0.25f;
+
+        Part(root.transform, PrimitiveType.Cylinder, new Vector3(0f, 0f, 0f), new Vector3(0.05f, 0.45f, 0.05f), arrowShaftMat, true);
+        Part(root.transform, PrimitiveType.Cube, new Vector3(0f, 0f, 0.47f), new Vector3(0.08f, 0.08f, 0.16f), arrowTipMat, false);
+        Part(root.transform, PrimitiveType.Cube, new Vector3(0f, 0f, -0.4f), new Vector3(0.14f, 0.02f, 0.14f), arrowTipMat, false);
+        return root;
+    }
+
+    static void Part(Transform parent, PrimitiveType type, Vector3 pos, Vector3 scale, Material mat, bool alongZ)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        Destroy(go.GetComponent<Collider>());
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = pos;
+        go.transform.localRotation = alongZ ? Quaternion.Euler(90f, 0f, 0f) : Quaternion.Euler(0f, 0f, 45f);
+        go.transform.localScale = scale;
+        var r = go.GetComponent<Renderer>();
+        r.sharedMaterial = mat;
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
     void ApplyWave()
@@ -367,38 +434,20 @@ public class EnemyBoat : MonoBehaviour, IDamageable
 
 
 
+    /// <summary>船身打不壞：只顯示「無效」，要射船上的人才有用</summary>
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
         if (isDead || amount <= 0f) return;
-        health = Mathf.Max(0f, health - amount);
-        lastHitTime = Time.time;
-
-        StartCoroutine(FlashWhite());
-
-        if (health <= 0f) Die();
+        ShowInvalidHit(hitPoint);
     }
 
-    IEnumerator FlashWhite()
+    /// <summary>打到船身（箭、劍氣）：悶悶的撞擊聲 + 畫面上跳出「無效」</summary>
+    public void ShowInvalidHit(Vector3 point)
     {
-        var mpb = new MaterialPropertyBlock();
-        int baseColorId = Shader.PropertyToID("_BaseColor");
-        int colorId = Shader.PropertyToID("_Color");
-
-        foreach (var r in renderers)
-        {
-            if (r == null) continue;
-            mpb.Clear();
-            mpb.SetColor(baseColorId, Color.white);
-            mpb.SetColor(colorId, Color.white);
-            r.SetPropertyBlock(mpb);
-        }
-        yield return new WaitForSeconds(0.08f);
-        mpb.Clear();
-        foreach (var r in renderers)
-        {
-            if (r == null) continue;
-            r.SetPropertyBlock(mpb);
-        }
+        lastInvalidTime = Time.time;
+        lastInvalidPoint = point;
+        GameAudio.Play("SFX/RPG/chop", point, 0.6f, 0.7f, 0.05f, 1f, 40f);
+        CombatVFX.Impact(point, new Color(0.6f, 0.55f, 0.5f));
     }
 
     void OnDestroy()
@@ -445,11 +494,28 @@ public class EnemyBoat : MonoBehaviour, IDamageable
 
     void OnGUI()
     {
-        if (!showHealthBar || isDead) return;
-        if (Time.time - lastHitTime > BAR_SHOW_TIME && health >= maxHealth) return;
-
+        if (isDead) return;
         var cam = Camera.main;
         if (cam == null) return;
+
+        // 打到船身：在打到的地方跳出「無效」
+        float since = Time.time - lastInvalidTime;
+        if (since < 0.8f)
+        {
+            Vector3 ip = cam.WorldToScreenPoint(lastInvalidPoint + Vector3.up * (0.5f + since));
+            if (ip.z > 0f)
+            {
+                var s = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+                GUI.color = new Color(0.85f, 0.85f, 0.85f, 1f - since / 0.8f);
+                GUI.Label(new Rect(ip.x - 60f, Screen.height - ip.y - 15f, 120f, 30f), "無效", s);
+                GUI.color = Color.white;
+            }
+        }
+
+        if (!showHealthBar) return;
+        // 血條 = 剩下的船員比例（船員全部倒下船才會沉）
+        health = crewTotal > 0 ? maxHealth * archers.Count / crewTotal : maxHealth;
+        if (Time.time - lastHitTime > BAR_SHOW_TIME && health >= maxHealth) return;
         Vector3 sp = cam.WorldToScreenPoint(transform.position + Vector3.up * barHeightOffset);
         if (sp.z <= 0f || sp.z > 60f) return;
 

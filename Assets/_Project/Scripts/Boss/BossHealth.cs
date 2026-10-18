@@ -8,7 +8,7 @@ using UnityEngine;
 public class BossHealth : MonoBehaviour, IDamageable
 {
     public string bossName = "高塔守衛";
-    public float maxHealth = 600f;
+    public float maxHealth = 6000f; // 第三關 Boss（原本 600，調成 10 倍）
     [Tooltip("被打時身體閃白的時間 (秒)")]
     public float flashTime = 0.08f;
     [Tooltip("不要閃白的物件（例如光束）")]
@@ -47,6 +47,8 @@ public class BossHealth : MonoBehaviour, IDamageable
         if (IsDead || Invulnerable || amount <= 0f) return;
         Health = Mathf.Max(0f, Health - amount);
         lastHitTime = Time.time;
+        // 受傷音效：低沉的碎石聲
+        GameAudio.Play("SFX/rock_hit", transform.position + Vector3.up * 2f, 0.7f, Random.Range(0.55f, 0.7f), 0f, 1f, 60f);
         OnDamaged?.Invoke(amount);
         if (Health <= 0f) Die();
     }

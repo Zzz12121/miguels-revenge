@@ -95408,7 +95408,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossHealth
   bossName: Lebron James
-  maxHealth: 600
+  maxHealth: 6000
   flashTime: 0.08
   excludeFromFlash: []
 --- !u!114 &3004939013860135205

@@ -38,6 +38,8 @@ public class EnemyVisual : MonoBehaviour
         public string state;
         [Tooltip("動畫裡「砍到」那一刻的時間（秒，以原本速度播放時）")]
         public float hitTime;
+        [Tooltip("整段動畫的長度（秒，以原本速度播放時）。0 = 用 hitTime 推算")]
+        public float clipLength;
     }
 
     [Header("攻擊動畫（依序對應連擊的第 1、2、3 段）")]

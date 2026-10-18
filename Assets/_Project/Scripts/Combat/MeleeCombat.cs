@@ -27,6 +27,22 @@ public abstract class MeleeCombat : MonoBehaviour
     [Tooltip("最後一段的硬直 (秒)")]
     public float finisherRecoveryTime = 0.5f;
 
+    /// <summary>
+    /// 每一段各自的抬手 / 揮劍 / 硬直時間（有填就優先用，沒填就用上面共用的數值）。
+    /// 玩家的三段動畫長短不一樣，PlayerVisual 會依照每個動畫「砍到」的時間填進來，
+    /// 傷害判定才會對上畫面上劍砍到的那一刻
+    /// </summary>
+    [System.NonSerialized] public float[] stepWindup, stepSwing, stepRecovery;
+    /// <summary>硬直過了多少比例之後，有預約下一段就可以提早接（玩家設成接近 1，讓動畫播完整）</summary>
+    [System.NonSerialized] public float chainAfter = 0.4f;
+
+    float StepValue(float[] arr, int index, float fallback) =>
+        arr != null && index >= 0 && index < arr.Length && arr[index] > 0f ? arr[index] : fallback;
+    /// <summary>第 index 段的抬手時間</summary>
+    public float WindupFor(int index) => StepValue(stepWindup, index, windupTime);
+    /// <summary>第 index 段有傷害判定的時間</summary>
+    public float SwingFor(int index) => StepValue(stepSwing, index, swingTime);
+
     [Header("判定")]
     [Tooltip("判定球離角色中心往前多遠")]
     public float hitForwardOffset = 1.3f;
@@ -128,12 +144,12 @@ public abstract class MeleeCombat : MonoBehaviour
             yield return Swing(index);
 
             bool last = index >= comboDamage.Length - 1;
-            float recovery = last ? finisherRecoveryTime : recoveryTime;
+            float recovery = StepValue(stepRecovery, index, last ? finisherRecoveryTime : recoveryTime);
             float t = 0f;
             while (t < recovery)
             {
-                // 硬直過了 40% 之後，如果要接下一段就提早接
-                if (!last && WantsNextHit() && t >= recovery * 0.4f) break;
+                // 硬直過了 chainAfter（預設 40%）之後，如果要接下一段就提早接
+                if (!last && WantsNextHit() && t >= recovery * chainAfter) break;
                 t += Time.deltaTime;
                 yield return null;
             }
@@ -166,7 +182,7 @@ public abstract class MeleeCombat : MonoBehaviour
         }
 
         // 抬手
-        yield return RotateWeapon(weaponPivot.localEulerAngles, from, windupTime);
+        yield return RotateWeapon(weaponPivot.localEulerAngles, from, WindupFor(index));
 
         // 揮下去 + 往前踏步 + 判定
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
@@ -176,10 +192,11 @@ public abstract class MeleeCombat : MonoBehaviour
         controller.AddImpulse(transform.forward * lungeForce);
         float damage = comboDamage[Mathf.Clamp(index, 0, comboDamage.Length - 1)];
         float t = 0f;
-        while (t < swingTime)
+        float swing = SwingFor(index);
+        while (t < swing)
         {
             t += Time.deltaTime;
-            float k = Mathf.Clamp01(t / swingTime);
+            float k = Mathf.Clamp01(t / swing);
             // 用一般 Lerp（不是 LerpAngle），揮劍才會經過前方而不是從背後繞
             weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, k));
             DoHitCheck(damage);

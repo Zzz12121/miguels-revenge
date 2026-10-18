@@ -25,9 +25,12 @@ public class PlayerHealth : MonoBehaviour
 
     public event System.Action OnDied;
     public event System.Action OnRespawned;
+    /// <summary>受到傷害（參數是傷害量），模型動畫用</summary>
+    public event System.Action<float> OnDamaged;
 
     CharacterController cc;
     ThirdPersonController controller;
+    PlayerCombat combat;
     Vector3 spawnPos;
     Quaternion spawnRot;
     float lastHitTime = float.NegativeInfinity;
@@ -43,9 +46,10 @@ public class PlayerHealth : MonoBehaviour
         spawnRot = transform.rotation;
 
         // 還沒加攻擊元件的話自動加上（想調整數值請手動 Add Component → PlayerCombat）
-        if (GetComponent<PlayerCombat>() == null)
+        combat = GetComponent<PlayerCombat>();
+        if (combat == null)
         {
-            gameObject.AddComponent<PlayerCombat>();
+            combat = gameObject.AddComponent<PlayerCombat>();
             Debug.Log("[Player] 沒有 PlayerCombat，已自動加上。想調整攻擊數值請在 Player 上手動 Add Component → PlayerCombat。");
         }
 
@@ -72,11 +76,14 @@ public class PlayerHealth : MonoBehaviour
             lastHitTime = Time.time;
         }
         lastFlashTime = Time.time;
+        // 舉盾（右鍵盾擊）時正面的攻擊會被擋下大部分
+        if (combat != null) amount = combat.ApplyShieldBlock(amount, knockback);
         Health = Mathf.Max(0f, Health - amount);
         controller.AddImpulse(knockback);
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
         if (Health <= 0f) Die(deathReason);
+        else OnDamaged?.Invoke(amount);
         return true;
     }
 

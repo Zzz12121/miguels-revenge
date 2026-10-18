@@ -25,6 +25,8 @@ public class VikingEnemyWaveManager : MonoBehaviour
     public float autoStartDelay = 2.0f;
     [Tooltip("是否一開始就自動觸發追擊玩家")]
     public bool alertPlayerOnSpawn = false;
+    [Tooltip("每個劍士要被打幾下才會死（0 = 照 Prefab 的血量和玩家的攻擊力）")]
+    public int guardHitsToKill = 5;
 
     [Header("狀態追蹤")]
     public bool waveStarted = false;
@@ -117,6 +119,7 @@ public class VikingEnemyWaveManager : MonoBehaviour
             var health = enemy.GetComponent<EnemyHealth>();
             if (health != null)
             {
+                health.hitsToKill = guardHitsToKill;
                 health.OnDied += () => OnEnemyDied(enemy);
             }
 

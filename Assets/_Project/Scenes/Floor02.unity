@@ -437,6 +437,7 @@ MonoBehaviour:
   extraEnemiesInBigRoom: 1
   extraEnemiesPerDepth: 0.5
   ambusherChance: 0.3
+  healthPickupPrefab: {fileID: 2205822048587866403, guid: 0266b1c1ddbf34967a9a6ee8ac2e1e4a, type: 3}
   roomClearTitle: COMPLETE
   roomClearSubtitle: "\u623F\u9593\u5DF2\u6E05\u7A7A"
   kit:

@@ -58,6 +58,9 @@ public static class PortalInstaller
         {
             SetupClockEnemyPortal(prefab);
             SetupUpgradePlants();
+            // 第一關不放補血道具
+            var pickups = GameObject.Find("HealthPickups");
+            if (pickups != null) Object.DestroyImmediate(pickups);
         });
         SetupScene(LevelScenes[1], () =>
         {
@@ -85,19 +88,43 @@ public static class PortalInstaller
         EditorSceneManager.SaveScene(scene);
     }
 
+    /// <summary>
+    /// 星球：只有一個固定位置的傳送門（擺在時鐘 Boss 一開始站的地方，面向玩家起點），一開始關著，
+    /// 打倒 Boss 之後才出現。想換位置直接在場景裡拖「Portal_Exit」就好（它一開始是不啟用的，在 Hierarchy 裡是灰色）
+    /// </summary>
     static void SetupClockEnemyPortal(GameObject portalPrefab)
     {
         var enemies = Object.FindObjectsByType<ClockEnemyHealth>(FindObjectsInactive.Include);
-        if (enemies.Length == 0) Debug.LogWarning("[PortalInstaller] 星球裡找不到時鐘敵人（ClockEnemyHealth），傳送門不會出現！");
+        if (enemies.Length == 0)
+        {
+            Debug.LogWarning("[PortalInstaller] 星球裡找不到時鐘敵人（ClockEnemyHealth），傳送門不會出現！");
+            return;
+        }
+        var boss = enemies[0];
+
+        Vector3 pos = boss.transform.position;
+        if (Physics.Raycast(pos + Vector3.up * 5f, Vector3.down, out var hit, 40f, ~0, QueryTriggerInteraction.Ignore))
+            pos = hit.point;
+        var player = Object.FindAnyObjectByType<PlayerHealth>();
+        Vector3 face = player != null ? player.transform.position - pos : Vector3.back;
+        face.y = 0f;
+
+        var portal = (GameObject)PrefabUtility.InstantiatePrefab(portalPrefab);
+        portal.name = "Portal_Exit";
+        portal.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(face.sqrMagnitude > 0.01f ? face : Vector3.back));
+        portal.GetComponent<Portal>().destination = Portal.Destination.NextLevel;
+        portal.SetActive(false); // 打倒 Boss 才出現
+
         foreach (var enemy in enemies)
         {
             var spawner = enemy.GetComponent<SpawnOnDeath>();
             if (spawner == null) spawner = Undo.AddComponent<SpawnOnDeath>(enemy.gameObject);
-            spawner.prefab = portalPrefab;
+            spawner.revealTarget = portal;
+            spawner.prefab = null;
             EditorUtility.SetDirty(spawner);
             PrefabUtility.RecordPrefabInstancePropertyModifications(spawner);
-            Debug.Log($"[PortalInstaller] {enemy.name}：死亡後生成傳送門");
         }
+        Debug.Log($"[PortalInstaller] {boss.name}：打倒後在固定位置 {pos} 出現傳送門");
     }
 
     static void SetupUpgradePlants()

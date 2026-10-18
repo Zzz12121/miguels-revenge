@@ -131,6 +131,8 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
             controller.AddImpulse(away.normalized * hitKnockback + Vector3.up * 1.5f);
         }
 
+        // 受傷音效：時鐘被打中的金屬聲
+        GameAudio.Play("SFX/RPG/metalLatch", transform.position, 0.85f, Random.Range(0.85f, 1.05f), 0f, 1f, 35f);
         OnDamaged?.Invoke(amount);
 
         if (Health <= 0f) Die();
