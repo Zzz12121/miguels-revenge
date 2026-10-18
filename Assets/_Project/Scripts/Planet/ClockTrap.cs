@@ -51,27 +51,14 @@ public class ClockTrap : MonoBehaviour
             Vector3 hitDir = (other.transform.position - transform.position).normalized;
             playerHealth.TakeDamage(damage, hitDir * 2f);
 
-            // 定身（透過 ThirdPersonController 將速度歸零，或呼叫現有定身邏輯）
+            // 定身效果由玩家控制器自己計時；陷阱接著銷毀也不會中斷解除流程。
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
-                StartCoroutine(RootPlayerRoutine(playerController));
+                playerController.ApplyTemporarySpeedMultiplier(0f, rootDuration);
             }
 
             TriggerExplosion();
-        }
-    }
-
-    IEnumerator RootPlayerRoutine(ThirdPersonController controller)
-    {
-        float originalMultiplier = controller.speedMultiplier;
-        controller.speedMultiplier = 0f; // 定身
-
-        yield return new WaitForSeconds(rootDuration);
-
-        if (controller != null)
-        {
-            controller.speedMultiplier = originalMultiplier; // 解除定身
         }
     }
 

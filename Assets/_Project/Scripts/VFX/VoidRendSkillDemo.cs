@@ -14,6 +14,10 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     public Transform target;
     public Camera skillCamera;
 
+    [Header("Shared Player Integration")]
+    [Tooltip("顯示所有場景共用的技能按鍵與鎖定提示。")]
+    public bool showSkillHud = true;
+
     [Header("Reusable Materials")]
     public Material slashMaterial;
     public Material riftCoreMaterial;
@@ -59,6 +63,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     {
         // Keep the showcase deterministic while Codex/CLI captures the Game View in the background.
         Application.runInBackground = true;
+        ResolveRuntimeReferences();
         if (skillCamera == null) skillCamera = Camera.main;
         if (caster != null)
         {
@@ -77,6 +82,20 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         fixedDeltaStart = Time.fixedDeltaTime;
         CreateEffectsRoot();
         InitializeFinisher();
+        InitializeTargetingAndMovement();
+    }
+
+    void ResolveRuntimeReferences()
+    {
+        // 技能 Prefab 掛在共用 PlayerRig/Player 底下時，不需要每個場景重新指定角色。
+        // 靶場、正式關卡與 Resources 動態生成的玩家因此都會走同一套控制與技能。
+        if (caster == null)
+        {
+            ThirdPersonController owner = GetComponentInParent<ThirdPersonController>();
+            if (owner != null) caster = owner.transform;
+        }
+
+        if (skillCamera == null) skillCamera = Camera.main;
     }
 
     IEnumerator Start()
@@ -99,16 +118,17 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
-            PlaySkill();
+        UpdatePreviewInputAndTargeting();
 
         flashAlpha = Mathf.MoveTowards(flashAlpha, 0f, Time.unscaledDeltaTime * 2.8f);
         posePulse = Mathf.MoveTowards(posePulse, 0f, Time.unscaledDeltaTime * 3.8f);
-        if (playing) ApplyFinisherPose();
+        if (playing && useLegacyProceduralPose) ApplyFinisherPose();
     }
 
     void LateUpdate()
     {
+        // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
+        if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
         if (skillCamera == null) return;
 
         shakeStrength = Mathf.MoveTowards(shakeStrength, 0f, Time.unscaledDeltaTime * 3.5f);
@@ -122,27 +142,33 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         Vector3 rotShake = new Vector3(shake.y, -shake.x, shake.z) * 2.1f;
 
         UpdateFinisherCamera(shake, rotShake);
+        UpdatePracticeCamera();
     }
 
     void OnGUI()
     {
-        if (flashAlpha <= 0.001f) return;
-        GUI.depth = -1000;
-        Color old = GUI.color;
-        GUI.color = new Color(flashColor.r, flashColor.g, flashColor.b, flashAlpha);
-        GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
-        GUI.color = old;
+        if (flashAlpha > 0.001f)
+        {
+            GUI.depth = -1000;
+            Color old = GUI.color;
+            GUI.color = new Color(flashColor.r, flashColor.g, flashColor.b, flashAlpha);
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
+            GUI.color = old;
+        }
+        if (showSkillHud) DrawTargetingUI();
     }
 
     void OnDisable()
     {
         StopAllCoroutines();
+        if (IsTargeting) CancelTargeting();
         if(playing) Time.fixedDeltaTime = fixedDeltaStart;
         RestorePose();
         RestoreCamera();
         CleanupFinisher();
         if(pipelineChanged){QualitySettings.renderPipeline=previousPipeline;pipelineChanged=false;}
         if(playing && caster){caster.position=casterStartPosition;caster.rotation=casterStartRotation;}
+        if (practiceControlsSuspended) RestorePracticeControlsAfterSkill();
         playing=false;cinematicCamera=false;
     }
 
@@ -150,7 +176,10 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     public void PlaySkill()
     {
         if (!playing && isActiveAndEnabled && caster != null && target != null)
+        {
+            PrepareSkillOrigin();
             StartCoroutine(PlaySequence());
+        }
     }
 
 #if UNITY_EDITOR
@@ -489,6 +518,16 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         rightForearm = FindDeepChild(caster, "Bip001 R Forearm");
         rightHand = FindDeepChild(caster, "Bip001 R Hand");
         spine = FindDeepChild(caster, "Bip001 Spine2");
+
+        // 支援一般 Humanoid 模型（例如 Tripo/Mixamo），不再綁死 Bocchi 的 Bip001 骨骼命名。
+        Animator humanoid = caster.GetComponentInChildren<Animator>();
+        if (humanoid != null && humanoid.isHuman)
+        {
+            if (rightUpperArm == null) rightUpperArm = humanoid.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            if (rightForearm == null) rightForearm = humanoid.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            if (rightHand == null) rightHand = humanoid.GetBoneTransform(HumanBodyBones.RightHand);
+            if (spine == null) spine = humanoid.GetBoneTransform(HumanBodyBones.UpperChest) ?? humanoid.GetBoneTransform(HumanBodyBones.Chest);
+        }
         if (rightUpperArm != null) rightUpperBase = rightUpperArm.localRotation;
         if (rightForearm != null) rightForearmBase = rightForearm.localRotation;
         if (rightHand != null) rightHandBase = rightHand.localRotation;

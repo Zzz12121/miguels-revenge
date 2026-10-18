@@ -271,7 +271,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
 
     void OnGUI()
     {
-        if (!ShowBar) return;
+        if (!ShowBar && !showDialogue) return;
 
         float w = Screen.width * 0.55f, h = 14f;
         float x = (Screen.width - w) * 0.5f, y = Screen.height - 70f;
@@ -292,16 +292,19 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
             GUI.color = Color.white;
         }
 
-        var nameStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold };
-        GUI.color = Color.white;
-        GUI.Label(new Rect(x, y - 30f, w, 24f), enemyName, nameStyle);
+        if (ShowBar)
+        {
+            var nameStyle = new GUIStyle(GUI.skin.label) { fontSize = 18, fontStyle = FontStyle.Bold };
+            GUI.color = Color.white;
+            GUI.Label(new Rect(x, y - 30f, w, 24f), enemyName, nameStyle);
 
-        GUI.color = new Color(0f, 0f, 0f, 0.7f);
-        GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
-        GUI.color = new Color(1f, 0.85f, 0.5f, 0.9f);
-        GUI.DrawTexture(new Rect(x, y, w * (trailingHealth / maxHealth), h), Texture2D.whiteTexture);
-        GUI.color = new Color(0.7f, 0.08f, 0.08f);
-        GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
+            GUI.color = new Color(0f, 0f, 0f, 0.7f);
+            GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
+            GUI.color = new Color(1f, 0.85f, 0.5f, 0.9f);
+            GUI.DrawTexture(new Rect(x, y, w * (trailingHealth / maxHealth), h), Texture2D.whiteTexture);
+            GUI.color = new Color(0.7f, 0.08f, 0.08f);
+            GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
+        }
         
         GUI.color = Color.white;
     }

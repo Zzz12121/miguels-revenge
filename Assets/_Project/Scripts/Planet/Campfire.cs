@@ -24,9 +24,12 @@ public class Campfire : MonoBehaviour
         {
             player = p.transform;
             playerHealth = p.GetComponent<PlayerHealth>();
-            
-            // 註冊玩家重生的事件，以便重置營火
-            playerHealth.OnRespawned += ResetCampfire;
+
+            if (playerHealth != null)
+            {
+                // 註冊玩家重生的事件，以便重置營火
+                playerHealth.OnRespawned += ResetCampfire;
+            }
         }
 
         ResetCampfire(); // 初始化營火狀態
@@ -49,7 +52,7 @@ public class Campfire : MonoBehaviour
         float dist = Vector3.Distance(transform.position, player.position);
 
         // 當玩家靠近範圍內，且玩家血量小於最大血量時觸發
-        if (dist <= interactRange)
+        if (dist <= interactRange && playerHealth.Health < playerHealth.maxHealth)
         {
             UseCampfire();
         }

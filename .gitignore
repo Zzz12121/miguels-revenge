@@ -8,6 +8,9 @@
 /[Uu]ser[Ss]ettings/
 /MemoryCaptures/
 /Recordings/
+/tmp/
+/AgentScripts/
+/Assets/Temp.meta
 
 # Local AI-agent configuration and skills
 /.agents/

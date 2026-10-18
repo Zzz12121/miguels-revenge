@@ -108,7 +108,7 @@ public class UpgradePlant : MonoBehaviour
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
 
-        GameAudio.Play("SFX/RPG/coins", transform.position, 1f, 1f);
+        GameAudio.Play("SFX/RPG/handleCoins", transform.position, 1f, 1f);
         VictoryBanner.ShowSmall("能力提升", result, new Color(0.5f, 1f, 0.6f));
         Destroy(gameObject);
     }

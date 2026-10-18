@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -94,11 +93,11 @@ public class SpiderWeb : MonoBehaviour
             // 1. 對玩家造成傷害與少量擊退[cite: 5]
             playerHealth.TakeDamage(damage, hitDir * knockback);
 
-            // 2. 套用緩速或定身效果[cite: 5]
+            // 2. 效果由玩家控制器自己計時；蛛網銷毀後仍能正常解除[cite: 5]
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
-                StartCoroutine(ApplyWebEffectRoutine(playerController, other.transform));
+                ApplyWebEffect(playerController, other.transform);
             }
 
             Destroy(gameObject); // 擊中玩家後銷毀網子本體[cite: 5]
@@ -110,43 +109,17 @@ public class SpiderWeb : MonoBehaviour
         }
     }
 
-    IEnumerator ApplyWebEffectRoutine(ThirdPersonController controller, Transform playerTransform)
+    void ApplyWebEffect(ThirdPersonController controller, Transform playerTransform)
     {
-        // 記錄原本的速度倍率[cite: 5]
-        float originalMultiplier = controller.speedMultiplier;
-
         // 生成在玩家身上的粒子特效物件
-        GameObject activeEffect = null;
         if (webStunEffectPrefab != null)
         {
             // 以玩家為父物件，讓特效跟著玩家移動
-            activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f, Quaternion.identity, playerTransform);
+            var activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f,
+                                           Quaternion.identity, playerTransform);
+            Destroy(activeEffect, effectDuration);
         }
 
-        if (enableRoot)
-        {
-            // 定身：將速度倍率歸零[cite: 5]
-            controller.speedMultiplier = 0f;
-        }
-        else
-        {
-            // 緩速：將速度倍率乘上緩速比例[cite: 5]
-            controller.speedMultiplier *= slowMultiplier;
-        }
-
-        // 等待持續時間結束[cite: 5]
-        yield return new WaitForSeconds(effectDuration);
-
-        // 恢復原本的速度倍率[cite: 5]
-        if (controller != null)
-        {
-            controller.speedMultiplier = originalMultiplier;
-        }
-
-        // 銷毀身上的定身特效
-        if (activeEffect != null)
-        {
-            Destroy(activeEffect);
-        }
+        controller.ApplyTemporarySpeedMultiplier(enableRoot ? 0f : slowMultiplier, effectDuration);
     }
 }

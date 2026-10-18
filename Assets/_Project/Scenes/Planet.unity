@@ -3135,11 +3135,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 492688088367139355, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_TagString
-      value: Player
+      value: Untagged
       objectReference: {fileID: 0}
     - target: {fileID: 690041348421793571, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_TagString
-      value: Player
+      value: Untagged
       objectReference: {fileID: 0}
     - target: {fileID: 5582457813797752160, guid: 331718634753f1049ba47f0b9de603df, type: 3}
       propertyPath: m_LocalPosition.x

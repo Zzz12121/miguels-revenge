@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -65,6 +67,11 @@ public class ThirdPersonController : MonoBehaviour
     bool aiSprint;
     bool aiJump;
 
+    readonly Dictionary<int, float> temporarySpeedMultipliers = new Dictionary<int, float>();
+    int nextTemporarySpeedEffectId;
+    int temporarySpeedEffectGeneration;
+    float temporarySpeedMultiplier = 1f;
+
     CharacterController controller;
     Vector3 horizontalVelocity;
 
@@ -127,6 +134,49 @@ public class ThirdPersonController : MonoBehaviour
         if (impulse.y > 0f) verticalVelocity = Mathf.Max(verticalVelocity, impulse.y);
     }
 
+    /// <summary>
+    /// 暫時套用額外移動倍率。效果由玩家自己計時，來源物件即使被銷毀也能正常解除。
+    /// 多個效果重疊時採用最慢的倍率，且不會覆蓋攻擊使用的 speedMultiplier。
+    /// </summary>
+    public void ApplyTemporarySpeedMultiplier(float multiplier, float duration)
+    {
+        if (duration <= 0f) return;
+        StartCoroutine(TemporarySpeedEffectRoutine(Mathf.Clamp01(multiplier), duration));
+    }
+
+    IEnumerator TemporarySpeedEffectRoutine(float multiplier, float duration)
+    {
+        int id = ++nextTemporarySpeedEffectId;
+        int generation = temporarySpeedEffectGeneration;
+        temporarySpeedMultipliers[id] = multiplier;
+        RecalculateTemporarySpeedMultiplier();
+
+        yield return new WaitForSeconds(duration);
+
+        if (generation != temporarySpeedEffectGeneration) yield break;
+        temporarySpeedMultipliers.Remove(id);
+        RecalculateTemporarySpeedMultiplier();
+    }
+
+    void RecalculateTemporarySpeedMultiplier()
+    {
+        temporarySpeedMultiplier = 1f;
+        foreach (float multiplier in temporarySpeedMultipliers.Values)
+            temporarySpeedMultiplier = Mathf.Min(temporarySpeedMultiplier, multiplier);
+    }
+
+    public void ClearTemporarySpeedEffects()
+    {
+        temporarySpeedEffectGeneration++;
+        temporarySpeedMultipliers.Clear();
+        temporarySpeedMultiplier = 1f;
+    }
+
+    void OnDisable()
+    {
+        ClearTemporarySpeedEffects();
+    }
+
     /// <summary>立刻轉向某個方向（攻擊時面向鏡頭前方）</summary>
     public void FaceDirection(Vector3 direction)
     {
@@ -151,6 +201,7 @@ public class ThirdPersonController : MonoBehaviour
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         ballistic = false;
+        ClearTemporarySpeedEffects();
     }
 
     bool ballistic;
@@ -223,7 +274,8 @@ public class ThirdPersonController : MonoBehaviour
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * (IsPushing ? pushFactor : 1f);
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * temporarySpeedMultiplier
+                          * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
         if (ballistic)
