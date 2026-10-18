@@ -1,8 +1,9 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem; // 引入新版 Input System 命名空間
 
 /// <summary>
-/// 篝火互動：玩家靠近時回復 20% 血量，回復完畢後粒子特效消失。
+/// 篝火互動：玩家靠近互動範圍內時顯示提示，按下 E 鍵後回復 20% 血量，回復完畢後粒子特效消失。
 /// 當玩家重生時會自動重置，恢復成燃燒狀態。
 /// </summary>
 public class Campfire : MonoBehaviour
@@ -15,7 +16,8 @@ public class Campfire : MonoBehaviour
 
     Transform player;
     PlayerHealth playerHealth;
-    bool isUsed = false; // 紀錄是否已被使用
+    bool isUsed = false;          // 紀錄是否已被使用
+    bool isPlayerInRange = false; // 紀錄玩家是否在互動範圍內
 
     void Start()
     {
@@ -23,21 +25,28 @@ public class Campfire : MonoBehaviour
         if (p != null)
         {
             player = p.transform;
-            playerHealth = p.GetComponent<PlayerHealth>();
+            playerHealth = p.GetComponentInChildren<PlayerHealth>();
 
             if (playerHealth != null)
             {
-                // 註冊玩家重生的事件，以便重置營火
+                // 註冊玩家重生事件，讓營火在重生後恢復可用。
                 playerHealth.OnRespawned += ResetCampfire;
             }
+            else
+            {
+                Debug.LogWarning("[Campfire] 找到玩家物件，但在其自身或子物件中找不到 PlayerHealth 腳本！");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[Campfire] 找不到 Tag 為 'Player' 的玩家物件！");
         }
 
-        ResetCampfire(); // 初始化營火狀態
+        ResetCampfire();
     }
 
     void OnDestroy()
     {
-        // 移除事件監聽，避免記憶體洩漏
         if (playerHealth != null)
         {
             playerHealth.OnRespawned -= ResetCampfire;
@@ -46,13 +55,17 @@ public class Campfire : MonoBehaviour
 
     void Update()
     {
-        if (isUsed || player == null || playerHealth == null) return;
+        if (player == null || playerHealth == null) return;
 
         // 計算玩家與火堆的距離
         float dist = Vector3.Distance(transform.position, player.position);
+        isPlayerInRange = (dist <= interactRange);
 
-        // 當玩家靠近範圍內，且玩家血量小於最大血量時觸發
-        if (dist <= interactRange && playerHealth.Health < playerHealth.maxHealth)
+        // 使用新版 Input System 偵測 E 鍵是否被按下
+        bool ePressed = Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame;
+
+        // 尚未使用、在範圍內、按下 E 且確實缺血時才回血。
+        if (!isUsed && isPlayerInRange && ePressed && playerHealth.Health < playerHealth.maxHealth)
         {
             UseCampfire();
         }
@@ -61,43 +74,36 @@ public class Campfire : MonoBehaviour
     void UseCampfire()
     {
         isUsed = true;
+        isPlayerInRange = false; // 使用後立刻關閉提示
 
-        // 計算 20% 的血量
         float healAmount = playerHealth.maxHealth * 0.2f;
-
         StartCoroutine(HealAndExtinguish(healAmount));
     }
 
     IEnumerator HealAndExtinguish(float healAmount)
-{
-    yield return new WaitForSeconds(0.2f);
-
-    // 實際幫玩家回復血量
-    if (playerHealth != null)
     {
-        playerHealth.Heal(healAmount);
-    }
-    
-    Debug.Log($"篝火生效：為玩家回復了 {healAmount} 點血量！目前的血量為：{playerHealth.Health}");
+        yield return new WaitForSeconds(0.2f);
 
-    // 讓粒子特效停止發射並關閉
-    if (fireParticleEffect != null)
-    {
-        ParticleSystem ps = fireParticleEffect.GetComponent<ParticleSystem>();
-        if (ps != null)
+        if (playerHealth != null)
         {
-            var emission = ps.emission;
-            emission.enabled = false;
+            playerHealth.Heal(healAmount);
+            Debug.Log($"篝火生效：為玩家回復了 {healAmount} 點血量！目前的血量為：{playerHealth.Health}");
         }
 
-        yield return new WaitForSeconds(1.5f);
-        fireParticleEffect.SetActive(false);
-    }
-}
+        if (fireParticleEffect != null)
+        {
+            ParticleSystem ps = fireParticleEffect.GetComponent<ParticleSystem>();
+            if (ps != null)
+            {
+                var emission = ps.emission;
+                emission.enabled = false;
+            }
 
-    /// <summary>
-    /// 玩家重生時：重置營火，恢復火焰特效與可使用狀態
-    /// </summary>
+            yield return new WaitForSeconds(1.5f);
+            fireParticleEffect.SetActive(false);
+        }
+    }
+
     public void ResetCampfire()
     {
         StopAllCoroutines();
@@ -107,7 +113,6 @@ public class Campfire : MonoBehaviour
         {
             fireParticleEffect.SetActive(true);
 
-            // 重新啟用粒子發射器
             ParticleSystem ps = fireParticleEffect.GetComponent<ParticleSystem>();
             if (ps != null)
             {
@@ -116,6 +121,31 @@ public class Campfire : MonoBehaviour
                 ps.Clear();
                 ps.Play();
             }
+        }
+    }
+
+    // 繪製畫面提示 UI 與編輯器範圍黃圈
+    void OnGUI()
+    {
+        if (!isUsed && isPlayerInRange)
+        {
+            float w = 300f, h = 40f;
+            float x = (Screen.width - w) * 0.5f;
+            float y = Screen.height - 150f;
+
+            GUI.color = new Color(0f, 0f, 0f, 0.6f);
+            GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);
+
+            var style = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter
+            };
+
+            GUI.color = Color.yellow;
+            GUI.Label(new Rect(x, y, w, h), "按下 [ E ] 使用營火 (回復 20% 血量)", style);
+            GUI.color = Color.white;
         }
     }
 
