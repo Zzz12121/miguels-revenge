@@ -37,6 +37,13 @@ public class ThirdPersonController : MonoBehaviour
     public float coyoteTime = 0.12f;
     [Tooltip("落地前提早按跳躍仍會生效的時間 (秒)")]
     public float jumpBufferTime = 0.12f;
+    [Tooltip("二段跳（能力植物「一步登天」會打開）：在空中可以再跳一次")]
+    public bool doubleJumpEnabled = false;
+    [Tooltip("二段跳的高度 (m)")]
+    public float doubleJumpHeight = 1.4f;
+    bool airJumpUsed;
+    /// <summary>二段跳的瞬間通知外面（特效 / 動畫用）</summary>
+    public event System.Action OnDoubleJump;
 
     [Header("狀態")]
     [Tooltip("關閉時角色不吃玩家輸入（死亡、過場時使用），但仍受重力影響")]
@@ -310,6 +317,17 @@ public class ThirdPersonController : MonoBehaviour
             lastJumpPressedTime = float.NegativeInfinity;
             lastGroundedTime = float.NegativeInfinity; // 防止連跳
         }
+        else if (wantsJump && doubleJumpEnabled && !aiControlled && !airJumpUsed && !ballistic && !controller.isGrounded)
+        {
+            // 二段跳：空中再按一次跳躍（每次離地只能一次）
+            verticalVelocity = Mathf.Sqrt(doubleJumpHeight * -2f * gravity);
+            lastJumpPressedTime = float.NegativeInfinity;
+            airJumpUsed = true;
+            CombatVFX.Puff(transform.position + Vector3.down * 0.6f, Vector3.down, new Color(0.9f, 0.85f, 0.7f, 0.6f));
+            GameAudio.Play("SFX/RPG/cloth3", transform.position, 0.7f, 1.3f, 0.08f, 0.3f);
+            OnDoubleJump?.Invoke();
+        }
+        if (controller.isGrounded && verticalVelocity <= 0f) airJumpUsed = false;
 
         verticalVelocity += gravity * dt;
 

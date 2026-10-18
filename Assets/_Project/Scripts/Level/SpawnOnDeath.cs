@@ -2,12 +2,16 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// 掛在敵人身上：敵人死亡後，在牠倒下的地方生成一個物件（例如傳送門），並從地面長出來。
-/// 支援 ClockEnemyHealth 和 EnemyHealth。
+/// 掛在敵人身上：敵人死亡後讓一個物件（例如傳送門）從地面長出來。兩種用法：
+///   - Reveal Target：場景裡事先擺好、一開始關著的物件，在它原本的位置出現（固定位置，星球的傳送門用這個）
+///   - Prefab：在敵人倒下的地方生成一個新的
+/// 兩個都填的話用 Reveal Target。支援 ClockEnemyHealth 和 EnemyHealth。
 /// </summary>
 public class SpawnOnDeath : MonoBehaviour
 {
-    [Tooltip("要生成的 Prefab（例如 Portal.prefab）")]
+    [Tooltip("場景裡事先擺好的物件（一開始設成不啟用），敵人死後在原本的位置出現")]
+    public GameObject revealTarget;
+    [Tooltip("沒有 Reveal Target 時：在敵人倒下的地方生成這個 Prefab")]
     public GameObject prefab;
     [Tooltip("死亡後幾秒才生成（等倒地動畫播完）")]
     public float delay = 2.5f;
@@ -19,6 +23,7 @@ public class SpawnOnDeath : MonoBehaviour
 
     ClockEnemyHealth clockHealth;
     EnemyHealth enemyHealth;
+    bool triggered; // 只會出現一次
 
     void Awake()
     {
@@ -38,7 +43,8 @@ public class SpawnOnDeath : MonoBehaviour
 
     void HandleDied()
     {
-        if (prefab == null) return;
+        if (triggered || (revealTarget == null && prefab == null)) return;
+        triggered = true;
         // 協程掛在獨立物件上，敵人之後被刪掉或關掉也不影響
         var runner = new GameObject("SpawnOnDeath_Runner").AddComponent<SpawnRunner>();
         runner.StartCoroutine(runner.Run(this, GroundBelow(transform.position)));
@@ -59,22 +65,33 @@ public class SpawnOnDeath : MonoBehaviour
         public IEnumerator Run(SpawnOnDeath s, Vector3 pos)
         {
             GameObject prefab = s.prefab;
+            GameObject reveal = s.revealTarget;
             float growTime = s.growTime;
             bool facePlayer = s.facePlayer;
             string text = s.announceText;
             yield return new WaitForSeconds(s.delay);
 
-            Quaternion rot = Quaternion.identity;
-            var player = GameObject.FindWithTag("Player");
-            if (facePlayer && player != null)
+            GameObject go;
+            if (reveal != null)
             {
-                Vector3 d = player.transform.position - pos;
-                d.y = 0f;
-                if (d.sqrMagnitude > 0.01f) rot = Quaternion.LookRotation(d);
+                // 固定位置：場景裡擺好的物件直接打開
+                go = reveal;
+                pos = go.transform.position;
+                go.SetActive(true);
             }
-
-            var go = Instantiate(prefab, pos, rot);
-            go.name = prefab.name;
+            else
+            {
+                Quaternion rot = Quaternion.identity;
+                var player = GameObject.FindWithTag("Player");
+                if (facePlayer && player != null)
+                {
+                    Vector3 d = player.transform.position - pos;
+                    d.y = 0f;
+                    if (d.sqrMagnitude > 0.01f) rot = Quaternion.LookRotation(d);
+                }
+                go = Instantiate(prefab, pos, rot);
+                go.name = prefab.name;
+            }
             GameAudio.Play("SFX/RPG/metalLatch", pos, 1f, 0.6f, 0f, 1f, 80f);
             if (!string.IsNullOrEmpty(text)) VictoryBanner.ShowSmall(text, "", new Color(0.55f, 0.7f, 1f));
 

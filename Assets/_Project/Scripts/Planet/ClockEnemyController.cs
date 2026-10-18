@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -33,19 +34,33 @@ public class ClockEnemyController : MonoBehaviour
     [Tooltip("二階段四周保護時鐘距離敵人的距離 (m)")]
     public float shieldClockOffset = 2.5f;
 
+    [Header("檢查點")]
+    [Tooltip("Boss 戰開始時自動啟用的檢查點（石柱）。玩家死在 Boss 戰中會在這裡復活，Boss 回滿血重來；Boss 被打死後就不會再復活")]
+    public Checkpoint fightCheckpoint;
+
     private Transform player;
+    private PlayerHealth playerHealth;
     private CharacterController cc;
     private ClockEnemyHealth enemyHealth;
     private bool isActing = false;
     private bool hasActivated = false;
     private bool phaseTwoTriggered = false; // 確保二階段四方時鐘只在進入時生成一次
+    private Vector3 homePos;
+    private Quaternion homeRot;
+    private readonly List<GameObject> spawnedClocks = new List<GameObject>();
 
     void Start()
     {
         cc = GetComponent<CharacterController>();
         enemyHealth = GetComponent<ClockEnemyHealth>();
-        var p = GameObject.FindWithTag("Player");
-        if (p != null) player = p.transform;
+        homePos = transform.position;
+        homeRot = transform.rotation;
+        playerHealth = PlayerHealth.Find();
+        if (playerHealth != null)
+        {
+            player = playerHealth.transform;
+            playerHealth.OnRespawned += ResetFight;
+        }
 
         enemyHealth.OnEnterPhaseTwo += OnEnterPhaseTwoHandler;
     }
@@ -56,6 +71,32 @@ public class ClockEnemyController : MonoBehaviour
         {
             enemyHealth.OnEnterPhaseTwo -= OnEnterPhaseTwoHandler;
         }
+        if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
+    }
+
+    void SpawnClock(Vector3 pos)
+    {
+        var clock = Instantiate(clockPrefab, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+        spawnedClocks.Add(clock);
+    }
+
+    /// <summary>玩家死在 Boss 戰中重生：Boss 還活著的話回滿血、回到原位、清掉召喚出來的時鐘，等玩家再走進區域重新開戰</summary>
+    void ResetFight()
+    {
+        if (enemyHealth == null || enemyHealth.IsDead || !hasActivated) return;
+        StopAllCoroutines();
+        foreach (var c in spawnedClocks) if (c != null) Destroy(c);
+        spawnedClocks.Clear();
+
+        isActing = false;
+        hasActivated = false;
+        phaseTwoTriggered = false;
+        enemyHealth.HealFull();
+        enemyHealth.ShowBar = false;
+
+        cc.enabled = false; // CharacterController 要先關掉才能直接傳送
+        transform.SetPositionAndRotation(homePos, homeRot);
+        cc.enabled = true;
     }
 
     void Update()
@@ -64,9 +105,10 @@ public class ClockEnemyController : MonoBehaviour
 
         if (!hasActivated)
         {
-            if (IsPlayerInActivationArea())
+            if (IsPlayerInActivationArea() && (playerHealth == null || !playerHealth.IsDead))
             {
                 hasActivated = true;
+                if (fightCheckpoint != null) fightCheckpoint.Activate();
                 enemyHealth.ShowBar = true;
                 Debug.Log("玩家已進入指定區域，時鐘 Boss 戰開始！");
                 StartCoroutine(SummonClockRoutine());
@@ -92,7 +134,7 @@ public class ClockEnemyController : MonoBehaviour
             {
                 Vector2 randomCircle = Random.insideUnitCircle * summonRange;
                 Vector3 spawnPos = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
-                Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+                SpawnClock(spawnPos);
             }
         }
     }
@@ -137,7 +179,7 @@ public class ClockEnemyController : MonoBehaviour
         {
             Vector3 spawnPos = center + dir;
             spawnPos.y = center.y; // 保持與敵人同高度
-            Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+            SpawnClock(spawnPos);
         }
     }
 
@@ -249,6 +291,9 @@ public class ClockEnemyController : MonoBehaviour
     // 落地震開周遭玩家的輔助方法
     void TriggerLandingShockwave()
     {
+        // 攻擊特效：地面擴散一圈金色時光波
+        CombatVFX.Ring(transform.position + Vector3.down * 0.9f, new Color(1f, 0.8f, 0.3f), 5f);
+        GameAudio.Play("SFX/rock_hit", transform.position, 0.9f, 1.2f, 0.05f, 1f, 40f);
         if (player == null) return;
 
         // 判斷玩家是否在落地震波的有效半徑內（例如 5 公尺內）
@@ -280,7 +325,8 @@ public class ClockEnemyController : MonoBehaviour
         {
             Vector3 spawnPos = start + direction * (i * 2.0f);
             spawnPos.y = start.y; // 保持與敵人同高度
-            Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+            SpawnClock(spawnPos);
+            CombatVFX.Impact(spawnPos, new Color(1f, 0.82f, 0.35f));
         }
     }
 

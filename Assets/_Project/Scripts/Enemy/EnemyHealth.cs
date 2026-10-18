@@ -19,6 +19,10 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public float flashTime = 0.08f;
     [Tooltip("被打時閃的顏色。有貼圖的模型閃白色看不出來，要用紅色之類的顏色")]
     public Color flashColor = Color.white;
+    [Tooltip("受傷音效（不填 = Kenney RPG Audio 的 metalPot1~3）")]
+    public AudioClip[] hurtSounds;
+    [Tooltip("固定被打幾下就死（不管攻擊力多高、是第幾段連擊）。0 = 照傷害扣血")]
+    public int hitsToKill = 0;
 
     [Header("頭上血條")]
     public bool showHealthBar = true;
@@ -60,6 +64,7 @@ public class EnemyHealth : MonoBehaviour, IDamageable
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
         if (IsDead || amount <= 0f) return;
+        if (hitsToKill > 0) amount = maxHealth / hitsToKill; // 每一下扣固定比例
         Health = Mathf.Max(0f, Health - amount);
         LastHitTime = Time.time;
 
@@ -72,6 +77,9 @@ public class EnemyHealth : MonoBehaviour, IDamageable
             controller.AddImpulse(away.normalized * hitKnockback + Vector3.up * 1.5f);
         }
 
+        // 受傷音效：盔甲 / 骨頭被打中的聲音（音高隨機一點，連續打不會聽起來一樣）
+        GameAudio.PlayAt(GameAudio.Pick(hurtSounds, "SFX/RPG/metalPot1", "SFX/RPG/metalPot2", "SFX/RPG/metalPot3"),
+                         transform.position, 0.75f, Random.Range(0.75f, 0.95f), 1f, 35f);
         OnDamaged?.Invoke(amount);
         if (Health <= 0f) Die();
     }

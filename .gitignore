@@ -44,3 +44,7 @@ crashlytics-build.properties
 
 # macOS
 .DS_Store
+
+# Unity Performance Testing 打包時自動產生的檔案
+/Assets/Resources/PerformanceTestRun*
+/Assets/Resources.meta

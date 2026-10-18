@@ -67,6 +67,11 @@ public class SpiderWebAttack : MonoBehaviour
 
         // 生成蜘蛛網物件
         GameObject webGO = Instantiate(webProjectilePrefab, firePoint.position, Quaternion.LookRotation(direction));
+
+        // 攻擊特效：嘴邊噴出一團白絲，蜘蛛絲後面拖著尾巴
+        CombatVFX.Puff(firePoint.position, direction, new Color(0.92f, 0.92f, 1f, 0.85f));
+        CombatVFX.Trail(webGO.transform, new Color(0.85f, 0.9f, 1f, 0.9f), 0.22f);
+        GameAudio.Play("SFX/RPG/cloth3", firePoint.position, 0.8f, 1.4f, 0.1f, 1f, 30f);
         
         // 給予飛行物理速度
         Rigidbody rb = webGO.GetComponent<Rigidbody>();

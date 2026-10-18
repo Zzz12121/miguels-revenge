@@ -12,6 +12,12 @@ public class EnemyCombat : MeleeCombat
     [Tooltip("打中玩家時的擊退力道")]
     public float knockback = 6f;
 
+    [Header("攻擊特效")]
+    [Tooltip("揮劍時往前噴火花、打中玩家時炸開火花")]
+    public bool attackVfx = true;
+    [Tooltip("火花顏色（骷髏預設淡綠色，聖騎士由安裝選單設成橘紅色）")]
+    public Color attackVfxColor = new Color(0.55f, 1f, 0.6f);
+
     /// <summary>攻擊目標（EnemyAI 會自動設定成玩家）</summary>
     [HideInInspector] public Transform target;
 
@@ -27,7 +33,19 @@ public class EnemyCombat : MeleeCombat
         return BeginAttack();
     }
 
-    protected override void OnSwingStart(int index) => hitsLeft--;
+    protected override void OnSwingStart(int index)
+    {
+        hitsLeft--;
+        if (attackVfx) StartCoroutine(SlashVfxAfterWindup());
+    }
+
+    /// <summary>抬手結束、真的砍下去的那一刻才噴火花</summary>
+    System.Collections.IEnumerator SlashVfxAfterWindup()
+    {
+        yield return new WaitForSeconds(windupTime);
+        Vector3 fwd = transform.forward;
+        CombatVFX.Slash(transform.position + Vector3.up * 1.1f + fwd * 0.6f, fwd, attackVfxColor);
+    }
 
     protected override bool WantsNextHit() => hitsLeft > 0;
 
@@ -54,6 +72,7 @@ public class EnemyCombat : MeleeCombat
         dir.y = 0f;
         if (dir.sqrMagnitude < 0.0001f) dir = transform.forward;
         player.TakeDamage(damage, dir.normalized * knockback + Vector3.up * 3f);
+        if (attackVfx) CombatVFX.Impact(hitPoint, attackVfxColor);
         return true;
     }
 

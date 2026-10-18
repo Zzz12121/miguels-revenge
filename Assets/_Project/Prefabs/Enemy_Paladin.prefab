@@ -308,6 +308,8 @@ MonoBehaviour:
   soundVolume: 0.7
   soundPitch: 1
   knockback: 6
+  attackVfx: 1
+  attackVfxColor: {r: 1, g: 0.45, b: 0.15, a: 1}
   target: {fileID: 0}
 --- !u!114 &6423350165647195669
 MonoBehaviour:
@@ -326,6 +328,8 @@ MonoBehaviour:
   staggerTime: 0.35
   flashTime: 0.08
   flashColor: {r: 1, g: 0.3, b: 0.25, a: 1}
+  hurtSounds: []
+  hitsToKill: 0
   showHealthBar: 1
   barHeightOffset: 1.65
   barShowTime: 4
@@ -389,10 +393,13 @@ MonoBehaviour:
   attacks:
   - state: Slash01
     hitTime: 1.0500001
+    clipLength: 0
   - state: Slash02
     hitTime: 0.58500004
+    clipLength: 0
   - state: Stab
     hitTime: 0.78000003
+    clipLength: 0
   spawnDuration: 0.85
   deathDuration: 2.3000002
 --- !u!1 &6588700861332479404
@@ -561,10 +568,26 @@ PrefabInstance:
       propertyPath: m_LocalRotation.z
       value: 0.5311455
       objectReference: {fileID: 0}
+    - target: {fileID: -3086478328068027308, guid: 91627488995924122b13c0e49bb415db, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 545f7f9f8a97a4a4a81fe837738584b5, type: 2}
+    - target: {fileID: 415287891258781815, guid: 91627488995924122b13c0e49bb415db, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 545f7f9f8a97a4a4a81fe837738584b5, type: 2}
+    - target: {fileID: 701420837181973649, guid: 91627488995924122b13c0e49bb415db, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 545f7f9f8a97a4a4a81fe837738584b5, type: 2}
     - target: {fileID: 919132149155446097, guid: 91627488995924122b13c0e49bb415db, type: 3}
       propertyPath: m_Name
       value: PaladinModel
       objectReference: {fileID: 0}
+    - target: {fileID: 3099756089343826349, guid: 91627488995924122b13c0e49bb415db, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 545f7f9f8a97a4a4a81fe837738584b5, type: 2}
     - target: {fileID: 5866666021909216657, guid: 91627488995924122b13c0e49bb415db, type: 3}
       propertyPath: m_Controller
       value: 
