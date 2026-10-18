@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 敵艦發射的遠程投射物（火球/拋射物）：
+/// 敵艦發射的遠程投射物（弓箭手的箭；isArrow = false 時是舊的火球）：
 /// - 直線純物理軌道飛行（包含微幅自然重力，飛行途中不轉彎、不導引）
 /// - 在掠過玩家 1 公尺範圍內或碰擊時觸發範圍傷害引爆
 /// </summary>
@@ -12,6 +12,8 @@ public class BoatProjectile : MonoBehaviour
     public float lifeTime = 5.0f;
     public float explosionRadius = 1.0f; // 攻擊半徑 1 公尺
     public Vector3 velocity;
+    [Tooltip("箭：細的白色尾跡、箭頭朝著飛行方向、打中時是箭射中的聲音和木屑")]
+    public bool isArrow;
 
     float spawnTime;
     TrailRenderer trail;
@@ -23,16 +25,16 @@ public class BoatProjectile : MonoBehaviour
         spawnTime = Time.time;
         cachedPlayerHealth = FindFirstObjectByType<PlayerHealth>();
 
-        // 發光拖尾
+        // 拖尾：箭是細的白色氣流，火球是粗的橘紅色
         trail = gameObject.AddComponent<TrailRenderer>();
-        trail.time = 0.3f;
-        trail.startWidth = 0.45f;
-        trail.endWidth = 0.05f;
+        trail.time = isArrow ? 0.18f : 0.3f;
+        trail.startWidth = isArrow ? 0.08f : 0.45f;
+        trail.endWidth = isArrow ? 0f : 0.05f;
         var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-        mat.color = new Color(1f, 0.4f, 0.05f, 0.95f);
+        mat.color = isArrow ? new Color(1f, 1f, 1f, 0.7f) : new Color(1f, 0.4f, 0.05f, 0.95f);
         trail.material = mat;
-        trail.startColor = new Color(1f, 0.5f, 0.1f, 1f);
-        trail.endColor = new Color(0.9f, 0.1f, 0.0f, 0f);
+        trail.startColor = isArrow ? new Color(1f, 1f, 1f, 0.8f) : new Color(1f, 0.5f, 0.1f, 1f);
+        trail.endColor = isArrow ? new Color(1f, 1f, 1f, 0f) : new Color(0.9f, 0.1f, 0.0f, 0f);
     }
 
     void Update()
@@ -42,6 +44,7 @@ public class BoatProjectile : MonoBehaviour
         // 微幅自然重力（垂直微幅下墜，保持直線拋物線，絕不水平轉彎追蹤）
         velocity += Vector3.down * 2.8f * Time.deltaTime;
         transform.position += velocity * Time.deltaTime;
+        if (isArrow && velocity.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(velocity); // 箭頭跟著拋物線往下
 
         // 飛行中檢查是否進入玩家 1 公尺攻擊半徑
         if (cachedPlayerHealth != null && !cachedPlayerHealth.IsDead)
@@ -87,7 +90,13 @@ public class BoatProjectile : MonoBehaviour
             else
             {
                 hasExploded = true;
-                GameAudio.Play("SFX/rock_hit", transform.position, 0.6f, 1.3f, 0.1f, 1f, 30f);
+                if (isArrow)
+                {
+                    // 箭插在船身上：木頭的聲音和木屑
+                    GameAudio.Play("SFX/RPG/chop", transform.position, 0.7f, 1.4f, 0.1f, 1f, 30f);
+                    CombatVFX.Impact(transform.position, new Color(0.75f, 0.55f, 0.3f));
+                }
+                else GameAudio.Play("SFX/rock_hit", transform.position, 0.6f, 1.3f, 0.1f, 1f, 30f);
                 Destroy(gameObject);
             }
         }
@@ -104,7 +113,12 @@ public class BoatProjectile : MonoBehaviour
             ThirdPersonCamera.ShakeMain(0.22f, 0.15f);
         }
 
-        GameAudio.Play("SFX/rock_hit", transform.position, 0.85f, 1.2f, 0.1f, 1f, 35f);
+        if (isArrow)
+        {
+            GameAudio.Play("SFX/RPG/knifeSlice", transform.position, 0.9f, 0.9f, 0.1f, 1f, 35f);
+            CombatVFX.Impact(transform.position, new Color(1f, 0.9f, 0.75f));
+        }
+        else GameAudio.Play("SFX/rock_hit", transform.position, 0.85f, 1.2f, 0.1f, 1f, 35f);
         Destroy(gameObject);
     }
 }

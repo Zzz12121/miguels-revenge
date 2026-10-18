@@ -30,6 +30,8 @@ public class GameManager : MonoBehaviour
         public string sceneName;
         [Tooltip("進入關卡時顯示的標題")]
         public string title;
+        [Tooltip("這一關的背景音樂（Resources/Audio 底下的路徑，例如 Music/bgm_planet）。Boss 戰會換成 Boss 的音樂")]
+        public string music;
     }
 
     public static GameManager Instance { get; private set; }
@@ -37,10 +39,16 @@ public class GameManager : MonoBehaviour
     [Tooltip("關卡順序，傳送門的「下一關」就是照這個順序")]
     public Level[] levels =
     {
-        new Level { sceneName = "Planet",             title = "第一關　沙漠" },
-        new Level { sceneName = "The_Viking_Village", title = "第二關　維京村莊" },
-        new Level { sceneName = "Floor02",            title = "第三關　地下城" },
+        new Level { sceneName = "Planet",             title = "第一關　沙漠",     music = "Music/bgm_planet" },
+        new Level { sceneName = "The_Viking_Village", title = "第二關　維京村莊", music = "Music/bgm_viking" },
+        new Level { sceneName = "Floor02",            title = "第三關　地下城",   music = "Music/bgm_dungeon" },
     };
+
+    [Header("背景音樂")]
+    [Tooltip("主選單的背景音樂（Resources/Audio 底下的路徑）")]
+    public string mainMenuMusic = "Music/bgm_menu";
+    [Range(0f, 1f)] public float musicVolume = 0.35f;
+    public float musicFadeIn = 1.5f;
 
     [Header("轉場")]
     public float fadeOutTime = 0.8f;
@@ -116,8 +124,9 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        // 直接從某一關按 Play 也顯示關卡標題，並記下進關時的狀態（重新開始本關用）
+        // 直接從某一關按 Play 也顯示關卡標題、播音樂，並記下進關時的狀態（重新開始本關用）
         ShowTitle();
+        PlaySceneMusic();
         if (CurrentLevelIndex >= 0) levelEntryState = PlayerState.Capture(PlayerState.FindPlayer());
     }
 
@@ -294,8 +303,18 @@ public class GameManager : MonoBehaviour
 
         OnLevelLoaded?.Invoke(sceneName);
         ShowTitle();
+        PlaySceneMusic();
         yield return Fade(0f, fadeInTime);
         IsLoading = false;
+    }
+
+    /// <summary>播目前場景的背景音樂：主選單 / 各關卡各自一首（Boss 戰開始時 BossController 會換成 Boss 音樂）</summary>
+    public void PlaySceneMusic()
+    {
+        string path = InMainMenu ? mainMenuMusic : CurrentLevel?.music;
+        var clip = GameAudio.Clip(path);
+        if (clip != null) GameAudio.PlayMusic(clip, musicVolume, musicFadeIn);
+        else GameAudio.StopMusic(0.5f);
     }
 
     void ShowTitle()

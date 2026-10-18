@@ -55,6 +55,14 @@ public class VikingBoat : MonoBehaviour
     [Tooltip("航速加減速平滑度")]
     public float acceleration = 6.0f;
 
+    [Header("不能開上陸地")]
+    [Tooltip("船頭到船中心的距離 (m)：從這裡往下探測水深")]
+    public float hullHalfLength = 4.5f;
+    [Tooltip("船身半寬 (m)：船頭左右兩側也會探測")]
+    public float hullHalfWidth = 1.4f;
+    [Tooltip("船底至少要比海平面低多少 (m)。海底（或陸地、碼頭）比這個高就算擱淺，不能再往前")]
+    public float minWaterDepth = 0.5f;
+
     [Header("目的地設定")]
     [Tooltip("駛向的目的地座標（外海開闊航道）")]
     public Vector3 destinationPoint = new Vector3(260f, 1.3f, 120f);
@@ -248,7 +256,11 @@ public class VikingBoat : MonoBehaviour
         if (cc != null) cc.enabled = false;
 
         var combat = player.GetComponent<PlayerCombat>();
-        if (combat != null) combat.enabled = true; // 登船後允許戰鬥，可以反擊追來的敵艦
+        if (combat != null)
+        {
+            combat.enabled = true;
+            combat.bowMode = true; // 登船後改用弓箭：右鍵瞄準、左鍵射箭，射倒敵艦上的弓箭手
+        }
 
         // 2. 將角色固定在船隻掌舵站立點上，並依據站立點或設定角度精確朝向船頭前方
         player.transform.SetParent(transform);
@@ -407,7 +419,18 @@ public class VikingBoat : MonoBehaviour
 
         // 前進推進（依 currentYaw 與 boatForwardOffsetAngle 計算精確的視覺船首方向）
         Vector3 forwardDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
-        transform.position += forwardDir * (currentSpeed * dt);
+        Vector3 move = forwardDir * (currentSpeed * dt);
+        if (move.sqrMagnitude > 0f && WouldRunAground(move, forwardDir))
+        {
+            // 前面是陸地 / 淺灘 / 碼頭：撞一下停住（還是可以轉向、倒退離開）
+            if (Mathf.Abs(currentSpeed) > 2f)
+            {
+                GameAudio.Play("SFX/rock_hit", transform.position, 0.7f, 0.8f, 0.05f, 1f, 30f);
+                ThirdPersonCamera.ShakeMain(0.12f, 0.2f);
+            }
+            currentSpeed = 0f;
+        }
+        else transform.position += move;
 
         // 檢查是否開船出海，達到一定距離後觸發身後追擊
         if (!hasTriggeredPursuit && enemyBoatCount > 0)
@@ -428,6 +451,50 @@ public class VikingBoat : MonoBehaviour
     /// <summary>
     /// 水面起伏動態模擬
     /// </summary>
+    static readonly RaycastHit[] groundHits = new RaycastHit[16];
+
+    /// <summary>
+    /// 這一步會不會開上陸地：在船頭（倒退時是船尾）中間和左右兩側往下探測地面高度，
+    /// 新位置的地面比「海平面 - minWaterDepth」高、而且比現在更淺，就不能走。
+    /// 「比現在更淺」才擋：船停在碼頭邊（本來就很淺）時，還是可以往外海開走
+    /// </summary>
+    bool WouldRunAground(Vector3 move, Vector3 forwardDir)
+    {
+        float limit = baseWaterY - minWaterDepth;
+        Vector3 dir = currentSpeed >= 0f ? forwardDir : -forwardDir;
+        Vector3 side = Vector3.Cross(Vector3.up, forwardDir).normalized;
+        Vector3[] offsets =
+        {
+            dir * hullHalfLength,
+            dir * hullHalfLength * 0.7f + side * hullHalfWidth,
+            dir * hullHalfLength * 0.7f - side * hullHalfWidth,
+        };
+        foreach (var o in offsets)
+        {
+            float now = GroundHeight(transform.position + o);
+            float next = GroundHeight(transform.position + move + o);
+            if (next > limit && next > now + 0.01f) return true;
+        }
+        return false;
+    }
+
+    /// <summary>某一點底下最高的地面（陸地、海底、碼頭）；忽略自己這艘船和船上的玩家</summary>
+    float GroundHeight(Vector3 p)
+    {
+        int n = Physics.RaycastNonAlloc(new Vector3(p.x, baseWaterY + 30f, p.z), Vector3.down, groundHits, 60f,
+                                        ~0, QueryTriggerInteraction.Ignore);
+        float best = float.NegativeInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            var t = groundHits[i].collider.transform;
+            if (t.IsChildOf(transform)) continue;
+            if (groundHits[i].collider is CharacterController) continue;
+            if (groundHits[i].collider.GetComponentInParent<EnemyBoat>() != null) continue; // 敵艦不算陸地
+            if (groundHits[i].point.y > best) best = groundHits[i].point.y;
+        }
+        return best;
+    }
+
     void ApplyWaveFloating(float speed)
     {
         float t = Time.time;
@@ -513,7 +580,7 @@ public class VikingBoat : MonoBehaviour
 
             // 若玩家沒有在揮劍攻擊，則自動校正面向船首；攻擊時則允許隨鏡頭/滑鼠瞄準方向揮劍反擊
             var combat = playerObj.GetComponent<PlayerCombat>();
-            bool isAttacking = combat != null && combat.IsAttacking;
+            bool isAttacking = combat != null && combat.ControlsFacing; // 揮劍、拉弓瞄準時由玩家決定面向
 
             if (!isAttacking)
             {
@@ -591,7 +658,7 @@ public class VikingBoat : MonoBehaviour
                 fontStyle = FontStyle.Bold
             };
             GUI.color = Color.white;
-            GUI.Label(new Rect(hx, hy, hudW, hudH), "⛵ 【W/S/A/D】航行駕駛　|　⚔【左鍵】近戰揮劍　🎯【右鍵】遠程劍氣反擊敵艦", controlStyle);
+            GUI.Label(new Rect(hx, hy, hudW, hudH), "⛵ 【W/S/A/D】航行駕駛　|　🏹【右鍵按住】瞄準　【左鍵】射箭（只有射中敵艦上的弓箭手才有效）", controlStyle);
 
             // 目的地距離提示
             Vector2 boatPos2D = new Vector2(transform.position.x, transform.position.z);

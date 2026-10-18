@@ -24,11 +24,12 @@ using UnityEngine;
 /// </summary>
 public static class PaladinInstaller
 {
-    const string PackDir = "Assets/_Project/ThirdParty/Lite Sword and Shield Pack";
-    const string ModelFile = "Paladin WProp J Nordstrom";
-    const string OutDir = "Assets/_Project/Models/Paladin";
+    internal const string PackDir = "Assets/_Project/ThirdParty/Lite Sword and Shield Pack";
+    internal const string ModelFile = "Paladin WProp J Nordstrom";
+    internal const string OutDir = "Assets/_Project/Models/Paladin";
     const string ControllerPath = OutDir + "/Paladin_Enemy.controller";
     const string MaterialPath = OutDir + "/M_Paladin.mat";
+    const string EnemyMaterialPath = OutDir + "/M_Paladin_Enemy.mat";
     const string TextureDir = PackDir + "/Textures";
     const string GruntPath = "Assets/_Project/Prefabs/Enemy_Grunt.prefab";
     const string PaladinPrefabPath = "Assets/_Project/Prefabs/Enemy_Paladin.prefab";
@@ -93,7 +94,7 @@ public static class PaladinInstaller
         var log = new List<string>();
 
         ConfigureImports(modelPath, log);
-        var material = BuildMaterial(log);
+        var material = BuildEnemyMaterial(BuildMaterial(log), log);
         var controller = BuildController(log);
         var prefab = BuildPrefab(modelPath, controller, material, log);
         if (prefab == null) return;
@@ -106,7 +107,7 @@ public static class PaladinInstaller
 
     // ---------------------------------------------------------------- 匯入設定
 
-    static void ConfigureImports(string modelPath, List<string> log)
+    internal static void ConfigureImports(string modelPath, List<string> log)
     {
         // 模型：Humanoid，不需要模型裡的動畫
         var mi = (ModelImporter)AssetImporter.GetAtPath(modelPath);
@@ -155,7 +156,7 @@ public static class PaladinInstaller
 
     // ---------------------------------------------------------------- 材質
 
-    static Material BuildMaterial(List<string> log)
+    internal static Material BuildMaterial(List<string> log)
     {
         var diffuse = LoadTexture("Paladin_diffuse", false);
         var normal = LoadTexture("Paladin_normal", true);
@@ -181,8 +182,33 @@ public static class PaladinInstaller
         }
         mat.SetFloat("_Metallic", 0.2f);
         mat.SetFloat("_Smoothness", 0.35f);
+        // 貼圖本身很暗（深色盔甲），用顏色貼圖當自發光微微提亮，暗的場景（地下城）裡也看得清楚
+        mat.EnableKeyword("_EMISSION");
+        mat.SetTexture("_EmissionMap", diffuse);
+        mat.SetColor("_EmissionColor", new Color(0.32f, 0.32f, 0.32f));
+        mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive; // URP 要有這個旗標才會保留 _EMISSION
         EditorUtility.SetDirty(mat);
         log.Add("材質：M_Paladin（顏色貼圖" + (normal != null ? " + 法線貼圖" : "") + "）");
+        return mat;
+    }
+
+    /// <summary>
+    /// 敵人用的暗紅色盔甲（玩家也是聖騎士，用顏色分辨敵我）：複製 M_Paladin，把顏色調成暗紅
+    /// </summary>
+    internal static Material BuildEnemyMaterial(Material baseMat, List<string> log)
+    {
+        if (baseMat == null) return null;
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(EnemyMaterialPath);
+        if (mat == null)
+        {
+            mat = new Material(baseMat);
+            AssetDatabase.CreateAsset(mat, EnemyMaterialPath);
+        }
+        else mat.CopyPropertiesFromMaterial(baseMat);
+        mat.SetColor("_BaseColor", new Color(0.95f, 0.5f, 0.45f));
+        mat.SetColor("_EmissionColor", new Color(0.75f, 0.1f, 0.05f)); // 盔甲透出紅光，一眼看得出是敵人
+        EditorUtility.SetDirty(mat);
+        log.Add("敵人材質：M_Paladin_Enemy（暗紅色盔甲）");
         return mat;
     }
 
@@ -201,7 +227,7 @@ public static class PaladinInstaller
         return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
     }
 
-    static AnimationClip LoadClip(string file)
+    internal static AnimationClip LoadClip(string file)
     {
         string path = $"{PackDir}/{file}.fbx";
         return AssetDatabase.LoadAllAssetsAtPath(path).OfType<AnimationClip>()
@@ -287,7 +313,7 @@ public static class PaladinInstaller
             model.transform.localScale = Vector3.one * scale;
             model.transform.localPosition = new Vector3(0f, feetLocalY, 0f);
 
-            // FBX 裡的材質沒有貼圖（白色），全部換成 M_Paladin（身體、劍、盾共用同一張貼圖）
+            // 換成敵人用的暗紅色材質（身體、劍、盾共用同一張貼圖）
             if (material != null)
                 foreach (var r in model.GetComponentsInChildren<Renderer>(true))
                     r.sharedMaterials = Enumerable.Repeat(material, r.sharedMaterials.Length).ToArray();
@@ -334,7 +360,7 @@ public static class PaladinInstaller
     /// 量模型身高：優先用 Humanoid 骨架（腳底到頭頂，不會被手上的劍盾影響），
     /// 量不到才用所有 Renderer 的外框
     /// </summary>
-    static float MeasureHeight(GameObject model)
+    internal static float MeasureHeight(GameObject model)
     {
         var anim = model.GetComponentInChildren<Animator>(true);
         if (anim != null && anim.avatar != null && anim.avatar.isHuman)

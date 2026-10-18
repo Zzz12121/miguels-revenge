@@ -58,6 +58,10 @@ public class DungeonGenerator : MonoBehaviour
     public float extraEnemiesPerDepth = 0.5f;
     [Range(0f, 1f)] public float ambusherChance = 0.3f;
 
+    [Header("補血道具")]
+    [Tooltip("每間戰鬥房間和 Boss 門前的小房間各放一個（選單 GeminiGrowUp > 放置補血道具 會自動填）。留空 = 不放")]
+    public GameObject healthPickupPrefab;
+
     [Header("清完一間房間時的標題")]
     [Tooltip("小怪全部打倒時畫面上方出現的字。留空 = 不顯示")]
     public string roomClearTitle = "COMPLETE";
@@ -208,12 +212,40 @@ public class DungeonGenerator : MonoBehaviour
         BuildPassage(gateRoom, gateCenter, null, Rooms[0], centers[0], layout[0]);
 
         PlacePlayerAndCheckpoint(layout, centers, gateRoom);
+        PlaceHealthPickups(layout, centers, gateCenter);
 
         // 打翻木桶、打掉火把時會用到的音效和煙：趁現在（剛進關卡）先準備好，第一次打到時才不會頓一下。
         // 煙的材質要真的被畫出來一次才算準備好，所以在起點房間正中央（玩家頭上）噴一顆完全透明的
         KnockableProp.Prewarm();
         KnockableTorch.Prewarm(root.TransformPoint(StartRoom != null ? StartRoom.transform.localPosition + Vector3.up * 2.5f : Vector3.up * 2.5f));
         Debug.Log($"[Dungeon] 產生了 {layout.Count} 間房間（種子 {LastSeed}）。想重現這張地圖就把這個數字填進 DungeonGenerator 的 Seed。", this);
+    }
+
+    /// <summary>補血道具：每間戰鬥房間放一個在角落附近（不擋路），Boss 門前的小房間也放一個</summary>
+    void PlaceHealthPickups(List<DungeonLayout.Room> layout, Vector3[] centers, Vector3 gateCenter)
+    {
+        if (healthPickupPrefab == null) return;
+        Physics.SyncTransforms();
+        var parent = Child("HealthPickups");
+        for (int i = 0; i < layout.Count; i++)
+        {
+            if (layout[i].isStart) continue;
+            // 房間中心往隨機一個角落走一半的距離
+            float sx = rng.Next(2) == 0 ? -1f : 1f, sz = rng.Next(2) == 0 ? -1f : 1f;
+            var offset = new Vector3(sx * layout[i].halfX * 0.5f, 0f, sz * layout[i].halfZ * 0.5f);
+            SpawnPickup(parent, centers[i] + offset);
+        }
+        SpawnPickup(parent, gateCenter + new Vector3(GateRoomHalf * 0.5f, 0f, 0f));
+    }
+
+    void SpawnPickup(Transform parent, Vector3 localPos)
+    {
+        Vector3 p = root.TransformPoint(localPos);
+        // 貼到地板上
+        if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out var hit, 8f, ~0, QueryTriggerInteraction.Ignore))
+            p = hit.point;
+        var go = Instantiate(healthPickupPrefab, p, Quaternion.identity, parent);
+        go.name = healthPickupPrefab.name;
     }
 
     static int MainLength(List<DungeonLayout.Room> layout)

@@ -3,10 +3,10 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 玩家基本攻擊與遠程反擊：
-/// - 滑鼠左鍵：近戰揮劍連擊（三段連擊）
-/// - 滑鼠右鍵：遠程劍氣/投射物反擊（可反擊後方追擊的敵艦！）
-/// - 攻擊方向 = 鏡頭/準心朝向
+/// 玩家的攻擊：
+/// - 滑鼠左鍵：近戰揮劍連擊（三段連擊），攻擊方向 = 鏡頭朝向
+/// - 滑鼠右鍵：舉盾衝撞（盾擊）：往前頂一步，前方的敵人受到傷害並被大力撞開；舉盾期間正面受到的傷害會減少
+/// - 在船上（bowMode）：右鍵按住瞄準、左鍵射箭
 /// </summary>
 public class PlayerCombat : MeleeCombat
 {
@@ -14,17 +14,53 @@ public class PlayerCombat : MeleeCombat
     [Tooltip("玩家攻擊力倍率")]
     public float damageMultiplier = 1f;
 
-    [Header("遠程反擊設定")]
-    [Tooltip("是否開啟滑鼠右鍵遠程攻擊")]
-    public bool enableRangedAttack = true;
-    [Tooltip("遠程投射物傷害")]
-    public float rangedDamage = 35f;
-    [Tooltip("遠程冷卻時間 (秒)")]
-    public float rangedCooldown = 0.5f;
+    [Header("盾擊（右鍵，在陸地上）")]
+    public float shieldBashDamage = 8f;
+    [Tooltip("把敵人撞開的力道")]
+    public float shieldBashKnockback = 10f;
+    [Tooltip("舉起盾牌到撞出去的時間 (秒)")]
+    public float shieldBashWindup = 0.22f;
+    [Tooltip("有撞擊判定的時間 (秒)")]
+    public float shieldBashActive = 0.15f;
+    [Tooltip("撞完之後收盾的時間 (秒)")]
+    public float shieldBashRecovery = 0.45f;
+    [Tooltip("兩次盾擊之間的冷卻 (秒)")]
+    public float shieldBashCooldown = 0.8f;
+    [Tooltip("盾擊時往前衝的力道")]
+    public float shieldBashLunge = 7f;
+    [Tooltip("判定球離角色中心往前多遠 / 半徑")]
+    public float shieldBashReach = 1.1f, shieldBashRadius = 1.3f;
+    [Tooltip("舉盾期間，正面受到的傷害剩幾成（0.3 = 只受 30% 傷害）")]
+    [Range(0f, 1f)] public float shieldBlockDamageScale = 0.3f;
+
+    /// <summary>正在盾擊（舉著盾牌）</summary>
+    public bool IsShieldBashing { get; private set; }
+    /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
+    public event System.Action OnShieldBash;
+    float nextBashTime;
+
+    [Header("弓箭（在船上，VikingBoat 登船時打開）")]
+    [Tooltip("打開後：右鍵按住瞄準（鏡頭拉近放大），左鍵射箭；不能揮劍")]
+    public bool bowMode;
+    public float arrowSpeed = 70f;
+    [Tooltip("兩支箭之間的冷卻 (秒)")]
+    public float arrowCooldown = 0.55f;
+    [Tooltip("沒有瞄準直接射時，箭的散佈角度（度）")]
+    public float hipFireSpread = 2.5f;
+
+    /// <summary>正在按住右鍵瞄準</summary>
+    public bool IsAimingBow { get; private set; }
+    /// <summary>瞄準中、或剛射完箭：角色面向由弓箭控制（VikingBoat 不要把角色轉回船頭）</summary>
+    public bool ControlsFacing => IsAttacking || IsShieldBashing || (bowMode && (IsAimingBow || Time.time < faceAimUntil));
+    public event System.Action<bool> OnBowAim;   // true = 開始瞄準，false = 放開
+    public event System.Action OnBowShot;
+
+    float nextArrowTime, faceAimUntil;
+    float hitMarkerTime = float.NegativeInfinity;
+    bool hitMarkerValid;
 
     PlayerHealth health;
     bool attackQueued;
-    float nextRangedTime;
 
     protected override void Awake()
     {
@@ -35,11 +71,14 @@ public class PlayerCombat : MeleeCombat
     void Update()
     {
         if (health != null && health.IsDead) return;
+        if (bowMode)
+        {
+            UpdateBow();
+            return;
+        }
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        bool leftClick = false;
-        bool rightClick = false;
-
+        bool leftClick = false, rightClick = false;
         var mouse = Mouse.current;
         if (mouse != null)
         {
@@ -54,48 +93,203 @@ public class PlayerCombat : MeleeCombat
         }
 #endif
 
-        // 左鍵：近戰連擊
-        if (leftClick)
+        // 右鍵：舉盾衝撞（揮劍連擊中不能用）
+        if (rightClick && !IsAttacking && !IsShieldBashing && Time.time >= nextBashTime)
+        {
+            StartCoroutine(ShieldBash());
+            return;
+        }
+
+        // 左鍵：近戰連擊（攻擊中再按 = 接下一段）；盾擊中不能揮劍
+        if (leftClick && !IsShieldBashing)
         {
             if (!BeginAttack()) attackQueued = true;
         }
+    }
 
-        // 右鍵：遠程反擊投射物
-        if (rightClick && enableRangedAttack && Time.time >= nextRangedTime)
+    // ---------------- 盾擊（右鍵） ----------------
+
+    readonly Collider[] bashOverlap = new Collider[32];
+
+    System.Collections.IEnumerator ShieldBash()
+    {
+        IsShieldBashing = true;
+        nextBashTime = Time.time + shieldBashCooldown;
+        controller.FaceDirection(GetAimDirection());
+        controller.lockRotation = true;
+        controller.speedMultiplier = 0.2f;
+        OnShieldBash?.Invoke();
+        GameAudio.Play("SFX/RPG/clothBelt", transform.position, 0.8f, 0.9f, 0.05f, 1f, 25f);
+
+        // 舉盾
+        yield return new WaitForSeconds(shieldBashWindup);
+
+        // 往前頂 + 判定
+        controller.AddImpulse(transform.forward * shieldBashLunge);
+        var hit = new HashSet<object>();
+        float t = 0f;
+        while (t < shieldBashActive)
         {
-            FireRangedAttack();
+            BashHitCheck(hit);
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        // 收盾
+        yield return new WaitForSeconds(shieldBashRecovery);
+        controller.speedMultiplier = 1f;
+        controller.lockRotation = false;
+        IsShieldBashing = false;
+    }
+
+    void BashHitCheck(HashSet<object> alreadyHit)
+    {
+        Vector3 center = transform.position + transform.forward * shieldBashReach;
+        int n = Physics.OverlapSphereNonAlloc(center, shieldBashRadius, bashOverlap, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < n; i++)
+        {
+            var c = bashOverlap[i];
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            var target = c.GetComponentInParent<IDamageable>();
+            if (target == null || target.IsDead || alreadyHit.Contains(target)) continue;
+            alreadyHit.Add(target);
+
+            Vector3 point = c.ClosestPoint(center);
+            target.TakeDamage(shieldBashDamage * damageMultiplier, point);
+
+            // 盾擊的重點是把敵人撞開：額外的大力擊退
+            var enemyMove = (target as Component) != null ? ((Component)target).GetComponent<ThirdPersonController>() : null;
+            if (enemyMove != null)
+            {
+                Vector3 push = enemyMove.transform.position - transform.position;
+                push.y = 0f;
+                enemyMove.AddImpulse(push.normalized * shieldBashKnockback + Vector3.up * 2.5f);
+            }
+
+            GameAudio.Play("SFX/RPG/metalPot2", point, 1f, 0.7f, 0.05f, 1f, 35f);
+            CombatVFX.Impact(point, new Color(0.85f, 0.9f, 1f));
+            ThirdPersonCamera.ShakeMain(0.15f, 0.15f);
         }
     }
 
-    void FireRangedAttack()
+    /// <summary>舉盾擋下正面的攻擊：回傳實際要扣的傷害（PlayerHealth 呼叫）。knockback = 攻擊把玩家推開的方向</summary>
+    public float ApplyShieldBlock(float damage, Vector3 knockback)
     {
-        nextRangedTime = Time.time + rangedCooldown;
+        if (!IsShieldBashing || knockback.sqrMagnitude < 0.0001f) return damage;
+        Vector3 from = -knockback; // 攻擊從哪個方向來
+        from.y = 0f;
+        if (Vector3.Dot(from.normalized, transform.forward) < 0.3f) return damage; // 不是從正面來
+        GameAudio.Play("SFX/RPG/metalPot3", transform.position + Vector3.up, 1f, 1.2f, 0.05f, 1f, 30f);
+        CombatVFX.Impact(transform.position + Vector3.up * 0.3f + transform.forward * 0.6f, new Color(1f, 0.95f, 0.7f));
+        return damage * shieldBlockDamageScale;
+    }
 
-        Vector3 aimDir = GetAimDirection();
-        Vector3 spawnPos = transform.position + Vector3.up * 1.3f + aimDir * 0.8f;
+    // ---------------- 弓箭（在船上） ----------------
 
-        var projObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        projObj.name = "PlayerRangedSlash";
-        projObj.transform.position = spawnPos;
-        projObj.transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
-
-        var col = projObj.GetComponent<Collider>();
-        if (col != null) col.isTrigger = true;
-
-        var mr = projObj.GetComponent<MeshRenderer>();
-        if (mr != null)
+    void UpdateBow()
+    {
+        var mouse = Mouse.current;
+        bool locked = Cursor.lockState == CursorLockMode.Locked;
+        bool aim = locked && mouse != null && mouse.rightButton.isPressed;
+        if (aim != IsAimingBow)
         {
-            var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-            mat.color = new Color(0.2f, 0.9f, 1f); // 亮青藍色劍氣
-            mr.sharedMaterial = mat;
+            IsAimingBow = aim;
+            var cam = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
+            if (cam != null) cam.SetAiming(aim, transform);
+            OnBowAim?.Invoke(aim);
+        }
+        if (IsAimingBow) FaceCamera();
+
+        if (locked && mouse != null && mouse.leftButton.wasPressedThisFrame && Time.time >= nextArrowTime)
+            ShootArrow();
+    }
+
+    void FaceCamera()
+    {
+        var cam = Camera.main;
+        if (cam == null) return;
+        Vector3 f = cam.transform.forward;
+        f.y = 0f;
+        if (f.sqrMagnitude > 0.001f) transform.rotation = Quaternion.LookRotation(f);
+    }
+
+    void ShootArrow()
+    {
+        nextArrowTime = Time.time + arrowCooldown;
+        faceAimUntil = Time.time + 0.5f;
+        FaceCamera();
+
+        var cam = Camera.main;
+        Vector3 origin = transform.position + Vector3.up * 0.5f + transform.forward * 0.6f;
+        Vector3 target;
+        // 往畫面正中央（準心）射：從鏡頭打一條線，找第一個不是自己 / 自己船的東西
+        Ray ray = cam != null ? cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)) : new Ray(origin, transform.forward);
+        if (!IsAimingBow)
+        {
+            // 沒瞄準：準心附近隨機偏一點
+            ray.direction = Quaternion.Euler(Random.Range(-hipFireSpread, hipFireSpread), Random.Range(-hipFireSpread, hipFireSpread), 0f) * ray.direction;
+        }
+        target = ray.GetPoint(150f);
+        float best = float.MaxValue;
+        var aimHits = Physics.RaycastAll(ray, 150f, ~0, QueryTriggerInteraction.Ignore);
+        Transform boat = transform.parent;
+        foreach (var h in aimHits)
+        {
+            if (h.collider.transform.IsChildOf(transform)) continue;
+            if (boat != null && h.collider.transform.IsChildOf(boat)) continue;
+            if (h.distance < best) { best = h.distance; target = h.point; }
         }
 
-        var proj = projObj.AddComponent<PlayerProjectile>();
-        proj.damage = rangedDamage * damageMultiplier;
-        proj.direction = aimDir.normalized;
+        Vector3 dir = (target - origin).normalized;
+        var arrowObj = EnemyBoat.CreateArrow(origin, dir);
+        Destroy(arrowObj.GetComponent<Collider>()); // 玩家的箭用射線判定，不需要觸發碰撞體
+        var arrow = arrowObj.AddComponent<PlayerArrow>();
+        arrow.velocity = dir * arrowSpeed;
+        arrow.owner = transform;
+        arrow.ownerBoat = boat;
+        arrow.shooter = this;
 
-        // 音效
-        GameAudio.Play("SFX/RPG/knifeSlice2", spawnPos, 0.85f, 1.35f, 0.08f, 1f, 35f);
+        GameAudio.Play("SFX/RPG/drawKnife3", origin, 0.85f, 1.6f, 0.08f, 0.5f, 30f);
+        CombatVFX.Puff(origin, dir, new Color(0.9f, 0.95f, 1f, 0.5f));
+        OnBowShot?.Invoke();
+    }
+
+    /// <summary>PlayerArrow 射中東西時呼叫：valid = 射中船員（準心閃紅色 ✕），false = 射到船身</summary>
+    public void NotifyArrowHit(bool valid)
+    {
+        hitMarkerTime = Time.time;
+        hitMarkerValid = valid;
+    }
+
+    void OnGUI()
+    {
+        if (!bowMode || (health != null && health.IsDead)) return;
+        var gm = GameManager.Instance;
+        if (gm != null && gm.IsOverlayOpen) return;
+
+        // 準心：瞄準時比較小、比較亮
+        float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
+        float gap = IsAimingBow ? 4f : 10f, len = IsAimingBow ? 9f : 7f;
+        GUI.color = IsAimingBow ? new Color(1f, 1f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.6f);
+        GUI.DrawTexture(new Rect(cx - gap - len, cy - 1f, len, 2f), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(cx + gap, cy - 1f, len, 2f), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(cx - 1f, cy - gap - len, 2f, len), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(cx - 1f, cy + gap, 2f, len), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(cx - 1f, cy - 1f, 2f, 2f), Texture2D.whiteTexture);
+
+        // 命中提示：射中船員 → 紅色 ✕
+        float since = Time.time - hitMarkerTime;
+        if (since < 0.35f && hitMarkerValid)
+        {
+            var style = new GUIStyle(GUI.skin.label) { fontSize = 34, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            GUI.color = new Color(1f, 0.25f, 0.2f, 1f - since / 0.35f);
+            GUI.Label(new Rect(cx - 30f, cy - 30f, 60f, 60f), "✕", style);
+        }
+
+        var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
+        GUI.color = new Color(1f, 1f, 1f, 0.75f);
+        GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        GUI.color = Color.white;
     }
 
     protected override void OnSwingStart(int index) => attackQueued = false;

@@ -249,6 +249,9 @@ public class ClockEnemyController : MonoBehaviour
     // 落地震開周遭玩家的輔助方法
     void TriggerLandingShockwave()
     {
+        // 攻擊特效：地面擴散一圈金色時光波
+        CombatVFX.Ring(transform.position + Vector3.down * 0.9f, new Color(1f, 0.8f, 0.3f), 5f);
+        GameAudio.Play("SFX/rock_hit", transform.position, 0.9f, 1.2f, 0.05f, 1f, 40f);
         if (player == null) return;
 
         // 判斷玩家是否在落地震波的有效半徑內（例如 5 公尺內）
@@ -281,6 +284,7 @@ public class ClockEnemyController : MonoBehaviour
             Vector3 spawnPos = start + direction * (i * 2.0f);
             spawnPos.y = start.y; // 保持與敵人同高度
             Instantiate(clockPrefab, spawnPos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
+            CombatVFX.Impact(spawnPos, new Color(1f, 0.82f, 0.35f));
         }
     }
 
