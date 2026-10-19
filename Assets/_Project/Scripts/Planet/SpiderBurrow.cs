@@ -14,10 +14,18 @@ using UnityEngine;
 [RequireComponent(typeof(EnemyAI))]
 public class SpiderBurrow : MonoBehaviour
 {
+    [Header("數值調整（遊戲開始時套用在場景裡設定的數值上）")]
+    [Tooltip("血量倍率（場景裡的 Max Health × 這個值）")]
+    public float healthMultiplier = 3f;
+    [Tooltip("大小倍率（模型、碰撞體、血條高度一起縮放）")]
+    public float sizeMultiplier = 0.7f;
+    [Tooltip("發現玩家的距離 (m)；放棄追擊 / 拉回的距離至少會跟它一樣，不然一發現就放棄")]
+    public float alertRadius = 45f;
+
     [Header("卵")]
     public bool startInEgg = true;
     [Tooltip("玩家走到多近卵會孵化 (m)")]
-    public float hatchRadius = 9f;
+    public float hatchRadius = 12f;
     public Color eggColor = new Color(0.88f, 0.85f, 0.74f);
 
     [Header("鑽地偷襲")]
@@ -56,6 +64,10 @@ public class SpiderBurrow : MonoBehaviour
     ParticleSystem moundDust;
     float nextBurrowTime;
     static bool tipShown;
+
+    // 專案關掉了進 Play 時重新載入腳本，static 變數要自己清，不然第二次 Play 就不會再顯示說明
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() => tipShown = false;
     float tipTime = float.NegativeInfinity;
 
     public bool IsHidden => phase == Phase.Egg || phase == Phase.Hatching || phase == Phase.Burrowing || phase == Phase.Lurking;
@@ -68,10 +80,34 @@ public class SpiderBurrow : MonoBehaviour
         controller = GetComponent<ThirdPersonController>();
         cc = GetComponent<CharacterController>();
         web = GetComponent<SpiderWebAttack>();
+        ApplyTuning();
+    }
+
+    /// <summary>
+    /// 血量、大小、發現距離直接在程式裡調整：這樣不用改場景檔，
+    /// 也不會因為 Unity 沒重新載入場景、或用舊場景存檔蓋掉而失效。
+    /// </summary>
+    void ApplyTuning()
+    {
+        if (health != null && healthMultiplier > 0f)
+        {
+            health.maxHealth *= healthMultiplier;
+            health.barHeightOffset *= sizeMultiplier;
+        }
+        if (sizeMultiplier > 0f) transform.localScale *= sizeMultiplier;
+        if (ai != null && alertRadius > 0f)
+        {
+            ai.alertRadius = alertRadius;
+            ai.leashRadius = Mathf.Max(ai.leashRadius, alertRadius);
+            ai.giveUpDistance = Mathf.Max(ai.giveUpDistance, alertRadius);
+        }
     }
 
     void Start()
     {
+        // EnemyHealth 在 Awake 時用舊的 Max Health 填了血，這裡補滿到調整後的血量
+        if (health != null) health.HealFull();
+
         renderers = GetComponentsInChildren<Renderer>(true);
         var cols = new List<Collider>();
         foreach (var c in GetComponentsInChildren<Collider>(true))

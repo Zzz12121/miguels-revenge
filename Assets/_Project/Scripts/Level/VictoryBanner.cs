@@ -33,6 +33,13 @@ public class VictoryBanner : MonoBehaviour
     /// 顯示過關標題。delay = 幾秒後才出現；sound = 出現時播的音效（可以是 null）。
     /// 上一個標題還沒播完就再呼叫，會直接換成新的。
     /// </summary>
+    /// <summary>馬上收掉正在顯示的標題（打開全螢幕選單時用，避免暗色橫帶蓋住選單）</summary>
+    public static void HideCurrent()
+    {
+        if (current != null) Destroy(current.gameObject);
+        current = null;
+    }
+
     public static VictoryBanner Show(string title, string subtitle, Color color, float delay = 0f,
                                      AudioClip sound = null, float volume = 1f)
     {
