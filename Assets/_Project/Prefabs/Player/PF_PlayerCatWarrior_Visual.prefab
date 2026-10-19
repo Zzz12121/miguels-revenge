@@ -200,12 +200,13 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerTailAnimator
   tailBoneCount: 5
-  swayPerJoint: 8.5
-  liftPerJoint: 4
-  swaySpeed: 2.35
-  phaseDelay: 0.62
-  irregularity: 0.55
-  movementResponse: 0.65
+  swayPerJoint: 13.5
+  centerYaw: -68
+  liftPerJoint: 4.5
+  swaySpeed: 2.55
+  phaseDelay: 0.48
+  irregularity: 0.42
+  movementResponse: 0.9
   sourceBoneName: Spine
   tailBoundsMin: {x: -0.35, y: 0.27, z: -0.16}
   tailBoundsMax: {x: -0.07, y: 0.57, z: -0.05}

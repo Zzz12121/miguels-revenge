@@ -35,8 +35,8 @@ public class PlayerCombat : MeleeCombat
     [Header("格擋（右鍵按住，在陸地上）")]
     [Tooltip("連續擋幾下會破防：第幾下的攻擊會穿過盾牌扣血（3 = 擋兩下，第三下扣血）")]
     public int blockHitsBeforeBreak = 3;
-    [Tooltip("舉盾時的移動速度倍率")]
-    [Range(0f, 1f)] public float blockMoveMultiplier = 0.35f;
+    [Tooltip("舉盾時的移動速度倍率。格擋必須站穩，因此預設為 0。")]
+    [Range(0f, 1f)] public float blockMoveMultiplier = 0f;
     [Tooltip("破防之後多久不能再舉盾 (秒)")]
     public float guardBreakTime = 0.8f;
     [Tooltip("攻擊要從正面多少範圍內來才擋得住（和面向的夾角餘弦，0.3 ≈ 前方 145 度）")]
@@ -183,6 +183,8 @@ public class PlayerCombat : MeleeCombat
         {
             controller.lockRotation = true;
             controller.speedMultiplier = blockMoveMultiplier;
+            // 舉盾前若正在跑，不能讓既有的水平慣性繼續把角色往前滑。
+            controller.StopHorizontalMotion();
             GameAudio.Play("SFX/RPG/clothBelt2", transform.position, 0.6f, 1.1f, 0.05f, 1f, 20f);
         }
         else
