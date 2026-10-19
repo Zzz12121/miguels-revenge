@@ -38,6 +38,7 @@ public class PlayerCombat : MeleeCombat
     /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
     public event System.Action OnShieldBash;
     float nextBashTime;
+    Coroutine shieldBashRoutine;
 
     [Header("弓箭（在船上，VikingBoat 登船時打開）")]
     [Tooltip("打開後：右鍵按住瞄準（鏡頭拉近放大），左鍵射箭；不能揮劍")]
@@ -101,7 +102,7 @@ public class PlayerCombat : MeleeCombat
         // 右鍵：舉盾衝撞（揮劍連擊中不能用）
         if (rightClick && !IsAttacking && !IsShieldBashing && Time.time >= nextBashTime)
         {
-            StartCoroutine(ShieldBash());
+            shieldBashRoutine = StartCoroutine(ShieldBash());
             return;
         }
 
@@ -162,6 +163,58 @@ public class PlayerCombat : MeleeCombat
 
     readonly Collider[] bashOverlap = new Collider[32];
 
+    /// <summary>
+    /// 翻滾、跳躍或外部技能接管角色時，統一清掉所有暫時動作鎖。
+    /// 避免協程被中斷後殘留低速倍率或鎖定轉向，造成角色看似無法移動。
+    /// </summary>
+    public void CancelTransientActions()
+    {
+        CancelAttack();
+        CancelShieldBash();
+        charging = false;
+        chargeFull = false;
+        heavyChain = false;
+        attackQueued = false;
+
+        if (IsAimingBow)
+        {
+            IsAimingBow = false;
+            OnBowAim?.Invoke(false);
+            var cam = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
+            if (cam != null) cam.SetAiming(false, transform);
+        }
+    }
+
+    protected override void OnDisable()
+    {
+        base.OnDisable();
+        CancelShieldBash();
+        charging = false;
+        attackQueued = false;
+
+        if (IsAimingBow)
+        {
+            IsAimingBow = false;
+            OnBowAim?.Invoke(false);
+        }
+    }
+
+    void CancelShieldBash()
+    {
+        if (shieldBashRoutine != null)
+        {
+            StopCoroutine(shieldBashRoutine);
+            shieldBashRoutine = null;
+        }
+
+        IsShieldBashing = false;
+        if (controller != null)
+        {
+            controller.speedMultiplier = 1f;
+            controller.lockRotation = false;
+        }
+    }
+
     System.Collections.IEnumerator ShieldBash()
     {
         IsShieldBashing = true;
@@ -191,6 +244,7 @@ public class PlayerCombat : MeleeCombat
         controller.speedMultiplier = 1f;
         controller.lockRotation = false;
         IsShieldBashing = false;
+        shieldBashRoutine = null;
     }
 
     void BashHitCheck(HashSet<object> alreadyHit)
