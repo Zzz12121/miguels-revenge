@@ -53,6 +53,16 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("鎖定面向，不會自動轉向移動方向（攻擊時使用）")]
     public bool lockRotation = false;
 
+    [Header("翻滾閃避（V）")]
+    [Min(0.2f)] public float rollDuration = 0.48f;
+    [Min(0.5f)] public float rollDistance = 5.2f;
+    [Min(0f)] public float rollCooldown = 0.18f;
+    public bool IsRolling { get; private set; }
+    public float RollNormalizedTime => IsRolling ? Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration)) : 0f;
+    public bool IsControlImmune => IsRolling;
+    public event System.Action OnRollStarted;
+    public event System.Action OnRollEnded;
+
     [Header("參考")]
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
     public Transform cameraTransform;
@@ -128,6 +138,9 @@ public class ThirdPersonController : MonoBehaviour
     float rotationVelocity;
     float lastGroundedTime = float.NegativeInfinity;
     float lastJumpPressedTime = float.NegativeInfinity;
+    Vector3 rollDirection;
+    float rollStartedAt;
+    float nextRollTime;
 
     // 之後做動畫 / UI 時可以讀這些值
     public bool IsGrounded => controller != null && controller.isGrounded;
@@ -137,6 +150,7 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
     public void AddImpulse(Vector3 impulse)
     {
+        if (IsControlImmune) return;
         horizontalVelocity += new Vector3(impulse.x, 0f, impulse.z);
         if (impulse.y > 0f) verticalVelocity = Mathf.Max(verticalVelocity, impulse.y);
     }
@@ -147,7 +161,7 @@ public class ThirdPersonController : MonoBehaviour
     /// </summary>
     public void ApplyTemporarySpeedMultiplier(float multiplier, float duration)
     {
-        if (duration <= 0f) return;
+        if (duration <= 0f || IsControlImmune) return;
         StartCoroutine(TemporarySpeedEffectRoutine(Mathf.Clamp01(multiplier), duration));
     }
 
@@ -181,6 +195,11 @@ public class ThirdPersonController : MonoBehaviour
 
     void OnDisable()
     {
+        if (IsRolling)
+        {
+            IsRolling = false;
+            OnRollEnded?.Invoke();
+        }
         ClearTemporarySpeedEffects();
     }
 
@@ -221,6 +240,7 @@ public class ThirdPersonController : MonoBehaviour
     /// </summary>
     public void Launch(Vector3 velocity)
     {
+        if (IsControlImmune) return;
         horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
         verticalVelocity = velocity.y;
         ballistic = true;
@@ -255,7 +275,7 @@ public class ThirdPersonController : MonoBehaviour
         if (controller == null || !controller.enabled) return;
         float dt = Time.deltaTime;
         Vector3 moveDir;
-        bool sprint, jumpPressed;
+        bool sprint, jumpPressed, rollPressed = false;
 
         if (aiControlled)
         {
@@ -269,7 +289,7 @@ public class ThirdPersonController : MonoBehaviour
         else
         {
             // ---- 1b. 玩家：以鏡頭方向換算移動方向 ----
-            Vector2 input = ReadMoveInput(out sprint, out jumpPressed);
+            Vector2 input = ReadMoveInput(out sprint, out jumpPressed, out rollPressed);
             Vector3 camForward = Vector3.forward, camRight = Vector3.right;
             if (cameraTransform != null)
             {
@@ -277,6 +297,13 @@ public class ThirdPersonController : MonoBehaviour
                 camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
             }
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
+        }
+
+        if (rollPressed) TryStartRoll(moveDir);
+        if (IsRolling)
+        {
+            UpdateRoll(dt);
+            return;
         }
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
@@ -390,10 +417,40 @@ public class ThirdPersonController : MonoBehaviour
         }
     }
 
-    Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed)
+    void TryStartRoll(Vector3 requestedDirection)
+    {
+        if (aiControlled || !inputEnabled || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
+        requestedDirection.y = 0f;
+        rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
+        FaceDirection(rollDirection);
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = -2f;
+        ballistic = false;
+        GetComponent<PlayerCombat>()?.CancelAttack();
+        rollStartedAt = Time.unscaledTime;
+        nextRollTime = rollStartedAt + rollDuration + rollCooldown;
+        IsRolling = true;
+        GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(rollDuration + .08f);
+        OnRollStarted?.Invoke();
+    }
+
+    void UpdateRoll(float dt)
+    {
+        float u = Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration));
+        // 半正弦速度：起步與收尾不突兀，積分後仍約等於設定距離。
+        float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(u * Mathf.PI);
+        controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
+        if (u < 1f) return;
+        IsRolling = false;
+        horizontalVelocity = Vector3.zero;
+        OnRollEnded?.Invoke();
+    }
+
+    Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed, out bool rollPressed)
     {
         sprint = false;
         jumpPressed = false;
+        rollPressed = false;
         if (!inputEnabled) return Vector2.zero;
 
         Vector2 input = Vector2.zero;
@@ -407,6 +464,7 @@ public class ThirdPersonController : MonoBehaviour
 
             sprint = kb.leftShiftKey.isPressed;
             jumpPressed = kb.spaceKey.wasPressedThisFrame;
+            rollPressed = kb.vKey.wasPressedThisFrame;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
@@ -415,6 +473,7 @@ public class ThirdPersonController : MonoBehaviour
             input.y = Input.GetAxisRaw("Vertical");
             sprint = Input.GetKey(KeyCode.LeftShift);
             jumpPressed = Input.GetKeyDown(KeyCode.Space);
+            rollPressed = Input.GetKeyDown(KeyCode.V);
         }
 #endif
         return Vector2.ClampMagnitude(input, 1f); // 斜走不會比較快

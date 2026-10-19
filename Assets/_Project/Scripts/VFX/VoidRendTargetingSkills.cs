@@ -14,11 +14,27 @@ public sealed partial class VoidRendSkillDemo
     public bool followCasterOutsideSkills = true;
 
     [Header("Shared skill combat")]
-    [Min(0f)] public float targetSkillDamage = 40f;
-    [Min(0f)] public float voidRendDamage = 120f;
+    [Min(0f)] public float targetSkillDamage = 500f;
+    [Min(0f)] public float voidRendDamage = 1400f;
+    [Min(0f)] public float voidRendDashDamage = 100f;
+
+    struct TargetSelection
+    {
+        public VoidRendTargetable marker;
+        public Collider collider;
+        public Vector3 localPoint;
+        public Vector3 localNormal;
+
+        public bool IsValid => marker != null;
+        public Vector3 WorldPoint => collider != null ? collider.transform.TransformPoint(localPoint) : marker != null ? marker.AimPosition : Vector3.zero;
+        public Vector3 WorldNormal => collider != null ? collider.transform.TransformDirection(localNormal).normalized : Vector3.up;
+    }
 
     PreviewSkill pendingSkill;
     VoidRendTargetable hoveredTarget;
+    TargetSelection hoveredSelection;
+    TargetSelection lockedSelection;
+    LineRenderer targetingReticle;
     float targetingStarted;
     float timeScaleBeforeTargeting = 1f;
     Vector3 cameraFollowOffset;
@@ -55,6 +71,7 @@ public sealed partial class VoidRendSkillDemo
         }
         if (practiceController != null && skillCamera != null)
             practiceController.cameraTransform = skillCamera.transform;
+        CreateTargetingReticle();
     }
 
     void UpdatePreviewInputAndTargeting()
@@ -129,13 +146,17 @@ public sealed partial class VoidRendSkillDemo
         SetTargetingControls(true);
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
-        hoveredTarget = FindTargetUnderPointer();
+        hoveredSelection = FindTargetUnderPointer();
+        hoveredTarget = hoveredSelection.marker;
+        UpdateTargetingReticle(hoveredSelection);
         Stage = "Targeting " + skill;
     }
 
     void UpdateTargetSelection()
     {
-        hoveredTarget = FindTargetUnderPointer();
+        hoveredSelection = FindTargetUnderPointer();
+        hoveredTarget = hoveredSelection.marker;
+        UpdateTargetingReticle(hoveredSelection);
         if (Keyboard.current.escapeKey.wasPressedThisFrame || Time.unscaledTime - targetingStarted >= targetingTimeout)
         {
             CancelTargeting();
@@ -146,8 +167,10 @@ public sealed partial class VoidRendSkillDemo
         {
             PreviewSkill selectedSkill = pendingSkill;
             Transform selectedTarget = hoveredTarget.transform;
+            lockedSelection = hoveredSelection;
             RestoreTargetingTime();
             pendingSkill = PreviewSkill.None;
+            UpdateTargetingReticle(default);
             target = selectedTarget;
             PrepareSkillOrigin();
             SuspendPracticeControlsForSkill();
@@ -162,9 +185,9 @@ public sealed partial class VoidRendSkillDemo
         }
     }
 
-    VoidRendTargetable FindTargetUnderPointer()
+    TargetSelection FindTargetUnderPointer()
     {
-        if (skillCamera == null || Mouse.current == null) return null;
+        if (skillCamera == null || Mouse.current == null) return default;
         Vector2 pointer = Mouse.current.position.ReadValue();
         Ray ray = skillCamera.ScreenPointToRay(pointer);
         RaycastHit[] hits = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
@@ -181,7 +204,16 @@ public sealed partial class VoidRendSkillDemo
                 if (damageable != null && !damageable.IsDead && damageable is Component owner)
                     marker = owner.GetComponent<VoidRendTargetable>() ?? owner.gameObject.AddComponent<VoidRendTargetable>();
             }
-            if (marker != null) return marker;
+            if (marker != null)
+            {
+                return new TargetSelection
+                {
+                    marker = marker,
+                    collider = hit.collider,
+                    localPoint = hit.collider.transform.InverseTransformPoint(hit.point),
+                    localNormal = hit.collider.transform.InverseTransformDirection(hit.normal).normalized
+                };
+            }
         }
 
         // 小型或沒有完整碰撞器的互動物件，仍可用畫面上的最近標記選取。
@@ -196,13 +228,55 @@ public sealed partial class VoidRendSkillDemo
             float pixels = Vector2.Distance(pointer, new Vector2(screen.x, screen.y));
             if (pixels < bestPixels) { bestPixels = pixels; best = marker; }
         }
-        return best;
+        return new TargetSelection { marker = best };
+    }
+
+    void CreateTargetingReticle()
+    {
+        if (targetingReticle != null) return;
+        GameObject go = new GameObject("VoidRend_TargetReticle");
+        go.transform.SetParent(effectsRoot != null ? effectsRoot : transform, false);
+        targetingReticle = go.AddComponent<LineRenderer>();
+        targetingReticle.useWorldSpace = true;
+        targetingReticle.loop = true;
+        targetingReticle.positionCount = 48;
+        targetingReticle.widthMultiplier = .035f;
+        targetingReticle.numCornerVertices = 3;
+        targetingReticle.sharedMaterial = slashMaterial;
+        targetingReticle.startColor = new Color(1f, .04f, .025f, .98f);
+        targetingReticle.endColor = targetingReticle.startColor;
+        targetingReticle.enabled = false;
+    }
+
+    void UpdateTargetingReticle(TargetSelection selection)
+    {
+        if (targetingReticle == null) CreateTargetingReticle();
+        if (targetingReticle == null) return;
+        targetingReticle.enabled = IsTargeting && selection.IsValid;
+        if (!targetingReticle.enabled) return;
+
+        Vector3 normal = selection.WorldNormal;
+        if (normal.sqrMagnitude < .001f) normal = skillCamera != null ? -skillCamera.transform.forward : Vector3.up;
+        normal.Normalize();
+        Vector3 tangent = Vector3.Cross(normal, Vector3.up);
+        if (tangent.sqrMagnitude < .001f) tangent = Vector3.Cross(normal, Vector3.right);
+        tangent.Normalize();
+        Vector3 bitangent = Vector3.Cross(normal, tangent).normalized;
+        Vector3 center = selection.WorldPoint + normal * .018f;
+        const float radius = .24f;
+        for (int i = 0; i < targetingReticle.positionCount; i++)
+        {
+            float angle = i / (float)targetingReticle.positionCount * Mathf.PI * 2f;
+            targetingReticle.SetPosition(i, center + (tangent * Mathf.Cos(angle) + bitangent * Mathf.Sin(angle)) * radius);
+        }
     }
 
     void CancelTargeting()
     {
         pendingSkill = PreviewSkill.None;
         hoveredTarget = null;
+        hoveredSelection = default;
+        UpdateTargetingReticle(default);
         RestoreTargetingTime();
         SetTargetingControls(false);
         Stage = "Ready";
@@ -397,6 +471,8 @@ public sealed partial class VoidRendSkillDemo
     Vector3 TargetAimPosition()
     {
         if (target == null) return caster.position + caster.forward * 2f;
+        if (lockedSelection.IsValid && lockedSelection.marker != null && lockedSelection.marker.transform == target)
+            return lockedSelection.WorldPoint;
         VoidRendTargetable marker = target.GetComponent<VoidRendTargetable>();
         return marker != null ? marker.AimPosition : target.position + Vector3.up;
     }
@@ -410,8 +486,9 @@ public sealed partial class VoidRendSkillDemo
 
     void PlaySwordAnimation(int side)
     {
-        if (casterAnimator == null) return;
-        casterAnimator.CrossFadeInFixedTime((side & 1) == 0 ? "Attack_1" : "Attack_2", 0.055f, 0, 0f);
+        // 短版程序化袈裟斬：只有抬刀、斜切、極短收勢，不再把長動畫整段加速播放。
+        proceduralSlashSide = side;
+        proceduralSlashStarted = Time.unscaledTime;
     }
 
     void EmitSkillCut(float side)
@@ -461,7 +538,7 @@ public sealed partial class VoidRendSkillDemo
             normal = { textColor = new Color(0.78f, 0.94f, 1f, 0.94f) }
         };
         GUI.Box(new Rect(18f, Screen.height - 91f, 610f, 67f), GUIContent.none);
-        GUI.Label(new Rect(31f, Screen.height - 83f, 590f, 24f), "WASD 移動　空白：跳躍　滑鼠：視角　Z：虛空連斬", controls);
+        GUI.Label(new Rect(31f, Screen.height - 83f, 590f, 24f), "WASD 移動　空白：跳躍　V：翻滾　滑鼠：視角　Z：虛空連斬", controls);
         GUI.Label(new Rect(31f, Screen.height - 56f, 590f, 24f), "C：貓躍雙斬　Q：月弧突進　E：空中十字斬（技能需滑鼠選取）", controls);
 
         if (!IsTargeting) return;
@@ -480,9 +557,9 @@ public sealed partial class VoidRendSkillDemo
 
         if (hoveredTarget != null && skillCamera != null)
         {
-            Vector3 screen = skillCamera.WorldToScreenPoint(hoveredTarget.AimPosition);
+            Vector3 screen = skillCamera.WorldToScreenPoint(hoveredSelection.IsValid ? hoveredSelection.WorldPoint : hoveredTarget.AimPosition);
             float y = Screen.height - screen.y;
-            GUI.color = cyan;
+            GUI.color = new Color(1f, .08f, .04f, 1f);
             GUI.Box(new Rect(screen.x - 28f, y - 28f, 56f, 56f), "◎");
             GUI.color = Color.white;
         }

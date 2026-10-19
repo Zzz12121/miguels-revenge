@@ -35,7 +35,7 @@ public sealed partial class VoidRendSkillDemo
     Quaternion victimRotation;
     float cameraYaw = 160, cameraRadius = 8, cameraHeight = 2.2f, cinematicFov = 48, cameraRoll;
     float charge, distortion, sequenceStart, stageTime;
-    bool targetLocked, cinematicCamera;
+    bool targetLocked, cinematicCamera, voidRendCinematicActive;
     RenderPipelineAsset previousPipeline;
     bool pipelineChanged;
     Rigidbody victimBody;
@@ -43,6 +43,7 @@ public sealed partial class VoidRendSkillDemo
     Vector3 oldVelocity, oldAngularVelocity;
     readonly Dictionary<Behaviour, bool> suspended = new Dictionary<Behaviour, bool>();
     readonly Dictionary<Transform, Quaternion> poseRest = new Dictionary<Transform, Quaternion>();
+    readonly Dictionary<Transform, HumanoidBonePose> humanoidUprightPose = new Dictionary<Transform, HumanoidBonePose>();
     Transform leftUpper, leftFore, leftHand, weapon, sheath;
     Transform finisherWeaponTip;
     Vector3 weaponRestPosition;
@@ -50,11 +51,22 @@ public sealed partial class VoidRendSkillDemo
     Vector3 weaponBladeLocalDirection = Vector3.forward;
     Animator casterAnimator;
     bool animatorWasEnabled;
+    bool animatorRootMotionWasEnabled;
+    Vector3 animatorRootRestPosition;
+    Quaternion animatorRootRestRotation;
     bool useLegacyProceduralPose = true;
     float priorTimeScale;
     ParticleSystem chargeSmoke;
     Transform pelvis, leftThigh, leftCalf, leftFoot, rightThigh, rightCalf, rightFoot;
     Vector3 pelvisRest;
+    float proceduralSlashStarted = float.NegativeInfinity;
+    int proceduralSlashSide;
+
+    struct HumanoidBonePose
+    {
+        public Vector3 localPosition;
+        public Quaternion localRotation;
+    }
 
     void InitializeFinisher()
     {
@@ -87,6 +99,11 @@ public sealed partial class VoidRendSkillDemo
                 if (rightThigh == null) rightThigh = casterAnimator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
                 if (rightCalf == null) rightCalf = casterAnimator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
                 if (rightFoot == null) rightFoot = casterAnimator.GetBoneTransform(HumanBodyBones.RightFoot);
+            }
+            if (casterAnimator != null)
+            {
+                animatorRootRestPosition = casterAnimator.transform.localPosition;
+                animatorRootRestRotation = casterAnimator.transform.localRotation;
             }
             if (weapon == null) weapon = FindDeepChild(caster, "WeaponPivot") ?? FindDeepChild(caster, "PlayerMagicSaber");
             if (weapon != null)
@@ -125,12 +142,33 @@ public sealed partial class VoidRendSkillDemo
         }
         suspended.Clear();
         foreach (Behaviour controller in targetControllers)
-            if (controller && controller != this && !suspended.ContainsKey(controller))
-            { suspended.Add(controller, controller.enabled); controller.enabled = false; }
-        var animator = target.GetComponentInChildren<Animator>();
-        if (animator && !suspended.ContainsKey(animator)) { suspended.Add(animator, animator.enabled); animator.enabled = false; }
+            SuspendVictimBehaviour(controller);
+        foreach (Behaviour controller in target.GetComponentsInChildren<Behaviour>(true))
+            if (ShouldSuspendVictimBehaviour(controller)) SuspendVictimBehaviour(controller);
         targetLocked = true;
         onTargetLocked.Invoke();
+    }
+
+    bool ShouldSuspendVictimBehaviour(Behaviour controller)
+    {
+        if (controller == null || controller == this || controller is VoidRendTargetable) return false;
+        if (controller is Animator || controller is EnemyAI || controller is EnemyCombat || controller is ThirdPersonController) return true;
+        string type = controller.GetType().Name;
+        if (type.Contains("Health") || type.Contains("Targetable") || type.Contains("Visual")) return false;
+        return type.Contains("AI") || type.Contains("Attack") || type.Contains("Combat") || type.Contains("Controller");
+    }
+
+    void SuspendVictimBehaviour(Behaviour controller)
+    {
+        if (controller == null || controller == this || suspended.ContainsKey(controller)) return;
+        if (controller is EnemyCombat combat) combat.CancelAttack();
+        if (controller is ThirdPersonController movement)
+        {
+            movement.SetAIInput(Vector3.zero);
+            movement.ResetMotion();
+        }
+        suspended.Add(controller, controller.enabled);
+        controller.enabled = false;
     }
 
     void ReleaseVictim(bool restorePosition = true)
@@ -165,14 +203,31 @@ public sealed partial class VoidRendSkillDemo
         if (casterAnimator)
         {
             animatorWasEnabled = casterAnimator.enabled;
+            animatorRootMotionWasEnabled = casterAnimator.applyRootMotion;
+            casterAnimator.applyRootMotion = false;
             if (useLegacyProceduralPose) casterAnimator.enabled = false;
-            else casterAnimator.CrossFadeInFixedTime("Idle", 0.06f, 0, 0f);
+            else
+            {
+                // 先取樣一幀真正的站姿，再關掉 Animator。Z 技能期間由程序姿勢接手，
+                // 匯入動畫就不會在後段把骨盆翻倒或讓腿誤播跑步。
+                casterAnimator.enabled = true;
+                casterAnimator.Play("Idle", 0, 0f);
+                casterAnimator.Update(0f);
+                CaptureHumanoidUprightPose();
+                casterAnimator.enabled = false;
+            }
         }
         if (weaponPresenter) weaponPresenter.BeginSkillDraw();
         cinematicCamera = true;
+        voidRendCinematicActive = true;
+        AcquireCinematicCamera();
         arenaCenter = new Vector3(victimHome.x, casterStartPosition.y, victimHome.z);
         cameraFocus = arenaCenter + Vector3.up * 1.5f;
         cameraYaw = 155; cameraRadius = 8; cameraHeight = 2.2f; cinematicFov = 48;
+        float normalCameraRadius = Mathf.Clamp(Vector3.ProjectOnPlane(cameraFollowOffset, Vector3.up).magnitude, 4.5f, 10f);
+        float normalCameraHeight = Mathf.Clamp(cameraFollowOffset.y - cameraLookOffset.y, .8f, 4f);
+        float spinCameraStartRadius = Mathf.Max(7.2f, normalCameraRadius);
+        float spinCameraEndRadius = spinCameraStartRadius + 3.4f;
 
         // 地面蓄力：先微蹲並把刀舉到頭頂，避免一開始就用不相干的對空斬。
         SetStage("OverheadWindup");
@@ -180,17 +235,15 @@ public sealed partial class VoidRendSkillDemo
         for (float t = 0; t < .42f; t += Time.unscaledDeltaTime)
         {
             float u = Mathf.Clamp01(t / .42f);
-            cameraRadius = Mathf.Lerp(7.2f, 5.8f, Mathf.SmoothStep(0, 1, u));
-            cameraHeight = Mathf.Lerp(2.0f, 1.45f, u);
+            cameraRadius = Mathf.Lerp(7.2f, spinCameraStartRadius, Mathf.SmoothStep(0, 1, u));
+            cameraHeight = Mathf.Lerp(2.0f, 1.85f, u);
             cameraFocus = caster.position + Vector3.up * 1.35f;
-            cinematicFov = Mathf.Lerp(48f, 43f, u);
+            cinematicFov = Mathf.Lerp(48f, 47f, u);
             SetDistortion(.025f * u);
             yield return null;
         }
 
         SetStage("Launch");
-        if (casterAnimator && !useLegacyProceduralPose)
-            casterAnimator.CrossFadeInFixedTime("Jump", 0.07f, 0, 0f);
         Vector3 approach = arenaCenter + Vector3.back * 0.8f;
         SpawnArc(victimHome, Quaternion.Euler(0, 0, 80), 3.2f, -100, 100, .18f, .55f, pale);
         PunchCamera(.78f, 7); Flash(cyan, .18f);
@@ -212,18 +265,15 @@ public sealed partial class VoidRendSkillDemo
         {
             float u = t / chargeOrbitSeconds;
             charge = u;
-            // 目標被挑飛後，角色沿小弧線躍起追刀，不再站在正下方等待。
-            float flourishEnvelope = Mathf.Sin(u * Mathf.PI);
-            float flourishAngle = Mathf.Lerp(-115f, 135f, u) * Mathf.Deg2Rad;
-            caster.position = arenaCenter + new Vector3(
-                Mathf.Cos(flourishAngle) * 1.35f * flourishEnvelope,
-                Mathf.Sin(u * Mathf.PI) * 0.9f,
-                Mathf.Sin(flourishAngle) * 1.35f * flourishEnvelope);
+            // 轉刀期間角色固定站穩，只有手臂與武器在頭頂旋轉。
+            caster.position = arenaCenter;
             FaceCurrentTarget();
             cameraYaw = Mathf.Lerp(155, 0, Mathf.SmoothStep(0,1,u));
-            cameraRadius = Mathf.Lerp(7, 4.5f, u); cameraHeight = Mathf.Lerp(2.1f,1.35f,u);
+            // 蓄力轉刀時鏡頭一邊環繞、一邊緩慢拉遠，讓力量逐漸累積而不是越拍越近。
+            cameraRadius = Mathf.Lerp(spinCameraStartRadius, spinCameraEndRadius, Mathf.SmoothStep(0,1,u));
+            cameraHeight = Mathf.Lerp(1.85f,2.45f,u);
             cameraFocus = caster.position + Vector3.up * 1.5f;
-            cinematicFov = Mathf.Lerp(48, 42, u);
+            cinematicFov = Mathf.Lerp(47f,52f,u);
             if (t >= nextParticle)
             {
                 nextParticle += .12f;
@@ -270,7 +320,10 @@ public sealed partial class VoidRendSkillDemo
                 Vector3 head = caster.position + Vector3.up*.9f;
                 if (growing) growing.SetPosition(1,head);
                 if (halo) halo.SetPosition(1,head);
-                caster.rotation = Quaternion.LookRotation((next-last).normalized, Vector3.up);
+                Vector3 dashFacing = next - last;
+                dashFacing.y = 0f;
+                if (dashFacing.sqrMagnitude > .0001f)
+                    caster.rotation = Quaternion.LookRotation(dashFacing.normalized, Vector3.up);
                 cameraYaw = Mathf.Lerp(0, 300, (i+u)/cuts);
                 cameraRadius = Mathf.Lerp(7.2f, 9f, Mathf.Sin((i+u)/cuts*Mathf.PI));
                 cameraHeight = 2.2f + Mathf.Sin(i*.4f)*.7f;
@@ -283,6 +336,7 @@ public sealed partial class VoidRendSkillDemo
             if (growing) growing.SetPosition(1,next+Vector3.up*.9f);
             if (halo) halo.SetPosition(1,next+Vector3.up*.9f);
             FracturedCut(last+Vector3.up*.9f,next+Vector3.up*.9f,.065f,8.4f,true);
+            DamageCurrentTarget(voidRendDashDamage);
             if (i%3==0)
             {
                 CreateSmoke(Vector3.Lerp(last,next,.5f),false,2.3f,.8f);
@@ -336,15 +390,55 @@ public sealed partial class VoidRendSkillDemo
             SetDistortion((1-u)*.35f);
             yield return null;
         }
+        SetStage("LandingKneel");
+        // 技能收尾留在最後一次攻擊的位置，不再把玩家拉回施放起點。
+        Vector3 landingPosition = caster.position;
+        landingPosition.y = casterStartPosition.y;
+        Vector3 landingDirection = Vector3.ProjectOnPlane(victimLanding - landingPosition, Vector3.up);
+        Quaternion landingRotation = landingDirection.sqrMagnitude > .0001f
+            ? Quaternion.LookRotation(landingDirection.normalized, Vector3.up)
+            : caster.rotation;
+        Vector3 landingStart = landingPosition + Vector3.up * 1.65f;
+        caster.position = landingStart;
+        for(float t=0;t<.46f;t+=Time.unscaledDeltaTime)
+        {
+            float u=Mathf.Clamp01(t/.46f);
+            float fall=u*u;
+            caster.position=Vector3.Lerp(landingStart,landingPosition,fall);
+            caster.rotation=Quaternion.Slerp(caster.rotation,landingRotation,Mathf.SmoothStep(0,1,u));
+            cameraFocus=Vector3.Lerp(cameraFocus,landingPosition+Vector3.up*.9f,1f-Mathf.Exp(-5f*Time.unscaledDeltaTime));
+            cameraYaw=360f+u*17f;
+            cameraRadius=Mathf.Lerp(recoveryCameraDistance,7.1f,Mathf.SmoothStep(0,1,u));
+            cameraHeight=Mathf.Lerp(1.6f,1.05f,u);
+            cinematicFov=Mathf.Lerp(60f,48f,u);
+            yield return null;
+        }
+        caster.position=landingPosition;
+        caster.rotation=landingRotation;
+        SpawnRing(caster.position+Vector3.up*.035f,.15f,1.35f,.06f,.55f,cyan);
+        PunchCamera(.38f,2.5f);
+        float kneelYaw=cameraYaw;
+        for(float t=0;t<.62f;t+=Time.unscaledDeltaTime)
+        {
+            float u=Mathf.Clamp01(t/.62f);
+            cameraYaw=kneelYaw+u*15f;
+            // 落地後把鏡頭平順收回玩家施放前的跟隨距離。
+            cameraRadius=Mathf.Lerp(7.1f,normalCameraRadius,Mathf.SmoothStep(0,1,u));
+            cameraHeight=Mathf.Lerp(1.05f,normalCameraHeight,Mathf.SmoothStep(0,1,u));
+            cameraFocus=Vector3.Lerp(cameraFocus,caster.position+Vector3.up*.78f,1f-Mathf.Exp(-7f*Time.unscaledDeltaTime));
+            cinematicFov=Mathf.Lerp(48f,cameraStartFov,Mathf.SmoothStep(0,1,u));
+            yield return null;
+        }
         ReleaseVictim(false); completedLanding=true; SetDistortion(0); charge=0; cameraRoll=0;
-        caster.position = casterStartPosition;
-        caster.rotation = casterStartRotation;
+        voidRendCinematicActive = false;
         cinematicCamera = false;
-        RestoreCamera();
+        ReleaseCinematicCamera();
         SetStage("Complete"); playing=false; CompletedRuns++;
         if(casterAnimator)
         {
             casterAnimator.enabled=animatorWasEnabled;
+            casterAnimator.applyRootMotion=animatorRootMotionWasEnabled;
+            RestoreCasterVisualRoot();
             if (!useLegacyProceduralPose) casterAnimator.CrossFadeInFixedTime("Idle", 0.16f, 0, 0f);
         }
         if (weaponPresenter) weaponPresenter.EndSkillDraw(true);
@@ -358,12 +452,13 @@ public sealed partial class VoidRendSkillDemo
         if(targetLocked && target) { target.position=victimHeld; target.rotation=victimRotation; }
         if(playing) Elapsed=Time.unscaledTime-sequenceStart;
         if(refractionMaterial) refractionMaterial.SetFloat("_Clock",Time.unscaledTime);
-        if(!cinematicCamera) return;
+        // Z 的電影鏡頭必須一路維持到落地姿勢完成，不能被一般環繞鏡頭提早接管。
+        if(!cinematicCamera && !voidRendCinematicActive) return;
+        cinematicCamera = true;
         float a=cameraYaw*Mathf.Deg2Rad;
         Vector3 p=cameraFocus+new Vector3(Mathf.Sin(a)*cameraRadius,cameraHeight,Mathf.Cos(a)*cameraRadius);
-        skillCamera.transform.position=p+shake;
-        skillCamera.transform.rotation=Quaternion.LookRotation(cameraFocus-p)*Quaternion.Euler(rotationShake+Vector3.forward*cameraRoll);
-        skillCamera.fieldOfView=cinematicFov-fovKick;
+        Quaternion rotation=Quaternion.LookRotation(cameraFocus-p)*Quaternion.Euler(rotationShake+Vector3.forward*cameraRoll);
+        QueueCinematicCameraPose(p+shake, rotation, cinematicFov-fovKick);
     }
 
     void ApplyFinisherPose()
@@ -440,10 +535,53 @@ public sealed partial class VoidRendSkillDemo
 
     void ApplyHumanoidFinisherPose()
     {
-        if (caster == null || weapon == null) return;
-        if (Stage != "OverheadWindup" && Stage != "Launch" && Stage != "AerialRotor") return;
+        if (caster == null) return;
+        RestoreHumanoidUprightPose();
+        if (weapon == null) return;
 
         float t = Time.unscaledTime - stageTime;
+        if (Stage == "LandingKneel")
+        {
+            // 下降前段先伸直雙腿，接觸地面後在很短時間內壓進單膝跪，形成重量感。
+            float descent = Mathf.Clamp01(t / .46f);
+            float impact = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - .43f) / .16f));
+            float settle = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - .59f) / .22f));
+            if (casterAnimator != null && casterAnimator.transform != caster)
+                casterAnimator.transform.localPosition = animatorRootRestPosition + Vector3.down * (.30f * impact);
+
+            // 空中時腿略向下伸；撞地後右膝深彎、左腳踩穩。
+            RotateBoneWorld(rightThigh, caster.right, Mathf.Lerp(-9f, 69f, impact));
+            RotateBoneWorld(rightCalf, caster.right, Mathf.Lerp(7f, -108f, impact));
+            RotateBoneWorld(leftThigh, caster.right, Mathf.Lerp(-7f, 19f, impact));
+            RotateBoneWorld(leftCalf, caster.right, Mathf.Lerp(5f, -37f, impact));
+            RotateBoneWorld(spine, caster.right, -Mathf.Lerp(2f * descent, 14f, impact));
+            RotateBoneWorld(spine, caster.forward, 5f * (1f - settle) * impact);
+
+            Vector3 rightGoal = caster.TransformPoint(new Vector3(.42f, 1.12f, .16f));
+            Vector3 leftGoal = caster.TransformPoint(new Vector3(-.24f, .72f, .45f));
+            SolveArm(rightUpperArm, rightForearm, rightHand, rightGoal, caster.right);
+            SolveArm(leftUpper, leftFore, leftHand, leftGoal, -caster.right);
+            weapon.position = rightHand != null ? rightHand.position : rightGoal;
+            AlignWeaponBlade((caster.right + caster.forward * .35f).normalized, caster.up);
+            return;
+        }
+
+        if (Stage == "DashLattice" || Stage == "Punch")
+        {
+            ApplyProceduralKesaSlash();
+            return;
+        }
+
+        if (Stage != "OverheadWindup" && Stage != "Launch" && Stage != "AerialRotor")
+        {
+            // 最終爆發與收勢也維持站姿，不再讓先前匯入動畫的根骨姿勢殘留。
+            Vector3 neutralGrip = caster.TransformPoint(new Vector3(.34f, 1.08f, .25f));
+            SolveArm(rightUpperArm, rightForearm, rightHand, neutralGrip, caster.right);
+            weapon.position = rightHand != null ? rightHand.position : neutralGrip;
+            AlignWeaponBlade((caster.forward + caster.right * .12f).normalized, caster.up);
+            return;
+        }
+
         Vector3 grip = caster.TransformPoint(new Vector3(.08f, 2.08f, .05f));
         Vector3 bladeDirection = caster.forward;
 
@@ -452,14 +590,13 @@ public sealed partial class VoidRendSkillDemo
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / .32f));
             grip = caster.TransformPoint(new Vector3(.08f, Mathf.Lerp(1.45f, 2.12f, u), .08f));
             bladeDirection = Vector3.Slerp(caster.right, caster.forward, u).normalized;
-            if (pelvis != null) pelvis.position -= caster.up * (Mathf.Sin(u * Mathf.PI) * .08f);
         }
         else if (Stage == "Launch")
         {
             float u = Mathf.Clamp01(t / .6f);
             grip = caster.TransformPoint(new Vector3(.08f, Mathf.Lerp(2.12f, 2.22f, u), Mathf.Lerp(.08f, .26f, u)));
             bladeDirection = caster.forward;
-            if (spine != null) spine.localRotation *= Quaternion.Euler(16f * Mathf.Sin(u * Mathf.PI), 0f, 0f);
+            RotateBoneWorld(spine, caster.right, 16f * Mathf.Sin(u * Mathf.PI));
         }
         else
         {
@@ -468,7 +605,7 @@ public sealed partial class VoidRendSkillDemo
             float spin = u * 360f * 2.75f;
             bladeDirection = Quaternion.AngleAxis(spin, caster.up) * caster.forward;
             grip = caster.TransformPoint(new Vector3(.04f, 2.12f + Mathf.Sin(u * Mathf.PI) * .08f, .08f));
-            if (spine != null) spine.localRotation *= Quaternion.Euler(8f, Mathf.Sin(u * Mathf.PI * 2f) * 7f, 0f);
+            RotateBoneWorld(spine, caster.right, 8f);
         }
 
         Vector3 leftGrip = grip - bladeDirection * .17f - caster.up * .025f;
@@ -480,6 +617,77 @@ public sealed partial class VoidRendSkillDemo
         SolveArm(leftUpper, leftFore, leftHand, leftGrip, -caster.right);
         weapon.position = solvedGrip;
         AlignWeaponBlade(bladeDirection, caster.up);
+    }
+
+    void CaptureHumanoidUprightPose()
+    {
+        humanoidUprightPose.Clear();
+        if (casterAnimator == null || !casterAnimator.isHuman) return;
+        for (HumanBodyBones id = HumanBodyBones.Hips; id < HumanBodyBones.LastBone; id++)
+        {
+            Transform bone = casterAnimator.GetBoneTransform(id);
+            if (bone == null || humanoidUprightPose.ContainsKey(bone)) continue;
+            humanoidUprightPose.Add(bone, new HumanoidBonePose
+            {
+                localPosition = bone.localPosition,
+                localRotation = bone.localRotation
+            });
+        }
+    }
+
+    void RestoreHumanoidUprightPose()
+    {
+        foreach (var pair in humanoidUprightPose)
+        {
+            if (pair.Key == null) continue;
+            pair.Key.localPosition = pair.Value.localPosition;
+            pair.Key.localRotation = pair.Value.localRotation;
+        }
+    }
+
+    void ApplyProceduralKesaSlash()
+    {
+        float age = Time.unscaledTime - proceduralSlashStarted;
+        if (age < 0f || age > .24f) return;
+        float side = (proceduralSlashSide & 1) == 0 ? 1f : -1f;
+        float cut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .025f) / .105f));
+        float recover = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .14f) / .10f));
+        float weight = Mathf.Min(cut, recover);
+
+        Vector3 high = caster.TransformPoint(new Vector3(.48f * side, 1.78f, .24f));
+        Vector3 low = caster.TransformPoint(new Vector3(-.42f * side, .86f, .42f));
+        Vector3 grip = Vector3.Lerp(high, low, cut);
+        RotateBoneWorld(spine, caster.up, 26f * side * (cut - .35f) * weight);
+        RotateBoneWorld(spine, caster.forward, 10f * side * weight);
+        SolveArm(rightUpperArm, rightForearm, rightHand, grip, caster.right * side);
+        Vector3 solvedGrip = rightHand != null ? rightHand.position : grip;
+        weapon.position = solvedGrip;
+        Vector3 blade = Vector3.Slerp((caster.forward + caster.right * side).normalized,
+                                     (caster.forward - caster.right * side - caster.up * .45f).normalized, cut);
+        AlignWeaponBlade(blade, caster.up);
+    }
+
+    static void RotateBoneWorld(Transform bone, Vector3 axis, float degrees)
+    {
+        if (bone != null && axis.sqrMagnitude > .0001f)
+            bone.rotation = Quaternion.AngleAxis(degrees, axis.normalized) * bone.rotation;
+    }
+
+    void StabilizeCasterVisualRoot()
+    {
+        if (!playing || casterAnimator == null) return;
+        Vector3 euler = caster.eulerAngles;
+        caster.rotation = Quaternion.Euler(0f, euler.y, 0f);
+        if (casterAnimator.transform == caster) return;
+        casterAnimator.transform.localPosition = animatorRootRestPosition;
+        casterAnimator.transform.localRotation = animatorRootRestRotation;
+    }
+
+    void RestoreCasterVisualRoot()
+    {
+        if (casterAnimator == null || casterAnimator.transform == caster) return;
+        casterAnimator.transform.localPosition = animatorRootRestPosition;
+        casterAnimator.transform.localRotation = animatorRootRestRotation;
     }
 
     void AlignWeaponBlade(Vector3 desiredDirection, Vector3 desiredUp)
@@ -562,13 +770,21 @@ public sealed partial class VoidRendSkillDemo
         StopAllCoroutines(); CleanupFinisher(); RestorePose(); RestoreCamera();
         if(caster) { caster.position=casterStartPosition;caster.rotation=casterStartRotation; }
         if(effectsRoot) foreach(Transform fx in effectsRoot)Destroy(fx.gameObject);
-        playing=false;cinematicCamera=false;Stage="Cancelled";
+        ReleaseCinematicCamera();
+        playing=false;cinematicCamera=false;voidRendCinematicActive=false;Stage="Cancelled";
     }
 
     void CleanupFinisher()
     {
         ReleaseVictim();SetDistortion(0);
-        if(casterAnimator && playing && useLegacyProceduralPose)casterAnimator.enabled=animatorWasEnabled;
+        voidRendCinematicActive=false;
+        if(casterAnimator && playing)
+        {
+            casterAnimator.enabled=animatorWasEnabled;
+            casterAnimator.applyRootMotion=animatorRootMotionWasEnabled;
+            RestoreCasterVisualRoot();
+            RestoreHumanoidUprightPose();
+        }
         if (weaponPresenter) weaponPresenter.EndSkillDraw(true);
         if(chargeSmoke)Destroy(chargeSmoke.gameObject);
         foreach(var p in poseRest)if(p.Key)p.Key.localRotation=p.Value;

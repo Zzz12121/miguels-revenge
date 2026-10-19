@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 /// Standalone, model-agnostic showcase controller inspired by rapid spatial sword cuts.
 /// It intentionally owns only preview choreography; production combat can call PlaySkill().
 /// </summary>
+[DefaultExecutionOrder(12000)]
 public sealed partial class VoidRendSkillDemo : MonoBehaviour
 {
     [Header("Scene References")]
@@ -49,6 +50,11 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     Color flashColor = Color.white;
     float posePulse;
     float poseSide = 1f;
+    VoidRendCinematicCameraDriver cinematicCameraDriver;
+    Vector3 queuedCameraPosition;
+    Quaternion queuedCameraRotation;
+    float queuedCameraFov;
+    bool hasQueuedCameraPose;
 
     Transform rightUpperArm;
     Transform rightForearm;
@@ -77,6 +83,9 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
             cameraStartPosition = skillCamera.transform.position;
             cameraStartRotation = skillCamera.transform.rotation;
             cameraStartFov = skillCamera.fieldOfView;
+            cinematicCameraDriver = skillCamera.GetComponent<VoidRendCinematicCameraDriver>();
+            if (cinematicCameraDriver == null)
+                cinematicCameraDriver = skillCamera.gameObject.AddComponent<VoidRendCinematicCameraDriver>();
         }
 
         fixedDeltaStart = Time.fixedDeltaTime;
@@ -128,6 +137,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     void LateUpdate()
     {
         // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
+        if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
         if (skillCamera == null) return;
 
@@ -169,6 +179,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         if(pipelineChanged){QualitySettings.renderPipeline=previousPipeline;pipelineChanged=false;}
         if(playing && caster){caster.position=casterStartPosition;caster.rotation=casterStartRotation;}
         if (practiceControlsSuspended) RestorePracticeControlsAfterSkill();
+        ReleaseCinematicCamera();
         playing=false;cinematicCamera=false;
     }
 
@@ -498,9 +509,41 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     void RestoreCamera()
     {
         if (skillCamera == null) return;
+        hasQueuedCameraPose = false;
         skillCamera.transform.position = cameraStartPosition;
         skillCamera.transform.rotation = cameraStartRotation;
         skillCamera.fieldOfView = cameraStartFov;
+    }
+
+    void AcquireCinematicCamera()
+    {
+        if (skillCamera == null) return;
+        if (cinematicCameraDriver == null)
+            cinematicCameraDriver = skillCamera.GetComponent<VoidRendCinematicCameraDriver>() ??
+                                    skillCamera.gameObject.AddComponent<VoidRendCinematicCameraDriver>();
+        cinematicCameraDriver.Claim(this);
+    }
+
+    void ReleaseCinematicCamera()
+    {
+        hasQueuedCameraPose = false;
+        if (cinematicCameraDriver != null) cinematicCameraDriver.Release(this);
+    }
+
+    internal void QueueCinematicCameraPose(Vector3 position, Quaternion rotation, float fieldOfView)
+    {
+        queuedCameraPosition = position;
+        queuedCameraRotation = rotation;
+        queuedCameraFov = fieldOfView;
+        hasQueuedCameraPose = true;
+        ApplyQueuedCinematicCameraPose();
+    }
+
+    internal void ApplyQueuedCinematicCameraPose()
+    {
+        if (!hasQueuedCameraPose || skillCamera == null || (!cinematicCamera && !voidRendCinematicActive)) return;
+        skillCamera.transform.SetPositionAndRotation(queuedCameraPosition, queuedCameraRotation);
+        skillCamera.fieldOfView = queuedCameraFov;
     }
 
     void CreateEffectsRoot()

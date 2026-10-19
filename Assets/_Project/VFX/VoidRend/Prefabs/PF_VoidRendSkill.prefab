@@ -74,5 +74,6 @@ MonoBehaviour:
   loopDelay: 1.7
   teleportRadius: 3.4
   teleportCount: 6
-  targetSkillDamage: 40
-  voidRendDamage: 120
+  targetSkillDamage: 500
+  voidRendDamage: 1400
+  voidRendDashDamage: 100

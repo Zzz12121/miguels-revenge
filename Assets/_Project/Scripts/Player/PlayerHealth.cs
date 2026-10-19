@@ -42,6 +42,7 @@ public class PlayerHealth : MonoBehaviour
     Quaternion spawnRot;
     float lastHitTime = float.NegativeInfinity;
     float lastFlashTime = float.NegativeInfinity;
+    float dodgeInvulnerableUntil = float.NegativeInfinity;
     string deathReason = "";
 
     void Awake()
@@ -80,6 +81,8 @@ public class PlayerHealth : MonoBehaviour
                            string deathReason = "被打倒了")
     {
         if (IsDead) return false;
+        // 翻滾是完整無敵：連原本可忽略受傷無敵時間的持續傷害也不能穿透。
+        if ((controller != null && controller.IsRolling) || Time.unscaledTime < dodgeInvulnerableUntil) return false;
         if (!ignoreInvincibility)
         {
             if (Time.time - lastHitTime < invincibleTime) return false;
@@ -98,6 +101,11 @@ public class PlayerHealth : MonoBehaviour
         if (Health <= 0f) Die(deathReason);
         else OnDamaged?.Invoke(amount);
         return true;
+    }
+
+    public void GrantDodgeInvulnerability(float seconds)
+    {
+        dodgeInvulnerableUntil = Mathf.Max(dodgeInvulnerableUntil, Time.unscaledTime + Mathf.Max(0f, seconds));
     }
 
     /// <summary>補滿血（檢查點使用）</summary>
