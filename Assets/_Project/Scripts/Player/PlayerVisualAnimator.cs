@@ -15,6 +15,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     [SerializeField] PlayerWeaponPresenter weaponPresenter;
     PlayerShieldBowAnimator shieldBow; // 盾牌格擋 / 盾擊 / 拉弓的動畫（自動加上）
     [SerializeField] Vector2 idleChangeInterval = new Vector2(5.5f, 8.5f);
+    [Header("弓與盾（共用角色視覺）")]
+    [SerializeField] Color bowWoodColor = new Color(0.32f, 0.14f, 0.055f, 1f);
+    [SerializeField] Color shieldColor = new Color(0.12f, 0.24f, 0.38f, 1f);
 
     static readonly int SpeedHash = Animator.StringToHash("Speed");
     static readonly int GroundedHash = Animator.StringToHash("Grounded");
@@ -56,6 +59,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     bool wasRolling;
     float animatorSpeedBeforeRoll = 1f;
     BoneRestPose[] rollPose;
+    Transform bowProp;
+    Transform shieldProp;
 
     struct BoneRestPose
     {
@@ -107,6 +112,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             health.OnDied -= HandleDeath;
             health.OnRespawned -= HandleRespawn;
         }
+        RestoreRollVisualState();
+        if (bowProp != null) bowProp.gameObject.SetActive(false);
+        if (shieldProp != null) shieldProp.gameObject.SetActive(false);
     }
 
     void Update()
@@ -251,6 +259,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         }
 
         ApplyShortKesaSlash();
+        UpdateBowAndShieldVisuals();
 
         AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
         bool attackOne = state.IsName("Attack_1");
@@ -343,16 +352,130 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         }
         else if (!rolling && wasRolling)
         {
-            RestoreRollPose();
-            animator.speed = Mathf.Max(.01f, animatorSpeedBeforeRoll);
-            if (visualRoot != null)
-            {
-                visualRoot.localPosition = visualRootRestPosition;
-                visualRoot.localRotation = visualRootRestRotation;
-            }
+            RestoreRollVisualState();
             animator.CrossFadeInFixedTime("Idle", .05f, 0, 0f);
         }
         wasRolling = rolling;
+    }
+
+    void RestoreRollVisualState()
+    {
+        if (!wasRolling && (animator == null || animator.speed > .001f)) return;
+        RestoreRollPose();
+        if (animator != null) animator.speed = Mathf.Max(.01f, animatorSpeedBeforeRoll);
+        if (visualRoot != null)
+        {
+            visualRoot.localPosition = visualRootRestPosition;
+            visualRoot.localRotation = visualRootRestRotation;
+        }
+        wasRolling = false;
+    }
+
+    void UpdateBowAndShieldVisuals()
+    {
+        if (combat == null || animator == null || !animator.isHuman) return;
+        bool showBow = combat.bowMode;
+        bool showShield = combat.ShieldUp; // 盾擊或按住右鍵格擋時拿出盾牌
+
+        if (showBow && bowProp == null) bowProp = BuildBowProp();
+        if (showShield && shieldProp == null) shieldProp = BuildShieldProp();
+        if (bowProp != null) bowProp.gameObject.SetActive(showBow);
+        if (shieldProp != null) shieldProp.gameObject.SetActive(showShield);
+
+        if (showBow && bowProp != null)
+        {
+            if (combat.IsAimingBow) ApplyBowPose();
+            Vector3 position = leftHand != null
+                ? leftHand.position
+                : transform.position + transform.up * 1.15f - transform.right * .24f;
+            bowProp.SetPositionAndRotation(position, Quaternion.LookRotation(transform.forward, transform.up));
+        }
+
+        if (showShield && shieldProp != null)
+        {
+            ApplyShieldPose();
+            Vector3 position = leftHand != null
+                ? leftHand.position + transform.forward * .08f
+                : transform.position + transform.up * 1.05f + transform.forward * .35f;
+            shieldProp.SetPositionAndRotation(position, Quaternion.LookRotation(transform.forward, transform.up));
+        }
+    }
+
+    void ApplyBowPose()
+    {
+        Vector3 origin = chest != null ? chest.position : transform.position + transform.up * 1.2f;
+        Vector3 leftGoal = origin + transform.forward * .56f - transform.right * .22f + transform.up * .04f;
+        Vector3 rightGoal = origin + transform.forward * .17f + transform.right * .15f + transform.up * .03f;
+        SolveLimbWorld(leftUpperArm, leftForearm, leftHand, leftGoal, -transform.right);
+        SolveLimbWorld(rightUpperArm, rightForearm, rightHand, rightGoal, transform.right);
+    }
+
+    void ApplyShieldPose()
+    {
+        Vector3 origin = chest != null ? chest.position : transform.position + transform.up * 1.15f;
+        Vector3 leftGoal = origin + transform.forward * .34f - transform.right * .23f - transform.up * .08f;
+        SolveLimbWorld(leftUpperArm, leftForearm, leftHand, leftGoal, -transform.right);
+    }
+
+    Transform BuildBowProp()
+    {
+        Transform root = new GameObject("PlayerBow_Visual").transform;
+        root.SetParent(transform, false);
+        Shader shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color");
+
+        LineRenderer limb = new GameObject("BowLimb").AddComponent<LineRenderer>();
+        limb.transform.SetParent(root, false);
+        limb.useWorldSpace = false;
+        limb.sharedMaterial = new Material(shader) { color = bowWoodColor };
+        limb.widthMultiplier = .045f;
+        limb.numCornerVertices = 3;
+        limb.positionCount = 15;
+        for (int i = 0; i < limb.positionCount; i++)
+        {
+            float t = i / (limb.positionCount - 1f) * 2f - 1f;
+            limb.SetPosition(i, new Vector3(0f, t * .72f, (1f - t * t) * .22f));
+        }
+
+        LineRenderer bowString = new GameObject("BowString").AddComponent<LineRenderer>();
+        bowString.transform.SetParent(root, false);
+        bowString.useWorldSpace = false;
+        bowString.sharedMaterial = new Material(shader) { color = new Color(.9f, .95f, 1f, 1f) };
+        bowString.widthMultiplier = .009f;
+        bowString.positionCount = 2;
+        bowString.SetPosition(0, new Vector3(0f, -.72f, 0f));
+        bowString.SetPosition(1, new Vector3(0f, .72f, 0f));
+        return root;
+    }
+
+    Transform BuildShieldProp()
+    {
+        Transform root = new GameObject("PlayerShield_Visual").transform;
+        root.SetParent(transform, false);
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        body.name = "ShieldBody";
+        body.transform.SetParent(root, false);
+        body.transform.localScale = new Vector3(.78f, .98f, .13f);
+        Collider generatedCollider = body.GetComponent<Collider>();
+        if (generatedCollider != null) Destroy(generatedCollider);
+        Renderer renderer = body.GetComponent<Renderer>();
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+        Material shieldMaterial = new Material(shader) { color = shieldColor };
+        shieldMaterial.SetFloat("_Metallic", .55f);
+        shieldMaterial.SetFloat("_Smoothness", .35f);
+        renderer.sharedMaterial = shieldMaterial;
+
+        GameObject boss = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        boss.name = "ShieldBoss";
+        boss.transform.SetParent(root, false);
+        boss.transform.localPosition = new Vector3(0f, 0f, .1f);
+        boss.transform.localScale = new Vector3(.24f, .24f, .12f);
+        generatedCollider = boss.GetComponent<Collider>();
+        if (generatedCollider != null) Destroy(generatedCollider);
+        Material bossMaterial = new Material(shader) { color = new Color(.7f, .76f, .82f, 1f) };
+        bossMaterial.SetFloat("_Metallic", .8f);
+        bossMaterial.SetFloat("_Smoothness", .55f);
+        boss.GetComponent<Renderer>().sharedMaterial = bossMaterial;
+        return root;
     }
 
     void ApplyRollVisual()

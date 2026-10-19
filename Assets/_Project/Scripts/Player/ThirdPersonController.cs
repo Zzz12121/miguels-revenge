@@ -202,12 +202,16 @@ public class ThirdPersonController : MonoBehaviour
 
     void OnDisable()
     {
-        if (IsRolling)
-        {
-            IsRolling = false;
-            OnRollEnded?.Invoke();
-        }
+        EndRoll();
         ClearTemporarySpeedEffects();
+    }
+
+    void EndRoll()
+    {
+        if (!IsRolling) return;
+        IsRolling = false;
+        horizontalVelocity = Vector3.zero;
+        OnRollEnded?.Invoke();
     }
 
     /// <summary>立刻轉向某個方向（攻擊時面向鏡頭前方）</summary>
@@ -348,6 +352,7 @@ public class ThirdPersonController : MonoBehaviour
         bool wantsJump = Time.time - lastJumpPressedTime <= jumpBufferTime;
         if (canJump && wantsJump)
         {
+            GetComponent<PlayerCombat>()?.CancelTransientActions();
             verticalVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
             lastJumpPressedTime = float.NegativeInfinity;
             lastGroundedTime = float.NegativeInfinity; // 防止連跳
@@ -434,7 +439,7 @@ public class ThirdPersonController : MonoBehaviour
         horizontalVelocity = Vector3.zero;
         verticalVelocity = -2f;
         ballistic = false;
-        GetComponent<PlayerCombat>()?.CancelAttack();
+        GetComponent<PlayerCombat>()?.CancelTransientActions();
         rollStartedAt = Time.unscaledTime;
         nextRollTime = rollStartedAt + rollDuration + rollCooldown;
         IsRolling = true;
@@ -449,9 +454,7 @@ public class ThirdPersonController : MonoBehaviour
         float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(u * Mathf.PI);
         controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
         if (u < 1f) return;
-        IsRolling = false;
-        horizontalVelocity = Vector3.zero;
-        OnRollEnded?.Invoke();
+        EndRoll();
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed, out bool rollPressed)
