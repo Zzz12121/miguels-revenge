@@ -17,6 +17,17 @@ public static class GameUI
 
     static GUIStyle title, body, small, keyCap, button, rightSmall, center;
 
+    /// <summary>
+    /// 專案關掉了「進入 Play 時重新載入腳本」（Enter Play Mode Options），static 變數會留到下一次 Play。
+    /// 上一次 Play 建立的 GUIStyle 指向已經不存在的字型 / 按鈕圖，第二次 Play 開始文字和按鈕就會變成看不見（只剩黑底）。
+    /// 每次進 Play 都清掉，讓它們重新建立。
+    /// </summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics()
+    {
+        title = body = small = keyCap = button = rightSmall = center = null;
+    }
+
     /// <summary>大標題（選單標題）</summary>
     public static GUIStyle Title => title ?? (title = new GUIStyle(GUI.skin.label)
         { fontSize = 30, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } });
@@ -45,6 +56,28 @@ public static class GameUI
         GUI.color = line ?? Accent;
         GUI.DrawTexture(new Rect(r.x, r.y, r.width, 2f), Texture2D.whiteTexture);
         GUI.color = prev;
+    }
+
+    /// <summary>
+    /// 選項卡片（取代 GUI.Button）：背景、滑鼠移上去的高亮、文字顏色全部自己畫，點擊用透明按鈕判斷。
+    /// 不用 GUI.skin.button 的外觀：它的背景圖有時候還沒載入，第一次打開選單時按鈕會變成透明、字變暗。
+    /// 回傳 true = 這一下被點到了。enabled = false 時畫成半透明（仍然可以點，由呼叫的人決定要不要理）。
+    /// </summary>
+    public static bool Option(Rect r, bool enabled = true)
+    {
+        var prev = GUI.color;
+        bool hover = r.Contains(Event.current.mousePosition);
+        float a = enabled ? 1f : 0.5f;
+        GUI.color = new Color(1f, 1f, 1f, (hover ? 0.16f : 0.07f) * a);
+        GUI.DrawTexture(r, Texture2D.whiteTexture);
+        // 外框：平常淡淡的，滑鼠移上去變金色
+        GUI.color = hover ? new Color(Accent.r, Accent.g, Accent.b, a) : new Color(1f, 1f, 1f, 0.18f * a);
+        GUI.DrawTexture(new Rect(r.x, r.y, r.width, 1f), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(r.x, r.yMax - 1f, r.width, 1f), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(r.x, r.y, 1f, r.height), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(r.xMax - 1f, r.y, 1f, r.height), Texture2D.whiteTexture);
+        GUI.color = prev;
+        return GUI.Button(r, GUIContent.none, GUIStyle.none);
     }
 
     /// <summary>按鍵框：金底黑字的小方塊</summary>
@@ -112,6 +145,9 @@ public class InteractPrompt : MonoBehaviour
     public static string KeyName => InteractKey.ToString();
 
     static InteractPrompt host;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStatics() => host = null; // 沒有重新載入腳本時，上一次 Play 的物件已經不在了
     // 這一幀收集中的候選 / 上一幀選出來的
     object pendingOwner, focusedOwner;
     float pendingDistance;

@@ -34,6 +34,48 @@ public class ClockEnemyController : MonoBehaviour
     [Tooltip("二階段四周保護時鐘距離敵人的距離 (m)")]
     public float shieldClockOffset = 2.5f;
 
+    [Header("衝刺預兆")]
+    [Tooltip("衝刺前面向玩家、臉上時鐘忽大忽小的時間 (秒)")]
+    public float dashTelegraphTime = 0.5f;
+    [Tooltip("預兆期間時鐘脹縮幾次")]
+    public float telegraphPulses = 3f;
+    [Tooltip("時鐘脹縮的幅度（0.35 = 大小在 ±35% 之間變化）")]
+    public float telegraphPulseAmount = 0.35f;
+    [Tooltip("臉上的時鐘（留空 = 自動找名字叫 Clock 的子物件）")]
+    public Transform faceClock;
+    Vector3 faceClockScale = Vector3.one;
+
+    [Header("地上的時鐘陷阱")]
+    [Tooltip("每隔幾秒在玩家腳下放一個平躺的時鐘（一階段 / 二階段）。0 = 不放")]
+    public Vector2 floorTrapInterval = new Vector2(7f, 4.5f);
+    [Tooltip("倒數秒數的隨機範圍")]
+    public Vector2 floorTrapCountdown = new Vector2(1f, 2f);
+    [Tooltip("鐘面基本半徑 (m)：倒數結束時玩家在範圍內就中招")]
+    public float floorTrapRadius = 2.2f;
+    [Tooltip("每次放置時鐘面再隨機放大的倍率（最小, 最大）")]
+    public Vector2 floorTrapScale = new Vector2(2.5f, 3.5f);
+
+    [Header("流沙牆（開戰後封住競技場，打倒 Boss 才消失）")]
+    public bool raiseSandWall = true;
+    [Tooltip("流沙牆圍住的範圍：左下角 (X, Z)。要把 Boss 房的營火、第二株植物、傳送門都包在裡面，檢查點石碑在外面")]
+    public Vector2 sandWallMin = new Vector2(596f, 477f);
+    [Tooltip("流沙牆圍住的範圍：右上角 (X, Z)")]
+    public Vector2 sandWallMax = new Vector2(704f, 594f);
+    BossSandWall sandWall;
+
+    void OnBossDied()
+    {
+        if (sandWall != null) { sandWall.Collapse(); sandWall = null; }
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        // 黃框 = 開戰範圍，沙色框 = 流沙牆
+        Gizmos.color = new Color(1f, 0.9f, 0.2f, 0.8f);
+        Gizmos.DrawWireCube(new Vector3((minX + maxX) * 0.5f, transform.position.y, (minZ + maxZ) * 0.5f), new Vector3(maxX - minX, 2f, maxZ - minZ));
+        if (raiseSandWall) BossSandWall.DrawGizmo(sandWallMin, sandWallMax, transform.position.y);
+    }
+
     [Header("檢查點")]
     [Tooltip("Boss 戰開始時自動啟用的檢查點（石柱）。玩家死在 Boss 戰中會在這裡復活，Boss 回滿血重來；Boss 被打死後就不會再復活")]
     public Checkpoint fightCheckpoint;
@@ -55,6 +97,8 @@ public class ClockEnemyController : MonoBehaviour
         enemyHealth = GetComponent<ClockEnemyHealth>();
         homePos = transform.position;
         homeRot = transform.rotation;
+        if (faceClock == null) faceClock = transform.Find("Clock");
+        if (faceClock != null) faceClockScale = faceClock.localScale;
         playerHealth = PlayerHealth.Find();
         if (playerHealth != null)
         {
@@ -63,6 +107,7 @@ public class ClockEnemyController : MonoBehaviour
         }
 
         enemyHealth.OnEnterPhaseTwo += OnEnterPhaseTwoHandler;
+        enemyHealth.OnDied += OnBossDied;
     }
 
     void OnDestroy()
@@ -70,6 +115,7 @@ public class ClockEnemyController : MonoBehaviour
         if (enemyHealth != null)
         {
             enemyHealth.OnEnterPhaseTwo -= OnEnterPhaseTwoHandler;
+            enemyHealth.OnDied -= OnBossDied;
         }
         if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
     }
@@ -87,11 +133,13 @@ public class ClockEnemyController : MonoBehaviour
         StopAllCoroutines();
         foreach (var c in spawnedClocks) if (c != null) Destroy(c);
         spawnedClocks.Clear();
+        if (sandWall != null) { sandWall.Remove(); sandWall = null; } // 下次開戰再升起
 
         isActing = false;
         hasActivated = false;
         phaseTwoTriggered = false;
         enemyHealth.HealFull();
+        if (faceClock != null) faceClock.localScale = faceClockScale; // 預兆做到一半被中斷
         enemyHealth.ShowBar = false;
 
         cc.enabled = false; // CharacterController 要先關掉才能直接傳送
@@ -109,10 +157,12 @@ public class ClockEnemyController : MonoBehaviour
             {
                 hasActivated = true;
                 if (fightCheckpoint != null) fightCheckpoint.Activate();
+                if (raiseSandWall) sandWall = BossSandWall.Raise(sandWallMin, sandWallMax);
                 enemyHealth.ShowBar = true;
                 Debug.Log("玩家已進入指定區域，時鐘 Boss 戰開始！");
                 StartCoroutine(SummonClockRoutine());
                 StartCoroutine(CombatLoopRoutine());
+                StartCoroutine(FloorTrapRoutine());
             }
         }
     }
@@ -196,9 +246,57 @@ public class ClockEnemyController : MonoBehaviour
         }
     }
 
+    /// <summary>衝刺前的預兆：轉向玩家，臉上的時鐘忽大忽小 dashTelegraphTime 秒</summary>
+    IEnumerator DashTelegraph()
+    {
+        Vector3 baseScale = faceClockScale;
+        GameAudio.Play("SFX/RPG/metalClick", transform.position, 0.9f, 0.8f, 0f, 1f, 40f);
+
+        float t = 0f;
+        while (t < dashTelegraphTime)
+        {
+            if (enemyHealth.IsDead || player == null) break;
+            t += Time.deltaTime;
+
+            // 轉向玩家（平滑轉過去，最後一刻剛好對準）
+            Vector3 to = player.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude > 0.001f)
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(to), 720f * Time.deltaTime);
+
+            // 臉上的時鐘忽大忽小
+            if (faceClock != null)
+                faceClock.localScale = baseScale * (1f + Mathf.Sin(t / dashTelegraphTime * Mathf.PI * 2f * telegraphPulses) * telegraphPulseAmount);
+            yield return null;
+        }
+        if (faceClock != null) faceClock.localScale = baseScale;
+    }
+
+    /// <summary>定期在玩家腳下放一個平躺的時鐘，倒數 1~2 秒，結束時還站在上面就被定身</summary>
+    IEnumerator FloorTrapRoutine()
+    {
+        while (true)
+        {
+            float interval = enemyHealth.IsPhaseTwo ? floorTrapInterval.y : floorTrapInterval.x;
+            if (interval <= 0f) yield break;
+            yield return new WaitForSeconds(interval);
+
+            if (enemyHealth.IsDead || clockPrefab == null || player == null) continue;
+            if (playerHealth != null && playerHealth.IsDead) continue;
+            float countdown = Random.Range(floorTrapCountdown.x, floorTrapCountdown.y);
+            float radius = floorTrapRadius * Random.Range(floorTrapScale.x, floorTrapScale.y);
+            var trap = ClockTrap.SpawnFloorTrap(clockPrefab, player.position, radius, countdown);
+            spawnedClocks.Add(trap.gameObject);
+        }
+    }
+
     IEnumerator PerformDashAndRetreat()
     {
         isActing = true;
+
+        // 0. 預兆：面向玩家、臉上的時鐘忽大忽小，之後才照原本的方式衝刺
+        yield return StartCoroutine(DashTelegraph());
+        if (enemyHealth.IsDead || player == null) { isActing = false; yield break; }
 
         // 1. 記錄剛開始衝刺時的方向（只鎖定一次，之後衝刺途中不會再跟著玩家轉向）
         Vector3 dashDir = (player.position - transform.position);
