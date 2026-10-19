@@ -98,6 +98,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void Update()
     {
+        if (Time.timeScale <= 0f) return;
         if (aimCamera == null) ResolveCameraAndHands();
         Mouse mouse = Mouse.current;
         if (mouse == null || aimCamera == null) return;
@@ -119,8 +120,12 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         hovered = FindAimPoint(mouse.position.ReadValue());
         UpdateReticle(selectionLocked ? locked : hovered, true);
 
-        if ((Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) ||
-            Time.unscaledTime - aimingStartedAt >= aimingDuration)
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            SkillAimCancellation.CancelForEscape();
+            return;
+        }
+        if (Time.unscaledTime - aimingStartedAt >= aimingDuration)
         {
             CancelAiming();
             return;
@@ -150,7 +155,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void BeginAiming(bool throwDestination)
     {
-        if (aiming || executing) return;
+        if (aiming || executing || Time.timeScale <= 0f || !SkillAimCancellation.Register(CancelAiming)) return;
         aiming = true;
         aimingThrowDestination = throwDestination;
         selectionLocked = false;
@@ -175,6 +180,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     {
         if (!aiming) return;
         aiming = false;
+        SkillAimCancellation.Release(CancelAiming);
         aimingThrowDestination = false;
         selectionLocked = false;
         Time.timeScale = savedTimeScale;
@@ -384,10 +390,13 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             GameObject beam = new GameObject("EnergyTether_Beam_" + i);
             beam.transform.SetParent(transform, false);
             beams[i] = beam.AddComponent<LineRenderer>();
-            ConfigureLine(beams[i], i >= 2 ? beamWidth * .28f : beamWidth, false);
+            ConfigureLine(beams[i], i >= 2 ? beamWidth * .5f : beamWidth * 1.2f, false);
             beams[i].positionCount = Mathf.Max(5, beamSegments);
             beams[i].colorGradient = CreateBeamGradient(i % 2 == 0);
+            beams[i].widthCurve = new AnimationCurve(new Keyframe(0,.25f),new Keyframe(.12f,1f),new Keyframe(.85f,.7f),new Keyframe(1,.12f));
+            if(i>=2) beams[i].startColor = beams[i].endColor = new Color(1f, .96f, 1f, 1f);
             beams[i].enabled = false;
+            if (i < 2) beam.AddComponent<LightningFilamentBundle>().Initialize(beams[i], 22, .19f);
         }
     }
 
@@ -470,9 +479,12 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             {
                 float u = i / (float)(count - 1);
                 float envelope = Mathf.Sin(u * Mathf.PI);
-                float noiseA = Mathf.PerlinNoise(i * .73f + phase * 7f, Time.unscaledTime * 18f + side * 3f) * 2f - 1f;
-                float noiseB = Mathf.PerlinNoise(i * 1.17f + 14f, Time.unscaledTime * 15f + phase * 5f) * 2f - 1f;
-                float amount = layer == 0 ? beamJitter : beamJitter * .35f;
+                // Hold branching contours briefly rather than boiling every frame.
+                float tick = Mathf.Floor(Time.unscaledTime * 22f);
+                float noiseA = Mathf.PerlinNoise(i * .73f + side * 7f, tick*.37f) * 2f - 1f;
+                float noiseB = Mathf.PerlinNoise(i * 1.17f + 14f, tick*.41f + side * 5f) * 2f - 1f;
+                // Core and colored envelope share the same path so they read as one bolt.
+                float amount = beamJitter * .65f;
                 Vector3 point = Vector3.Lerp(start, end, u) + (sideAxis * noiseA + upAxis * noiseB) * amount * envelope;
                 line.SetPosition(i, point);
             }

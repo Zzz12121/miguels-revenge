@@ -347,9 +347,22 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     void SpawnSlashPair(Vector3 center, Vector3 direction, float length, float width, float lifetime, Color color)
     {
         Vector3 half = direction.normalized * length * 0.5f;
-        Vector3[] points = { center - half, center + half };
-        SpawnRibbon(points, slashMaterial, width * 5.2f, lifetime, new Color(color.r, color.g, color.b, 0.42f));
-        SpawnRibbon(points, slashMaterial, width * 1.45f, lifetime * 0.9f, Color.Lerp(color, Color.white, 0.82f));
+        Vector3 side = Vector3.Cross(direction.normalized, Vector3.up).normalized;
+        if (side.sqrMagnitude < .01f) side = Vector3.right;
+        Vector3[] points = new Vector3[7];
+        for (int i = 0; i < points.Length; i++)
+            points[i] = center + half * (i / 3f - 1f) + side * Random.Range(-.025f,.025f);
+        float duration = Mathf.Min(lifetime, .45f);
+        SpawnRibbon(points, slashMaterial, width * 1.2f, duration, new Color(color.r, color.g, color.b, 0.12f));
+        SpawnRibbon(points, slashMaterial, width * .45f, duration * .8f, Color.Lerp(color, Color.white, .92f));
+        // Small, almost parallel barbs rather than thick zigzags or sheets of blue.
+        for (int i = 0; i < 3; i++)
+        {
+            Vector3 p = Vector3.Lerp(points[1],points[5],Random.value);
+            Vector3 d = direction.normalized * Random.Range(.25f,.65f);
+            SpawnRibbon(new[] { p-d, p + side*Random.Range(-.10f,.10f), p+d }, slashMaterial,
+                width*.18f, .12f, color);
+        }
     }
 
     void SpawnArc(Vector3 center, Quaternion rotation, float radius, float startAngle, float endAngle, float width, float lifetime, Color color)
@@ -365,8 +378,10 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
             points[i] = center + rotation * local;
         }
 
-        SpawnRibbon(points, slashMaterial, width * 4.6f, lifetime, new Color(color.r, color.g, color.b, 0.38f));
-        SpawnRibbon(points, slashMaterial, width * 1.35f, lifetime * 0.92f, Color.Lerp(color, Color.white, 0.72f));
+        var halo = SpawnRibbon(points, slashMaterial, width * 2.8f, lifetime, new Color(color.r, color.g, color.b, 0.24f));
+        var core = SpawnRibbon(points, slashMaterial, width, lifetime * 0.8f, Color.Lerp(color, Color.white, 0.9f));
+        var arcWidth = new AnimationCurve(new Keyframe(0,.01f),new Keyframe(.25f,.65f),new Keyframe(.65f,1),new Keyframe(1,.01f));
+        halo.widthCurve=arcWidth; core.widthCurve=arcWidth;
     }
 
     void SpawnRing(Vector3 center, float startRadius, float endRadius, float width, float lifetime, Color color)
@@ -386,6 +401,8 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     LineRenderer SpawnRibbon(IReadOnlyList<Vector3> points, Material material, float width, float lifetime, Color color)
     {
+        width *= 1.4f;
+        lifetime = Mathf.Min(lifetime, .65f);
         GameObject go = new GameObject("VoidRend_Ribbon");
         go.transform.SetParent(effectsRoot, false);
         LineRenderer line = go.AddComponent<LineRenderer>();
@@ -397,13 +414,28 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         line.positionCount = points.Count;
         for (int i = 0; i < points.Count; i++) line.SetPosition(i, points[i]);
         line.sharedMaterial = material;
-        line.startWidth = width;
-        line.endWidth = width * 0.68f;
+        line.widthMultiplier = width;
+        line.widthCurve = new AnimationCurve(new Keyframe(0,0), new Keyframe(.14f,.55f),
+            new Keyframe(.42f,1), new Keyframe(.72f,.65f), new Keyframe(1,0));
+        // Two-vertex growing strokes have no interior samples for a tapered curve.
+        if (points.Count == 2) line.widthCurve = AnimationCurve.Linear(0, .7f, 1, .15f);
         line.startColor = color;
         line.endColor = color;
 
         VoidRendTransientLine fx = go.AddComponent<VoidRendTransientLine>();
         fx.Initialize(line, lifetime, width, color);
+        if (Stage == "DashLattice" && lifetime > .15f)
+        {
+            fx.Hold();
+            heldDashLines.Add(fx);
+        }
+        if (color.a > .3f)
+        {
+            float spread = Mathf.Clamp(width*2.5f,.05f,.24f);
+            // Keep skill 1's dash strands packed around each trajectory, not a wide cage.
+            if (Stage == "DashLattice") spread *= .32f;
+            go.AddComponent<LightningFilamentBundle>().Initialize(line, 7, spread);
+        }
         return line;
     }
 
@@ -526,6 +558,8 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     void ReleaseCinematicCamera()
     {
+        shakeStrength = 0f;
+        fovKick = 0f;
         hasQueuedCameraPose = false;
         if (cinematicCameraDriver != null) cinematicCameraDriver.Release(this);
     }
@@ -609,6 +643,16 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
 public sealed class VoidRendTransientLine : MonoBehaviour
 {
+    bool held;
+    bool released;
+    public void Hold() { held = true; }
+    public void Release(float seconds)
+    {
+        held = false;
+        released = true;
+        age = 0f;
+        lifetime = Mathf.Max(.05f, seconds);
+    }
     LineRenderer line;
     float lifetime;
     float age;
@@ -642,16 +686,16 @@ public sealed class VoidRendTransientLine : MonoBehaviour
     void Update()
     {
         if (line == null) return;
-        age += Time.unscaledDeltaTime;
+        if (!held) age += Time.unscaledDeltaTime;
         float t = Mathf.Clamp01(age / lifetime);
-        float appear = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t * 8f));
+        float appear = held || released ? 1f : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t * 8f));
         float fade = Mathf.Pow(1f - t, 1.35f);
         Color c = baseColor;
         c.a *= appear * fade;
         line.startColor = c;
         line.endColor = c;
-        line.startWidth = baseWidth * Mathf.Lerp(1.18f, 0.28f, t);
-        line.endWidth = line.startWidth * 0.7f;
+        // startWidth/endWidth overwrite widthCurve and used to erase the pointed ends.
+        line.widthMultiplier = baseWidth * Mathf.Lerp(1f, 0.12f, t);
 
         if (expand && directions != null)
         {

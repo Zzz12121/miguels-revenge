@@ -241,7 +241,9 @@ public class ThirdPersonCamera : MonoBehaviour
 
         if (shakeTimer > 0f)
         {
-            shakeTimer -= Time.deltaTime;
+            // Menus/dialogue stop scaled time; never leave a frozen shake running forever.
+            shakeTimer = Time.timeScale <= 0f || Cursor.lockState != CursorLockMode.Locked
+                ? 0f : Mathf.Max(0f, shakeTimer - Time.unscaledDeltaTime);
             lookPoint += Random.insideUnitSphere * shakeAmplitude * Mathf.Clamp01(shakeTimer / shakeDuration);
         }
 
@@ -301,12 +303,12 @@ public class ThirdPersonCamera : MonoBehaviour
         var mouse = Mouse.current;
         var kb = Keyboard.current;
 
-        if (kb != null && kb.escapeKey.wasPressedThisFrame) LockCursor(false);
+        if (kb != null && kb.escapeKey.wasPressedThisFrame && !SkillAimCancellation.EscapeConsumedThisFrame) LockCursor(false);
         if (mouse != null && mouse.leftButton.wasPressedThisFrame && Cursor.lockState != CursorLockMode.Locked)
             LockCursor(true);
 
 #if ENABLE_LEGACY_INPUT_MANAGER
-        if (kb == null && Input.GetKeyDown(KeyCode.Escape)) LockCursor(false);
+        if (kb == null && Input.GetKeyDown(KeyCode.Escape) && !SkillAimCancellation.EscapeConsumedThisFrame) LockCursor(false);
         if (mouse == null && Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked)
             LockCursor(true);
 #endif

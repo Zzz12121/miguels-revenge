@@ -7,6 +7,12 @@ using UnityEngine.Rendering.Universal;
 
 public sealed partial class VoidRendSkillDemo
 {
+    readonly List<VoidRendTransientLine> heldDashLines = new();
+    void ReleaseDashLines(float seconds)
+    {
+        foreach (var line in heldDashLines) if (line != null) line.Release(seconds);
+        heldDashLines.Clear();
+    }
     [Header("Finisher choreography")]
     [Min(1)] public float effectRangeMultiplier = 4f;
     [Min(0.1f)] public float chargeOrbitSeconds = 3.5f;
@@ -189,6 +195,8 @@ public sealed partial class VoidRendSkillDemo
     void SetDistortion(float amount)
     {
         distortion = amount;
+        Shader.SetGlobalFloat("_SpatialStrength", amount);
+        Shader.SetGlobalFloat("_SpatialClock", Time.unscaledTime);
         if (refractionMaterial) { refractionMaterial.SetFloat("_Strength", amount); refractionMaterial.SetFloat("_Clock", Time.unscaledTime); }
     }
 
@@ -229,6 +237,39 @@ public sealed partial class VoidRendSkillDemo
         float spinCameraStartRadius = Mathf.Max(7.2f, normalCameraRadius);
         float spinCameraEndRadius = spinCameraStartRadius + 3.4f;
 
+        // 先面向目標跑到擊飛位置；只啟動一次 Run，逐幀推進而不重播起始幀。
+        SetStage("ApproachRun");
+        Vector3 approachStart = caster.position;
+        Vector3 approachDirection = Vector3.ProjectOnPlane(arenaCenter - approachStart, Vector3.up);
+        float approachDistance = approachDirection.magnitude;
+        if (approachDistance > .05f)
+        {
+            caster.rotation = Quaternion.LookRotation(approachDirection.normalized, Vector3.up);
+            bool sampleRun = casterAnimator != null && !useLegacyProceduralPose;
+            if (sampleRun)
+            {
+                casterAnimator.SetFloat("Speed", 1f);
+                casterAnimator.SetBool("Grounded", true);
+                casterAnimator.SetFloat("VerticalSpeed", 0f);
+                casterAnimator.Play("Run", 0, 0f);
+            }
+            float approachDuration = Mathf.Max(.06f, approachDistance / 24f);
+            for (float t = 0; t < approachDuration; t += Time.unscaledDeltaTime)
+            {
+                caster.position = Vector3.Lerp(approachStart, arenaCenter, Mathf.Clamp01(t / approachDuration));
+                if (sampleRun) casterAnimator.Update(Time.unscaledDeltaTime * 2f);
+                cameraFocus = caster.position + Vector3.up * 1.35f;
+                yield return null;
+            }
+        }
+        caster.position = arenaCenter;
+        if (casterAnimator != null && !useLegacyProceduralPose)
+        {
+            casterAnimator.SetFloat("Speed", 0f);
+            casterAnimator.Play("Idle", 0, 0f);
+            casterAnimator.Update(0f);
+        }
+
         // 地面蓄力：先微蹲並把刀舉到頭頂，避免一開始就用不相干的對空斬。
         SetStage("OverheadWindup");
         SpawnRing(caster.position + Vector3.up * 0.06f, 0.18f, 1.75f, .08f, .62f, cyan);
@@ -244,19 +285,16 @@ public sealed partial class VoidRendSkillDemo
         }
 
         SetStage("Launch");
-        Vector3 approach = arenaCenter + Vector3.back * 0.8f;
         SpawnArc(victimHome, Quaternion.Euler(0, 0, 80), 3.2f, -100, 100, .18f, .55f, pale);
         PunchCamera(.78f, 7); Flash(cyan, .18f);
         for (float t = 0; t < .6f; t += Time.unscaledDeltaTime)
         {
             float u = Mathf.Clamp01(t / .6f);
             victimHeld = victimHome + Vector3.up * (launchHeight * (1 - Mathf.Pow(1-u, 3)));
-            caster.position = Vector3.Lerp(casterStartPosition, approach, Mathf.SmoothStep(0,1,u));
             yield return null;
         }
         victimHeld = victimHome + Vector3.up * launchHeight;
         caster.position = arenaCenter;
-        caster.rotation = Quaternion.identity;
         chargeSmoke = CreateSmoke(caster.position, true, 3.5f, .38f);
         chargeSmoke.transform.SetParent(caster, true);
         SetStage("AerialRotor");
@@ -311,8 +349,8 @@ public sealed partial class VoidRendSkillDemo
             // Geometry is emitted from the exact swept character path, with a advancing head.
             const float dashDuration = .15f;
             Vector3 previous = last + Vector3.up*.9f;
-            var growing=SpawnRibbon(new[]{previous,previous},slashMaterial,.13f,2.1f,pale);
-            var halo=SpawnRibbon(new[]{previous,previous},slashMaterial,.42f,2.1f,new Color(.15f,.65f,1,.28f));
+            var growing=SpawnRibbon(new[]{previous,previous},slashMaterial,.09f,2.1f,pale);
+            var halo=SpawnRibbon(new[]{previous,previous},slashMaterial,.16f,2.1f,new Color(.15f,.65f,1,.22f));
             for(float t=0;t<dashDuration;t+=Time.unscaledDeltaTime)
             {
                 float u = Mathf.Clamp01(t/dashDuration);
@@ -329,13 +367,14 @@ public sealed partial class VoidRendSkillDemo
                 cameraHeight = 2.2f + Mathf.Sin(i*.4f)*.7f;
                 cameraRoll = Mathf.Sin((i+u)*1.2f)*7;
                 cinematicFov = 64;
-                SetDistortion(.2f + .18f*Mathf.Sin((i+u)*3));
+                SetDistortion(.55f + .3f*(1-u));
                 yield return null;
             }
             caster.position = next;
             if (growing) growing.SetPosition(1,next+Vector3.up*.9f);
             if (halo) halo.SetPosition(1,next+Vector3.up*.9f);
             FracturedCut(last+Vector3.up*.9f,next+Vector3.up*.9f,.065f,8.4f,true);
+            SpawnSpatialLattice(center, i, 5, 2.2f);
             DamageCurrentTarget(voidRendDashDamage);
             if (i%3==0)
             {
@@ -347,17 +386,32 @@ public sealed partial class VoidRendSkillDemo
             yield return Wait(.04f);
         }
         SetStage("SheatheOrbit");
-        CreateAfterimage(); caster.position = arenaCenter; caster.rotation = Quaternion.identity;
+        CreateAfterimage();
+        Vector3 recoveryFallStart = caster.position;
+        Vector3 recoveryForward = Vector3.ProjectOnPlane(victimRotation * Vector3.forward, Vector3.up).normalized;
+        if (recoveryForward.sqrMagnitude < .001f) recoveryForward = Vector3.forward;
+        Vector3 recoveryGround = victimHome + recoveryForward * 2f;
+        recoveryGround.y = casterStartPosition.y;
+        Quaternion recoveryRotation = Quaternion.LookRotation(recoveryForward, Vector3.up);
+        Quaternion recoveryStartRotation = caster.rotation;
+        float frontCameraYaw = Mathf.Atan2(recoveryForward.x, recoveryForward.z) * Mathf.Rad2Deg;
         float yawStart=cameraYaw;
         float radiusStart=cameraRadius, heightStart=cameraHeight, rollStart=cameraRoll;
         Vector3 focusStart=cameraFocus, heldStart=victimHeld;
-        victimLanding=caster.position-caster.forward*landingDistanceBehind+caster.right*1.3f;
-        victimLanding.y=victimHome.y;
-        Vector3 recoveryFocus=caster.position+Vector3.up*3.0f;
+        // 目標留在切割與爆炸中心，爆炸後才垂直落回原地。
+        victimLanding=victimHome;
+        Vector3 recoveryFocus=recoveryGround+Vector3.up*1.25f;
         for(float t=0;t<2.4f;t+=Time.unscaledDeltaTime)
         {
+            // 先靠近目標前方，在爆炸前落地一次，目標隨後落下。
+            float travel=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/1.75f));
+            float fall=Mathf.Clamp01((t-1.75f)/.65f);
+            Vector3 landingPath=Vector3.Lerp(recoveryFallStart,recoveryGround,travel);
+            landingPath.y=Mathf.Lerp(recoveryFallStart.y,recoveryGround.y,fall*fall);
+            caster.position=landingPath;
+            caster.rotation=Quaternion.Slerp(recoveryStartRotation,recoveryRotation,travel);
             float u=t/2.4f;
-            cameraYaw=Mathf.Lerp(yawStart,360,Mathf.SmoothStep(0,1,u));
+            cameraYaw=Mathf.LerpAngle(yawStart,frontCameraYaw,Mathf.SmoothStep(0,1,u));
             float ease=Mathf.SmoothStep(0,1,u);
             cameraRadius=Mathf.Lerp(radiusStart,recoveryCameraDistance,ease); cameraHeight=Mathf.Lerp(heightStart,1.6f,ease);
             cameraFocus=Vector3.Lerp(focusStart,recoveryFocus,ease);
@@ -366,67 +420,39 @@ public sealed partial class VoidRendSkillDemo
             SetDistortion(.18f + Mathf.Sin(t*7)*.08f);
             yield return null;
         }
-        cameraYaw=360; cameraRadius=recoveryCameraDistance; cameraHeight=1.6f;
+        caster.position=recoveryGround;
+        caster.rotation=recoveryRotation;
+        cameraYaw=frontCameraYaw; cameraRadius=recoveryCameraDistance; cameraHeight=1.6f;
         cameraFocus=recoveryFocus; cinematicFov=60; cameraRoll=0;
         victimHeld=victimLanding+Vector3.up*launchHeight;
         SetStage("FinalBreak");
+        ReleaseDashLines(.4f);
         onFinisherImpact.Invoke();
         DamageCurrentTarget(voidRendDamage);
         SpawnSpaceRift(center);
-        for(int i=0;i<12;i++)
-        {
-            Vector3 a=Random.onUnitSphere*effectRangeMultiplier*4;
-            FracturedCut(center-a,center+a,.16f,2.2f,true);
-        }
+        SpawnSpatialLattice(center, 37, 32, 1.8f);
         SpawnRing(arenaCenter+.1f*Vector3.up,.5f,4.7f*effectRangeMultiplier,.4f,1.5f,pale);
         CreateSmoke(arenaCenter+Vector3.up,false,3.2f,2.4f);
         SpawnParticles(center,150,1.5f,18,.03f,.15f,pale);
-        Flash(Color.white,.94f); PunchCamera(1.1f,9); SetDistortion(1);
+        Flash(Color.white,.65f); PunchCamera(1.1f,9); SetDistortion(.72f);
         yield return Wait(.12f);
-        for(float t=0;t<1.6f;t+=Time.unscaledDeltaTime)
+        for(float t=0;t<.8f;t+=Time.unscaledDeltaTime)
         {
-            float u=t/1.6f;
+            float u=t/.8f;
             victimHeld=Vector3.Lerp(victimLanding+Vector3.up*launchHeight,victimLanding,u*u);
             SetDistortion((1-u)*.35f);
             yield return null;
         }
-        SetStage("LandingKneel");
-        // 技能收尾留在最後一次攻擊的位置，不再把玩家拉回施放起點。
-        Vector3 landingPosition = caster.position;
-        landingPosition.y = casterStartPosition.y;
-        Vector3 landingDirection = Vector3.ProjectOnPlane(victimLanding - landingPosition, Vector3.up);
-        Quaternion landingRotation = landingDirection.sqrMagnitude > .0001f
-            ? Quaternion.LookRotation(landingDirection.normalized, Vector3.up)
-            : caster.rotation;
-        Vector3 landingStart = landingPosition + Vector3.up * 1.65f;
-        caster.position = landingStart;
-        for(float t=0;t<.46f;t+=Time.unscaledDeltaTime)
+        // 已在收勢時自然落地，不再抬高角色或播放第二次落地。
+        float recoveryYaw=cameraYaw;
+        for(float t=0;t<.35f;t+=Time.unscaledDeltaTime)
         {
-            float u=Mathf.Clamp01(t/.46f);
-            float fall=u*u;
-            caster.position=Vector3.Lerp(landingStart,landingPosition,fall);
-            caster.rotation=Quaternion.Slerp(caster.rotation,landingRotation,Mathf.SmoothStep(0,1,u));
-            cameraFocus=Vector3.Lerp(cameraFocus,landingPosition+Vector3.up*.9f,1f-Mathf.Exp(-5f*Time.unscaledDeltaTime));
-            cameraYaw=360f+u*17f;
-            cameraRadius=Mathf.Lerp(recoveryCameraDistance,7.1f,Mathf.SmoothStep(0,1,u));
-            cameraHeight=Mathf.Lerp(1.6f,1.05f,u);
-            cinematicFov=Mathf.Lerp(60f,48f,u);
-            yield return null;
-        }
-        caster.position=landingPosition;
-        caster.rotation=landingRotation;
-        SpawnRing(caster.position+Vector3.up*.035f,.15f,1.35f,.06f,.55f,cyan);
-        PunchCamera(.38f,2.5f);
-        float kneelYaw=cameraYaw;
-        for(float t=0;t<.62f;t+=Time.unscaledDeltaTime)
-        {
-            float u=Mathf.Clamp01(t/.62f);
-            cameraYaw=kneelYaw+u*15f;
-            // 落地後把鏡頭平順收回玩家施放前的跟隨距離。
-            cameraRadius=Mathf.Lerp(7.1f,normalCameraRadius,Mathf.SmoothStep(0,1,u));
-            cameraHeight=Mathf.Lerp(1.05f,normalCameraHeight,Mathf.SmoothStep(0,1,u));
-            cameraFocus=Vector3.Lerp(cameraFocus,caster.position+Vector3.up*.78f,1f-Mathf.Exp(-7f*Time.unscaledDeltaTime));
-            cinematicFov=Mathf.Lerp(48f,cameraStartFov,Mathf.SmoothStep(0,1,u));
+            float u=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/.35f));
+            cameraYaw=recoveryYaw+u*8f;
+            cameraRadius=Mathf.Lerp(recoveryCameraDistance,normalCameraRadius,u);
+            cameraHeight=Mathf.Lerp(1.6f,normalCameraHeight,u);
+            cameraFocus=Vector3.Lerp(cameraFocus,caster.position+Vector3.up*.9f,1f-Mathf.Exp(-7f*Time.unscaledDeltaTime));
+            cinematicFov=Mathf.Lerp(60f,cameraStartFov,u);
             yield return null;
         }
         ReleaseVictim(false); completedLanding=true; SetDistortion(0); charge=0; cameraRoll=0;
@@ -452,6 +478,7 @@ public sealed partial class VoidRendSkillDemo
         if(targetLocked && target) { target.position=victimHeld; target.rotation=victimRotation; }
         if(playing) Elapsed=Time.unscaledTime-sequenceStart;
         if(refractionMaterial) refractionMaterial.SetFloat("_Clock",Time.unscaledTime);
+        if (playing) Shader.SetGlobalFloat("_SpatialClock", Time.unscaledTime);
         // Z 的電影鏡頭必須一路維持到落地姿勢完成，不能被一般環繞鏡頭提早接管。
         if(!cinematicCamera && !voidRendCinematicActive) return;
         cinematicCamera = true;
@@ -463,6 +490,7 @@ public sealed partial class VoidRendSkillDemo
 
     void ApplyFinisherPose()
     {
+        if (Stage == "ApproachRun") return;
         foreach(var p in poseRest) if(p.Key) p.Key.localRotation=p.Value;
         float t=Time.unscaledTime-stageTime;
         Vector3 rh=new Vector3(.35f,1.6f,.2f), lh=new Vector3(-.35f,1.55f,.12f);
@@ -536,35 +564,11 @@ public sealed partial class VoidRendSkillDemo
     void ApplyHumanoidFinisherPose()
     {
         if (caster == null) return;
+        if (Stage == "ApproachRun") return;
         RestoreHumanoidUprightPose();
         if (weapon == null) return;
 
         float t = Time.unscaledTime - stageTime;
-        if (Stage == "LandingKneel")
-        {
-            // 下降前段先伸直雙腿，接觸地面後在很短時間內壓進單膝跪，形成重量感。
-            float descent = Mathf.Clamp01(t / .46f);
-            float impact = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - .43f) / .16f));
-            float settle = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((t - .59f) / .22f));
-            if (casterAnimator != null && casterAnimator.transform != caster)
-                casterAnimator.transform.localPosition = animatorRootRestPosition + Vector3.down * (.30f * impact);
-
-            // 空中時腿略向下伸；撞地後右膝深彎、左腳踩穩。
-            RotateBoneWorld(rightThigh, caster.right, Mathf.Lerp(-9f, 69f, impact));
-            RotateBoneWorld(rightCalf, caster.right, Mathf.Lerp(7f, -108f, impact));
-            RotateBoneWorld(leftThigh, caster.right, Mathf.Lerp(-7f, 19f, impact));
-            RotateBoneWorld(leftCalf, caster.right, Mathf.Lerp(5f, -37f, impact));
-            RotateBoneWorld(spine, caster.right, -Mathf.Lerp(2f * descent, 14f, impact));
-            RotateBoneWorld(spine, caster.forward, 5f * (1f - settle) * impact);
-
-            Vector3 rightGoal = caster.TransformPoint(new Vector3(.42f, 1.12f, .16f));
-            Vector3 leftGoal = caster.TransformPoint(new Vector3(-.24f, .72f, .45f));
-            SolveArm(rightUpperArm, rightForearm, rightHand, rightGoal, caster.right);
-            SolveArm(leftUpper, leftFore, leftHand, leftGoal, -caster.right);
-            weapon.position = rightHand != null ? rightHand.position : rightGoal;
-            AlignWeaponBlade((caster.right + caster.forward * .35f).normalized, caster.up);
-            return;
-        }
 
         if (Stage == "DashLattice" || Stage == "Punch")
         {
@@ -719,23 +723,34 @@ public sealed partial class VoidRendSkillDemo
     void FracturedCut(Vector3 from,Vector3 to,float width,float life,bool fracture)
     {
         if((to-from).sqrMagnitude<.0001f)return;
-        int segments=fracture?7:1;
+        // Keep beams straight: the fullscreen fracture pass cuts and displaces them.
+        int segments=1;
         Vector3 direction=(to-from).normalized;
         Vector3 side=Vector3.Cross(direction,Vector3.up).normalized;
         for(int i=0;i<segments;i++)
         {
             float start=i/(float)segments,end=(i+(fracture?.9f:1f))/segments;
-            Vector3 offset=fracture?side*Random.Range(-.22f,.22f):Vector3.zero;
+            Vector3 offset=Vector3.zero;
             Vector3 a=Vector3.Lerp(from,to,start)+offset,b=Vector3.Lerp(from,to,end)+offset;
-            Vector3 mid=Vector3.Lerp(a,b,.52f)+(fracture?Vector3.up*Random.Range(-.16f,.16f):Vector3.zero);
+            Vector3 mid=Vector3.Lerp(a,b,.52f);
             var points=new[]{a,mid,b};
-            SpawnRibbon(points,slashMaterial,width*3.3f,life,new Color(.15f,.65f,1,.28f));
-            SpawnRibbon(points,slashMaterial,width,life,pale);
-            if(fracture)
-            {
-                var r=SpawnRibbon(points,riftCoreMaterial,width*4,life,Color.black);
-                r.gameObject.AddComponent<VoidRendWarpLine>();
-            }
+            var glow = SpawnRibbon(points,slashMaterial,width*2.4f,life,new Color(.15f,.45f,1,.18f));
+            var core = SpawnRibbon(points,slashMaterial,width*.65f,life*.8f,pale);
+            var taper = new AnimationCurve(new Keyframe(0,.06f),new Keyframe(.35f,1),new Keyframe(.7f,.65f),new Keyframe(1,.02f));
+            glow.widthCurve=taper; core.widthCurve=taper;
+        }
+    }
+
+    void SpawnSpatialLattice(Vector3 center, int seed, int count, float life)
+    {
+        var random = new System.Random(seed * 7919 + 31);
+        for (int i = 0; i < count; i++)
+        {
+            float angle = (float)random.NextDouble() * Mathf.PI * 2;
+            Vector3 direction = new Vector3(Mathf.Cos(angle), (float)random.NextDouble() * .9f - .45f, Mathf.Sin(angle)).normalized;
+            Vector3 offset = new Vector3((float)random.NextDouble()-.5f,(float)random.NextDouble()-.5f,(float)random.NextDouble()-.5f) * 9f;
+            float length = effectRangeMultiplier * Mathf.Lerp(3f, 6f, (float)random.NextDouble());
+            SpawnSlashPair(center + offset, direction, length, .018f + (float)random.NextDouble()*.018f, life, cyan);
         }
     }
 
@@ -776,6 +791,7 @@ public sealed partial class VoidRendSkillDemo
 
     void CleanupFinisher()
     {
+        ReleaseDashLines(.15f);
         ReleaseVictim();SetDistortion(0);
         voidRendCinematicActive=false;
         if(casterAnimator && playing)

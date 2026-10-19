@@ -108,7 +108,7 @@ public sealed class PlayerTailAnimator : MonoBehaviour
         }
 
         float activity = 1f + smoothedMovement * movementResponse;
-        float tempo = Mathf.Lerp(idleTempo, 1.15f, smoothedMovement);
+        float tempo = Mathf.Lerp(idleTempo * 1.4f, 1.15f, smoothedMovement);
         tempo *= Mathf.Lerp(.7f, 1.3f, Mathf.PerlinNoise(noiseSeed, tailTime * .12f));
         motionPhase += Time.deltaTime * swaySpeed * tempo;
         float clock = motionPhase;

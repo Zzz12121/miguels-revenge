@@ -346,6 +346,7 @@ public class GameManager : MonoBehaviour
         // Esc：暫停 / 繼續（別的選單把時間停住的時候不搶，例如能力植物三選一）
         if (kb.escapeKey.wasPressedThisFrame && CurrentLevelIndex >= 0 && !IsGameOver && !IsGameWon)
         {
+            if (SkillAimCancellation.CancelForEscape()) return;
             if (IsPaused) Resume();
             else if (Time.timeScale > 0f) Pause();
         }
@@ -412,6 +413,7 @@ public class GameManager : MonoBehaviour
                      params (string label, UnityEngine.Events.UnityAction action)[] buttons)
     {
         CloseOverlay(false);
+        SkillAimCancellation.Cancel(); // Restore targeting's clock BEFORE pause captures it.
         overlayPrevTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
         Time.timeScale = 0f;
 
