@@ -96,7 +96,7 @@ public class PlayerCombat : MeleeCombat
     void Update()
     {
         if (health != null && health.IsDead) return;
-        if (controller != null && controller.IsRolling) return;
+        if (controller != null && (controller.IsRolling || controller.ActionsLocked)) return;
         if (bowMode)
         {
             UpdateBow();

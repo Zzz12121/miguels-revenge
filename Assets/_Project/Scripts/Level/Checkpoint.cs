@@ -288,11 +288,9 @@ public class Checkpoint : MonoBehaviour
 
     void OnGUI()
     {
-        if (Time.time - messageTime > 2f) return;
-        var style = new GUIStyle(GUI.skin.label) { fontSize = 26, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-        GUI.color = MessageColor;
-        GUI.Label(new Rect(0, Screen.height * 0.35f, Screen.width, 40f), message, style);
-        GUI.color = Color.white;
+        float since = Time.time - messageTime;
+        if (since > 2f || GameUI.OverlayOpen) return;
+        GameUI.Banner(message, MessageColor, Mathf.Clamp01((2f - since) / 0.5f));
     }
 
     void OnDrawGizmos()

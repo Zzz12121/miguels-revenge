@@ -1,9 +1,9 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.InputSystem; // 引入新版 Input System 命名空間
 
 /// <summary>
-/// 篝火互動：玩家靠近互動範圍內時顯示提示，按下 E 鍵後回復 20% 血量，回復完畢後粒子特效消失。
+/// 篝火互動：玩家靠近時顯示「[E] 使用營火」，按下 E 後回復 40% 血量，回復完畢後粒子特效消失。
+/// 滿血時提示會變灰，按了也不會用掉。
 /// 用過的火堆在玩家死亡重生後不會恢復，只有開新的一局（重新載入關卡）才會重置。
 /// </summary>
 public class Campfire : MonoBehaviour
@@ -11,6 +11,8 @@ public class Campfire : MonoBehaviour
     [Header("設定")]
     [Tooltip("玩家靠近互動的範圍 (m)")]
     public float interactRange = 2.5f;
+    [Tooltip("回復最大生命的比例")]
+    [Range(0f, 1f)] public float healRatio = 0.4f;
     [Tooltip("勾選 = 玩家死亡重生時火堆恢復燃燒；不勾 = 用過就沒了，直到開新的一局")]
     public bool resetOnPlayerRespawn = false;
     [Tooltip("火堆的粒子特效物件 (Particle System)")]
@@ -18,8 +20,7 @@ public class Campfire : MonoBehaviour
 
     Transform player;
     PlayerHealth playerHealth;
-    bool isUsed = false;          // 紀錄是否已被使用
-    bool isPlayerInRange = false; // 紀錄玩家是否在互動範圍內
+    bool isUsed = false; // 紀錄是否已被使用
 
     void Start()
     {
@@ -27,19 +28,11 @@ public class Campfire : MonoBehaviour
         if (playerHealth != null)
         {
             player = playerHealth.transform;
-
-            if (playerHealth != null)
-            {
-                if (resetOnPlayerRespawn) playerHealth.OnRespawned += ResetCampfire;
-            }
-            else
-            {
-                Debug.LogWarning("[Campfire] 找到玩家物件，但在其自身或子物件中找不到 PlayerHealth 腳本！");
-            }
+            if (resetOnPlayerRespawn) playerHealth.OnRespawned += ResetCampfire;
         }
         else
         {
-            Debug.LogWarning("[Campfire] 找不到 Tag 為 'Player' 的玩家物件！");
+            Debug.LogWarning("[Campfire] 場景裡找不到玩家（PlayerHealth）！");
         }
 
         ResetCampfire();
@@ -47,36 +40,26 @@ public class Campfire : MonoBehaviour
 
     void OnDestroy()
     {
-        if (playerHealth != null)
-        {
-            playerHealth.OnRespawned -= ResetCampfire;
-        }
+        if (playerHealth != null) playerHealth.OnRespawned -= ResetCampfire;
     }
 
     void Update()
     {
-        if (player == null || playerHealth == null) return;
+        if (isUsed || player == null || playerHealth == null || playerHealth.IsDead) return;
 
-        // 計算玩家與火堆的距離
         float dist = Vector3.Distance(transform.position, player.position);
-        isPlayerInRange = (dist <= interactRange);
+        if (dist > interactRange) return;
 
-        // 使用新版 Input System 偵測 E 鍵是否被按下
-        bool ePressed = Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame;
-
-        // 尚未使用、在範圍內、按下 E 且確實缺血時才回血。
-        if (!isUsed && isPlayerInRange && ePressed && playerHealth.Health < playerHealth.maxHealth)
-        {
-            UseCampfire();
-        }
+        // 確實缺血時才能用，滿血時提示變灰
+        bool hurt = playerHealth.Health < playerHealth.maxHealth;
+        InteractPrompt.Offer(this, dist, hurt ? $"使用營火（回復 {healRatio * 100f:0}% 血量）" : "營火（血量已滿）", hurt);
+        if (InteractPrompt.Pressed(this)) UseCampfire();
     }
 
     void UseCampfire()
     {
         isUsed = true;
-        isPlayerInRange = false; // 使用後立刻關閉提示
-
-        float healAmount = playerHealth.maxHealth * 0.2f;
+        float healAmount = playerHealth.maxHealth * healRatio;
         StartCoroutine(HealAndExtinguish(healAmount));
     }
 
@@ -87,7 +70,7 @@ public class Campfire : MonoBehaviour
         if (playerHealth != null)
         {
             playerHealth.Heal(healAmount);
-            Debug.Log($"篝火生效：為玩家回復了 {healAmount} 點血量！目前的血量為：{playerHealth.Health}");
+            CombatVFX.Heal(playerHealth.transform);
         }
 
         if (fireParticleEffect != null)
@@ -121,31 +104,6 @@ public class Campfire : MonoBehaviour
                 ps.Clear();
                 ps.Play();
             }
-        }
-    }
-
-    // 繪製畫面提示 UI 與編輯器範圍黃圈
-    void OnGUI()
-    {
-        if (!isUsed && isPlayerInRange)
-        {
-            float w = 300f, h = 40f;
-            float x = (Screen.width - w) * 0.5f;
-            float y = Screen.height - 150f;
-
-            GUI.color = new Color(0f, 0f, 0f, 0.6f);
-            GUI.DrawTexture(new Rect(x, y, w, h), Texture2D.whiteTexture);
-
-            var style = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 16,
-                fontStyle = FontStyle.Bold,
-                alignment = TextAnchor.MiddleCenter
-            };
-
-            GUI.color = Color.yellow;
-            GUI.Label(new Rect(x, y, w, h), "按下 [ E ] 使用營火 (回復 20% 血量)", style);
-            GUI.color = Color.white;
         }
     }
 
