@@ -86,11 +86,16 @@ public class PlayerCombat : MeleeCombat
     {
         base.Awake();
         health = GetComponent<PlayerHealth>();
+        // 所有場景都共用同一個玩家物件；缺少時自動補上雙極牽引技能，
+        // 靶場與正式關卡不需要各自維護一份技能 Prefab。
+        if (GetComponent<EnergyTetherSkill>() == null)
+            gameObject.AddComponent<EnergyTetherSkill>();
     }
 
     void Update()
     {
         if (health != null && health.IsDead) return;
+        if (controller != null && controller.IsRolling) return;
         if (bowMode)
         {
             UpdateBow();
@@ -137,9 +142,31 @@ public class PlayerCombat : MeleeCombat
         if (wantBlock != IsBlocking) SetBlocking(wantBlock, !rightHeld);
         if (IsBlocking) controller.FaceDirection(GetAimDirection());
 
-        // 左鍵：近戰連擊（攻擊中再按 = 接下一段）；舉盾時不能揮劍
+        // 有「重擊」能力：沒在攻擊時按下左鍵先開始蓄力，放開才出手；按住超過 heavyHoldTime 就是重擊（舉盾時不能蓄力）
+        if (heavyAttackEnabled && !IsAttacking && !ShieldUp)
+        {
+            bool held = mouse != null && mouse.leftButton.isPressed;
+            if (leftClick) { charging = true; chargeStart = Time.time; chargeFull = false; }
+            if (charging && !chargeFull && held && Time.time - chargeStart >= heavyHoldTime)
+            {
+                chargeFull = true;
+                GameAudio.Play("SFX/RPG/metalLatch", transform.position, 0.7f, 1.5f, 0f, 0.3f);
+                CombatVFX.Impact(transform.position + Vector3.up, new Color(1f, 0.6f, 0.2f));
+            }
+            if (charging && !held)
+            {
+                charging = false;
+                heavyChain = chargeFull;
+                BeginAttack();
+            }
+            return;
+        }
+        charging = false;
+
+        // 左鍵：近戰連擊（攻擊中再按 = 接下一段）；舉盾、盾擊時不能揮劍
         if (leftClick && !ShieldUp)
         {
+            heavyChain = false;
             if (!BeginAttack()) attackQueued = true;
         }
     }
@@ -203,6 +230,30 @@ public class PlayerCombat : MeleeCombat
         return 0f;
     }
 
+    [Header("重擊（能力植物「重擊」會打開）")]
+    [Tooltip("打開後：長按左鍵蓄力，放開打出重擊")]
+    public bool heavyAttackEnabled;
+    [Tooltip("按住多久算重擊 (秒)")]
+    public float heavyHoldTime = 0.4f;
+    public float heavyDamageScale = 1.5f;
+
+    bool charging, chargeFull, heavyChain, heavySwing;
+    float chargeStart;
+
+    /// <summary>玩家造成傷害的總倍率：基本倍率 × 能力植物（低血量狂暴）</summary>
+    float DamageScale(bool heavy)
+    {
+        if (perks == null) perks = GetComponent<PlayerPerks>();
+        return damageMultiplier * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScale : 1f);
+    }
+
+    void AfterHit(float dealt)
+    {
+        if (perks != null) perks.OnDealtDamage(dealt);
+    }
+
+    PlayerPerks perks;
+
     // ---------------- 盾擊（右鍵） ----------------
 
     readonly Collider[] bashOverlap = new Collider[32];
@@ -251,7 +302,9 @@ public class PlayerCombat : MeleeCombat
             alreadyHit.Add(target);
 
             Vector3 point = c.ClosestPoint(center);
-            target.TakeDamage(shieldBashDamage * damageMultiplier, point);
+            float dealt = shieldBashDamage * DamageScale(false);
+            target.TakeDamage(dealt, point);
+            AfterHit(dealt);
 
             // 盾擊的重點是把敵人撞開：額外的大力擊退
             var enemyMove = (target as Component) != null ? ((Component)target).GetComponent<ThirdPersonController>() : null;
@@ -414,7 +467,12 @@ public class PlayerCombat : MeleeCombat
         GUI.color = Color.white;
     }
 
-    protected override void OnSwingStart(int index) => attackQueued = false;
+    protected override void OnSwingStart(int index)
+    {
+        attackQueued = false;
+        heavySwing = index == 0 && heavyChain; // 重擊只算蓄力放開的那一刀
+        if (heavySwing) ThirdPersonCamera.ShakeMain(0.12f, 0.15f);
+    }
 
     protected override bool WantsNextHit() => attackQueued;
 
@@ -431,8 +489,11 @@ public class PlayerCombat : MeleeCombat
         if (target == null || target.IsDead || alreadyHit.Contains(target)) return false;
 
         alreadyHit.Add(target);
-        target.TakeDamage(damage * damageMultiplier, hitPoint);
-        ThirdPersonCamera.ShakeMain(0.08f, 0.1f);
+        float dealt = damage * DamageScale(heavySwing);
+        target.TakeDamage(dealt, hitPoint);
+        AfterHit(dealt);
+        if (heavySwing) CombatVFX.Impact(hitPoint, new Color(1f, 0.6f, 0.2f));
+        ThirdPersonCamera.ShakeMain(heavySwing ? 0.18f : 0.08f, 0.1f);
         return true;
     }
 }

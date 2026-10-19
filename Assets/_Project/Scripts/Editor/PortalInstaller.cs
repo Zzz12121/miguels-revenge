@@ -13,7 +13,7 @@ using UnityEngine;
 ///      - 只放一個傳送門 Portal_Exit 在 Boss 附近的火堆旁：一直都在，但鎖著，打倒時鐘敵人（ClockEnemyHealth）才打開 → 維京村莊
 ///      - 蜘蛛（SpiderWebAttack）附近 PlantSearchRadius 公尺內的植物（Succulent 開頭、不是 Herb 採集點）
 ///        掛上 UpgradePlant：撿起後三選一升級
-///      - 時鐘敵人往玩家起點方向 BossCheckpointDistance 公尺放檢查點 Checkpoint_Boss（Boss 戰倒下從這裡復活）
+///      - Boss 戰的重生點用場景裡的石碑檢查點 BossCheckpoint_StoneStele（以前自動放的 Checkpoint_Boss 會被拿掉）
 /// 4. 維京村莊靠搭船、地下城是最後一關，都不放傳送門；船改成交給 GameManager 決定下一關
 /// 每次執行會先刪掉場景裡擺好的傳送門，所以可以重複執行。
 /// </summary>
@@ -24,8 +24,8 @@ public static class PortalInstaller
     const string StoneMatPath = Root + "/Materials/M_PortalStone.mat";
     const string SurfaceMatPath = Root + "/Materials/M_PortalSurface.mat";
     const float PlantSearchRadius = 35f;
-    const string BossCheckpointName = "Checkpoint_Boss";
-    const float BossCheckpointDistance = 15f;
+    const string OldBossCheckpointName = "Checkpoint_Boss";
+    const string BossSteleName = "BossCheckpoint_StoneStele";
     const float PortalFromFire = 6f;
 
     const string MainMenuScene = Root + "/Scenes/MainMenu.unity";
@@ -45,7 +45,7 @@ public static class PortalInstaller
             if (!EditorUtility.DisplayDialog("設定關卡流程",
                     "會做這些事：\n" +
                     "・Build Settings 改成：主選單 → 星球 → 維京村莊 → 地下城\n" +
-                    "・星球：火堆旁放一個傳送門（打倒時鐘敵人才打開）、Boss 戰前放檢查點；蜘蛛附近的植物改成三選一能力植物\n" +
+                    "・星球：火堆旁放一個傳送門（打倒時鐘敵人才打開）；蜘蛛附近的植物改成三選一能力植物\n" +
                     "・刪掉場景裡原本擺好的傳送門\n" +
                     "・維京村莊的船改成依關卡順序前往下一關\n\n" +
                     "建議先 commit。要繼續嗎？", "繼續", "取消"))
@@ -95,7 +95,7 @@ public static class PortalInstaller
     /// <summary>
     /// 星球：只有一個傳送門 Portal_Exit，擺在離 Boss 最近的火堆（Campfire）旁邊 PortalFromFire 公尺、面向 Boss 戰檢查點。
     /// 傳送門一直都在，但一開始鎖著（Start Locked），打倒 Boss 時 ClockEnemyHealth 會呼叫 Unlock() 才能進入。
-    /// 想換位置直接在場景裡拖 Portal_Exit 就好。也會拿掉以前掛上的 SpawnOnDeath，再放 Boss 戰前的檢查點
+    /// 想換位置直接在場景裡拖 Portal_Exit 就好。也會拿掉以前掛上的 SpawnOnDeath
     /// </summary>
     static void SetupClockEnemyBoss(GameObject portalPrefab)
     {
@@ -116,9 +116,13 @@ public static class PortalInstaller
         var player = Object.FindAnyObjectByType<PlayerHealth>();
         Vector3 bossPos = boss.transform.position;
         Vector3 playerStart = player != null ? player.transform.position : bossPos + Vector3.back * 20f;
-        Vector3 checkpointPos = SetupBossCheckpoint(bossPos, playerStart);
+        // Boss 戰的重生點用場景裡的石碑檢查點（BossCheckpoint_StoneStele）；以前自動放的 Checkpoint_Boss 拿掉
+        var oldCheckpoint = GameObject.Find(OldBossCheckpointName);
+        if (oldCheckpoint != null) Object.DestroyImmediate(oldCheckpoint);
+        var stele = GameObject.Find(BossSteleName);
+        Vector3 checkpointPos = stele != null ? stele.transform.position : playerStart;
 
-        // 傳送門：離 Boss 最近的火堆旁邊，往檢查點（玩家走過來的方向）偏一點
+        // 傳送門：離 Boss 最近的火堆旁邊，往石碑（玩家走過來的方向）偏一點
         var fires = Object.FindObjectsByType<Campfire>(FindObjectsInactive.Include);
         Vector3 anchor = fires.Length > 0
             ? fires.OrderBy(f => Vector3.Distance(f.transform.position, bossPos)).First().transform.position
@@ -139,31 +143,6 @@ public static class PortalInstaller
         EditorUtility.SetDirty(portal);
         PrefabUtility.RecordPrefabInstancePropertyModifications(portal);
         Debug.Log($"[PortalInstaller] 傳送門放在火堆旁 {pos}，打倒 {boss.name} 後才能進入");
-    }
-
-    /// <summary>
-    /// 星球的 Boss 戰前放一個檢查點：在 Boss 往玩家起點方向 BossCheckpointDistance 公尺的地方。
-    /// 碰到之後在 Boss 戰倒下會從這裡復活（不用從起點走過來），也會補滿血。可以重複執行（先刪掉舊的）。回傳檢查點位置
-    /// </summary>
-    static Vector3 SetupBossCheckpoint(Vector3 bossPos, Vector3 playerStart)
-    {
-        var old = GameObject.Find(BossCheckpointName);
-        if (old != null) Object.DestroyImmediate(old);
-
-        Vector3 dir = playerStart - bossPos;
-        dir.y = 0f;
-        dir = dir.sqrMagnitude > 0.01f ? dir.normalized : Vector3.back;
-        Vector3 pos = bossPos + dir * BossCheckpointDistance;
-        if (Physics.Raycast(new Vector3(pos.x, bossPos.y + 40f, pos.z), Vector3.down, out var hit, 120f, ~0, QueryTriggerInteraction.Ignore))
-            pos = hit.point;
-
-        var glowMat = BossArenaBuilder.GetOrCreateMaterial("M_CheckpointGlow", new Color(1f, 0.8f, 0.3f), unlit: true);
-        var cp = Floor02Builder.CreateCheckpoint(pos, glowMat);
-        cp.name = BossCheckpointName;
-        // 重生時面向 Boss
-        cp.transform.rotation = Quaternion.LookRotation(-dir);
-        Debug.Log($"[PortalInstaller] Boss 戰檢查點放在 {pos}");
-        return pos;
     }
 
     static void SetupUpgradePlants()

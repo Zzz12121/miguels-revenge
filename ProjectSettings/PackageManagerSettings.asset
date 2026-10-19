@@ -37,7 +37,9 @@ MonoBehaviour:
     m_Url: https://package.openupm.com
     m_Scopes:
     - com.ivanmurzak
+    - com.ivanmurzak.unity.mcp
     - extensions.unity
+    - extensions.unity.playerprefsex
     m_IsDefault: 0
     m_IsUnityRegistry: 0
     m_Capabilities: 0
@@ -51,7 +53,7 @@ MonoBehaviour:
     m_Modified: 0
     m_ErrorMessage: 
     m_UserModificationsEntityId:
-      m_rawData: 1099511629312
+      m_rawData: 1099511629369
     m_OriginalEntityId:
-      m_rawData: 1099511629313
+      m_rawData: 1099511629371
   m_LoadAssets: 0

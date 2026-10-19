@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -35,6 +37,13 @@ public class ThirdPersonController : MonoBehaviour
     public float coyoteTime = 0.12f;
     [Tooltip("落地前提早按跳躍仍會生效的時間 (秒)")]
     public float jumpBufferTime = 0.12f;
+    [Tooltip("二段跳（能力植物「一步登天」會打開）：在空中可以再跳一次")]
+    public bool doubleJumpEnabled = false;
+    [Tooltip("二段跳的高度 (m)")]
+    public float doubleJumpHeight = 1.4f;
+    bool airJumpUsed;
+    /// <summary>二段跳的瞬間通知外面（特效 / 動畫用）</summary>
+    public event System.Action OnDoubleJump;
 
     [Header("狀態")]
     [Tooltip("關閉時角色不吃玩家輸入（死亡、過場時使用），但仍受重力影響")]
@@ -43,6 +52,16 @@ public class ThirdPersonController : MonoBehaviour
     public float speedMultiplier = 1f;
     [Tooltip("鎖定面向，不會自動轉向移動方向（攻擊時使用）")]
     public bool lockRotation = false;
+
+    [Header("翻滾閃避（V）")]
+    [Min(0.2f)] public float rollDuration = 0.48f;
+    [Min(0.5f)] public float rollDistance = 5.2f;
+    [Min(0f)] public float rollCooldown = 0.18f;
+    public bool IsRolling { get; private set; }
+    public float RollNormalizedTime => IsRolling ? Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration)) : 0f;
+    public bool IsControlImmune => IsRolling;
+    public event System.Action OnRollStarted;
+    public event System.Action OnRollEnded;
 
     [Header("參考")]
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
@@ -64,6 +83,11 @@ public class ThirdPersonController : MonoBehaviour
     Vector3 aiMove;
     bool aiSprint;
     bool aiJump;
+
+    readonly Dictionary<int, float> temporarySpeedMultipliers = new Dictionary<int, float>();
+    int nextTemporarySpeedEffectId;
+    int temporarySpeedEffectGeneration;
+    float temporarySpeedMultiplier = 1f;
 
     CharacterController controller;
     Vector3 horizontalVelocity;
@@ -114,24 +138,14 @@ public class ThirdPersonController : MonoBehaviour
     float rotationVelocity;
     float lastGroundedTime = float.NegativeInfinity;
     float lastJumpPressedTime = float.NegativeInfinity;
+    Vector3 rollDirection;
+    float rollStartedAt;
+    float nextRollTime;
 
     // 之後做動畫 / UI 時可以讀這些值
     public bool IsGrounded => controller != null && controller.isGrounded;
     public float CurrentSpeed => horizontalVelocity.magnitude;
     public float VerticalVelocity => verticalVelocity;
-
-    /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
-    // 緩速 / 定身（蜘蛛網、時鐘陷阱）：和 speedMultiplier 分開算，攻擊、舉盾改 speedMultiplier 時不會互相蓋掉
-    float slowMultiplier = 1f, slowUntil = float.NegativeInfinity;
-    float StatusMultiplier => Time.time < slowUntil ? slowMultiplier : 1f;
-
-    /// <summary>緩速 duration 秒（multiplier = 0 就是定身）。效果重疊時取比較慢的倍率、比較晚的結束時間</summary>
-    public void ApplySlow(float multiplier, float duration)
-    {
-        bool active = Time.time < slowUntil;
-        slowMultiplier = active ? Mathf.Min(slowMultiplier, multiplier) : multiplier;
-        slowUntil = Mathf.Max(active ? slowUntil : Time.time, Time.time + duration);
-    }
 
     // 受擊僵直：這段時間內不吃移動 / 跳躍輸入（擊退照樣有效）
     float stunUntil = float.NegativeInfinity;
@@ -140,10 +154,60 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>僵直 seconds 秒（玩家受傷時使用）</summary>
     public void Stun(float seconds) => stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
 
+    /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
     public void AddImpulse(Vector3 impulse)
     {
+        if (IsControlImmune) return;
         horizontalVelocity += new Vector3(impulse.x, 0f, impulse.z);
         if (impulse.y > 0f) verticalVelocity = Mathf.Max(verticalVelocity, impulse.y);
+    }
+
+    /// <summary>
+    /// 暫時套用額外移動倍率。效果由玩家自己計時，來源物件即使被銷毀也能正常解除。
+    /// 多個效果重疊時採用最慢的倍率，且不會覆蓋攻擊使用的 speedMultiplier。
+    /// </summary>
+    public void ApplyTemporarySpeedMultiplier(float multiplier, float duration)
+    {
+        if (duration <= 0f || IsControlImmune) return;
+        StartCoroutine(TemporarySpeedEffectRoutine(Mathf.Clamp01(multiplier), duration));
+    }
+
+    IEnumerator TemporarySpeedEffectRoutine(float multiplier, float duration)
+    {
+        int id = ++nextTemporarySpeedEffectId;
+        int generation = temporarySpeedEffectGeneration;
+        temporarySpeedMultipliers[id] = multiplier;
+        RecalculateTemporarySpeedMultiplier();
+
+        yield return new WaitForSeconds(duration);
+
+        if (generation != temporarySpeedEffectGeneration) yield break;
+        temporarySpeedMultipliers.Remove(id);
+        RecalculateTemporarySpeedMultiplier();
+    }
+
+    void RecalculateTemporarySpeedMultiplier()
+    {
+        temporarySpeedMultiplier = 1f;
+        foreach (float multiplier in temporarySpeedMultipliers.Values)
+            temporarySpeedMultiplier = Mathf.Min(temporarySpeedMultiplier, multiplier);
+    }
+
+    public void ClearTemporarySpeedEffects()
+    {
+        temporarySpeedEffectGeneration++;
+        temporarySpeedMultipliers.Clear();
+        temporarySpeedMultiplier = 1f;
+    }
+
+    void OnDisable()
+    {
+        if (IsRolling)
+        {
+            IsRolling = false;
+            OnRollEnded?.Invoke();
+        }
+        ClearTemporarySpeedEffects();
     }
 
     /// <summary>立刻轉向某個方向（攻擊時面向鏡頭前方）</summary>
@@ -170,6 +234,7 @@ public class ThirdPersonController : MonoBehaviour
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         ballistic = false;
+        ClearTemporarySpeedEffects();
     }
 
     bool ballistic;
@@ -182,6 +247,7 @@ public class ThirdPersonController : MonoBehaviour
     /// </summary>
     public void Launch(Vector3 velocity)
     {
+        if (IsControlImmune) return;
         horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
         verticalVelocity = velocity.y;
         ballistic = true;
@@ -216,7 +282,7 @@ public class ThirdPersonController : MonoBehaviour
         if (controller == null || !controller.enabled) return;
         float dt = Time.deltaTime;
         Vector3 moveDir;
-        bool sprint, jumpPressed;
+        bool sprint, jumpPressed, rollPressed = false;
 
         if (aiControlled)
         {
@@ -230,7 +296,7 @@ public class ThirdPersonController : MonoBehaviour
         else
         {
             // ---- 1b. 玩家：以鏡頭方向換算移動方向 ----
-            Vector2 input = ReadMoveInput(out sprint, out jumpPressed);
+            Vector2 input = ReadMoveInput(out sprint, out jumpPressed, out rollPressed);
             Vector3 camForward = Vector3.forward, camRight = Vector3.right;
             if (cameraTransform != null)
             {
@@ -238,12 +304,20 @@ public class ThirdPersonController : MonoBehaviour
                 camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
             }
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
-            if (IsStunned) { moveDir = Vector3.zero; sprint = false; jumpPressed = false; }
+            if (IsStunned) { moveDir = Vector3.zero; sprint = false; jumpPressed = false; rollPressed = false; }
+        }
+
+        if (rollPressed) TryStartRoll(moveDir);
+        if (IsRolling)
+        {
+            UpdateRoll(dt);
+            return;
         }
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * StatusMultiplier * (IsPushing ? pushFactor : 1f);
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * temporarySpeedMultiplier
+                          * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
         if (ballistic)
@@ -278,6 +352,17 @@ public class ThirdPersonController : MonoBehaviour
             lastJumpPressedTime = float.NegativeInfinity;
             lastGroundedTime = float.NegativeInfinity; // 防止連跳
         }
+        else if (wantsJump && doubleJumpEnabled && !aiControlled && !airJumpUsed && !ballistic && !controller.isGrounded)
+        {
+            // 二段跳：空中再按一次跳躍（每次離地只能一次）
+            verticalVelocity = Mathf.Sqrt(doubleJumpHeight * -2f * gravity);
+            lastJumpPressedTime = float.NegativeInfinity;
+            airJumpUsed = true;
+            CombatVFX.Puff(transform.position + Vector3.down * 0.6f, Vector3.down, new Color(0.9f, 0.85f, 0.7f, 0.6f));
+            GameAudio.Play("SFX/RPG/cloth3", transform.position, 0.7f, 1.3f, 0.08f, 0.3f);
+            OnDoubleJump?.Invoke();
+        }
+        if (controller.isGrounded && verticalVelocity <= 0f) airJumpUsed = false;
 
         verticalVelocity += gravity * dt;
 
@@ -340,10 +425,40 @@ public class ThirdPersonController : MonoBehaviour
         }
     }
 
-    Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed)
+    void TryStartRoll(Vector3 requestedDirection)
+    {
+        if (aiControlled || !inputEnabled || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
+        requestedDirection.y = 0f;
+        rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
+        FaceDirection(rollDirection);
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = -2f;
+        ballistic = false;
+        GetComponent<PlayerCombat>()?.CancelAttack();
+        rollStartedAt = Time.unscaledTime;
+        nextRollTime = rollStartedAt + rollDuration + rollCooldown;
+        IsRolling = true;
+        GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(rollDuration + .08f);
+        OnRollStarted?.Invoke();
+    }
+
+    void UpdateRoll(float dt)
+    {
+        float u = Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration));
+        // 半正弦速度：起步與收尾不突兀，積分後仍約等於設定距離。
+        float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(u * Mathf.PI);
+        controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
+        if (u < 1f) return;
+        IsRolling = false;
+        horizontalVelocity = Vector3.zero;
+        OnRollEnded?.Invoke();
+    }
+
+    Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed, out bool rollPressed)
     {
         sprint = false;
         jumpPressed = false;
+        rollPressed = false;
         if (!inputEnabled) return Vector2.zero;
 
         Vector2 input = Vector2.zero;
@@ -357,6 +472,7 @@ public class ThirdPersonController : MonoBehaviour
 
             sprint = kb.leftShiftKey.isPressed;
             jumpPressed = kb.spaceKey.wasPressedThisFrame;
+            rollPressed = kb.vKey.wasPressedThisFrame;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
@@ -365,6 +481,7 @@ public class ThirdPersonController : MonoBehaviour
             input.y = Input.GetAxisRaw("Vertical");
             sprint = Input.GetKey(KeyCode.LeftShift);
             jumpPressed = Input.GetKeyDown(KeyCode.Space);
+            rollPressed = Input.GetKeyDown(KeyCode.V);
         }
 #endif
         return Vector2.ClampMagnitude(input, 1f); // 斜走不會比較快

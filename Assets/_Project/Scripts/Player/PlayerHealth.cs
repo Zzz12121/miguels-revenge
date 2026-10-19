@@ -25,6 +25,12 @@ public class PlayerHealth : MonoBehaviour
     /// <summary>腳底的世界座標高度（用來判斷有沒有跳過衝擊波 / 光束）</summary>
     public float FeetY => transform.position.y + cc.center.y - cc.height * 0.5f;
 
+    /// <summary>
+    /// 找到場景裡真正的玩家（會移動的那個物件）。
+    /// 不要用 FindWithTag("Player").transform.root：PlayerRig 的根物件不會跟著角色移動。
+    /// </summary>
+    public static PlayerHealth Find() => FindAnyObjectByType<PlayerHealth>();
+
     public event System.Action OnDied;
     public event System.Action OnRespawned;
     /// <summary>受到傷害（參數是傷害量），模型動畫用</summary>
@@ -33,10 +39,12 @@ public class PlayerHealth : MonoBehaviour
     CharacterController cc;
     ThirdPersonController controller;
     PlayerCombat combat;
+    PlayerPerks perks;
     Vector3 spawnPos;
     Quaternion spawnRot;
     float lastHitTime = float.NegativeInfinity;
     float lastFlashTime = float.NegativeInfinity;
+    float dodgeInvulnerableUntil = float.NegativeInfinity;
     string deathReason = "";
 
     void Awake()
@@ -55,6 +63,9 @@ public class PlayerHealth : MonoBehaviour
             Debug.Log("[Player] 沒有 PlayerCombat，已自動加上。想調整攻擊數值請在 Player 上手動 Add Component → PlayerCombat。");
         }
 
+        // 消耗品（治癒藥水 / 火焰彈）：Q 喝藥、F 丟火焰彈
+        if (GetComponent<PlayerItems>() == null) gameObject.AddComponent<PlayerItems>();
+
         // 有水的關卡：潛到水裡要消耗氧氣
         if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
             gameObject.AddComponent<PlayerOxygen>();
@@ -72,6 +83,8 @@ public class PlayerHealth : MonoBehaviour
                            string deathReason = "被打倒了")
     {
         if (IsDead) return false;
+        // 翻滾是完整無敵：連原本可忽略受傷無敵時間的持續傷害也不能穿透。
+        if ((controller != null && controller.IsRolling) || Time.unscaledTime < dodgeInvulnerableUntil) return false;
         if (!ignoreInvincibility)
         {
             if (Time.time - lastHitTime < invincibleTime) return false;
@@ -87,6 +100,9 @@ public class PlayerHealth : MonoBehaviour
                 return true;
             }
         }
+        // 能力植物：閃避 / 護盾，整下傷害不算
+        if (perks == null) perks = GetComponent<PlayerPerks>();
+        if (perks != null && perks.TryNegateHit()) return false;
         lastFlashTime = Time.time;
         Health = Mathf.Max(0f, Health - amount);
         controller.AddImpulse(knockback);
@@ -101,6 +117,11 @@ public class PlayerHealth : MonoBehaviour
         if (Health <= 0f) Die(deathReason);
         else OnDamaged?.Invoke(amount);
         return true;
+    }
+
+    public void GrantDodgeInvulnerability(float seconds)
+    {
+        dodgeInvulnerableUntil = Mathf.Max(dodgeInvulnerableUntil, Time.unscaledTime + Mathf.Max(0f, seconds));
     }
 
     /// <summary>補滿血（檢查點使用）</summary>

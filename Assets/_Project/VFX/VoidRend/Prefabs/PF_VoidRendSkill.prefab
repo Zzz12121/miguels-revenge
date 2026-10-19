@@ -50,6 +50,7 @@ MonoBehaviour:
   smokeMaterial: {fileID: 2100000, guid: 029e71ecd7de936468ee9a5287ace920, type: 2}
   refractionMaterial: {fileID: 2100000, guid: 575af6c753741c046855fd46ad23c55e, type: 2}
   previewPipeline: {fileID: 11400000, guid: 49c2c264a79f0dc4da303a95abbd7ec3, type: 2}
+  overrideRenderPipelineForPreview: 0
   targetControllers: []
   onTargetLocked:
     m_PersistentCalls:
@@ -63,6 +64,7 @@ MonoBehaviour:
   caster: {fileID: 0}
   target: {fileID: 0}
   skillCamera: {fileID: 0}
+  showSkillHud: 1
   slashMaterial: {fileID: 2100000, guid: 7ccb4f1ef0eb00e47a57d4b4b317f7af, type: 2}
   riftCoreMaterial: {fileID: 2100000, guid: 6f9f8dc9a8f5a7b4386d7243b0eeb62c, type: 2}
   afterimageMaterial: {fileID: 2100000, guid: 0d6ed52b1b6674b498c08cab9b5b6796, type: 2}
@@ -72,3 +74,6 @@ MonoBehaviour:
   loopDelay: 1.7
   teleportRadius: 3.4
   teleportCount: 6
+  targetSkillDamage: 500
+  voidRendDamage: 1400
+  voidRendDashDamage: 100

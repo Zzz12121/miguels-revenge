@@ -5,12 +5,18 @@
       "url": "https://package.openupm.com",
       "scopes": [
         "com.ivanmurzak",
-        "extensions.unity"
+        "com.ivanmurzak.unity.mcp",
+        "extensions.unity",
+        "extensions.unity.playerprefsex"
       ]
     }
   ],
   "dependencies": {
+    "com.ivanmurzak.unity.mcp": "0.93.2",
+    "com.ivanmurzak.unity.mcp.animation": "1.2.34",
     "com.ivanmurzak.unity.mcp.particlesystem": "1.2.33",
+    "com.ivanmurzak.unity.mcp.splines": "1.0.18",
+    "com.ivanmurzak.unity.mcp.timeline": "1.0.19",
     "com.unity.ai.assistant": "2.20.0-pre.1",
     "com.unity.ai.inference": "2.6.1",
     "com.unity.ai.navigation": "2.0.14",

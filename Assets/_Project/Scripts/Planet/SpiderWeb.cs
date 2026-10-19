@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -94,7 +93,7 @@ public class SpiderWeb : MonoBehaviour
             // 1. 對玩家造成傷害與少量擊退[cite: 5]
             playerHealth.TakeDamage(damage, hitDir * knockback);
 
-            // 2. 套用緩速或定身效果[cite: 5]
+            // 2. 效果由玩家控制器自己計時；蛛網銷毀後仍能正常解除[cite: 5]
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
@@ -110,21 +109,17 @@ public class SpiderWeb : MonoBehaviour
         }
     }
 
-    // 網子打中後馬上被刪掉，所以不能用協程等時間：緩速由 ThirdPersonController 計時、特效用 Destroy 延遲刪
     void ApplyWebEffect(ThirdPersonController controller, Transform playerTransform)
     {
         // 生成在玩家身上的粒子特效物件
-        GameObject activeEffect = null;
         if (webStunEffectPrefab != null)
         {
             // 以玩家為父物件，讓特效跟著玩家移動
-            activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f, Quaternion.identity, playerTransform);
+            var activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f,
+                                           Quaternion.identity, playerTransform);
+            Destroy(activeEffect, effectDuration);
         }
 
-        // 定身（倍率 0）或緩速，時間到自動解除
-        controller.ApplySlow(enableRoot ? 0f : slowMultiplier, effectDuration);
-
-        // 時間到銷毀身上的定身特效
-        if (activeEffect != null) Destroy(activeEffect, effectDuration);
+        controller.ApplyTemporarySpeedMultiplier(enableRoot ? 0f : slowMultiplier, effectDuration);
     }
 }
