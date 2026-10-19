@@ -9314,6 +9314,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 5571532317348543861, guid: 06cd04fe9c734454291e6fcefede39a5, type: 3}
+      propertyPath: useSharedInteractPrompt
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7497781163848490153, guid: 06cd04fe9c734454291e6fcefede39a5, type: 3}
       propertyPath: m_LocalPosition.x
       value: 650

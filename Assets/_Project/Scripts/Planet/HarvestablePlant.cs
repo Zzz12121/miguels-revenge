@@ -53,30 +53,22 @@ public class HarvestablePlant : MonoBehaviour
         if (player == null) return;
 
         float dist = Vector3.Distance(transform.position, player.position);
+        if (dist > interactRange) return;
 
-        // 使用新版 Input System 檢查 E 鍵是否按下
-        bool ePressed = false;
-        var kb = Keyboard.current;
-        if (kb != null && kb.eKey.wasPressedThisFrame)
-        {
-            ePressed = true;
-        }
-
-        if (dist <= interactRange && ePressed)
-        {
-            Harvest();
-        }
+        // 統一的互動提示：[F] 採集草藥（多個東西重疊時只有最近的會反應）
+        InteractPrompt.Offer(this, dist, $"採集{DisplayName}");
+        if (InteractPrompt.Pressed(this)) Harvest();
     }
+
+    string DisplayName => resourceName == "Herb" ? "草藥" : resourceName;
 
     void Harvest()
     {
         var inventory = player.GetComponent<PlayerInventory>();
-        if (inventory != null)
-        {
-            inventory.AddResource(resourceName, resourceAmount);
-            Debug.Log($"成功採集 {resourceName} x {resourceAmount}");
-        }
-
+        if (inventory == null) inventory = player.gameObject.AddComponent<PlayerInventory>();
+        inventory.AddResource(resourceName, resourceAmount);
+        GameAudio.Play("SFX/RPG/cloth1", transform.position, 0.7f, 1.2f, 0.08f, 0.3f);
+        VictoryBanner.ShowSmall($"{DisplayName} +{resourceAmount}", $"持有 {inventory.GetResource(resourceName)}", GameUI.Good);
         Destroy(gameObject);
     }
 }

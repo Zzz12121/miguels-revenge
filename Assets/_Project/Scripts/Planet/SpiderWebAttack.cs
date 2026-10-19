@@ -27,7 +27,9 @@ public class SpiderWebAttack : MonoBehaviour
     void Awake()
     {
         ai = GetComponent<EnemyAI>();
-        
+        // 蜘蛛巢穴的蜘蛛：從卵裡孵化、被打會鑽地偷襲（想調數值可以手動 Add Component → SpiderBurrow）
+        if (ai != null && GetComponent<SpiderBurrow>() == null) gameObject.AddComponent<SpiderBurrow>();
+
         // 自動尋找標籤為 Player 的目標
         if (target == null)
         {

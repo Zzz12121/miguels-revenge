@@ -47,7 +47,6 @@ public class PlayerPerks : MonoBehaviour
     float shieldReadyAt;
     float popupTime = float.NegativeInfinity;
     string popupText;
-    GUIStyle listTitleStyle, listStyle, listShadowStyle;
 
     public static PlayerPerks For(GameObject player)
     {
@@ -146,40 +145,30 @@ public class PlayerPerks : MonoBehaviour
 
     void OnGUI()
     {
-        var gm = GameManager.Instance;
-        if (gm != null && gm.IsOverlayOpen) return;
+        if (GameUI.OverlayOpen) return;
 
         // 血條下方的小狀態列
-        float x = 20f, y = 44f;
-        var style = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold };
+        float x = 20f, y = 46f;
+        var style = new GUIStyle(GameUI.Small) { fontStyle = FontStyle.Bold };
         if (Has(Perk.Shield))
         {
             float left = Mathf.Max(0f, shieldReadyAt - Time.time);
-            GUI.color = shieldReady ? new Color(0.5f, 0.85f, 1f) : new Color(0.6f, 0.6f, 0.6f);
-            GUI.Label(new Rect(x, y, 260f, 20f), shieldReady ? "◆ 護盾就緒" : $"◇ 護盾充能 {left:0.0}s", style);
-            y += 18f;
+            GameUI.Shadowed(new Rect(x, y, 300f, 22f), shieldReady ? "◆ 榮耀加身：護盾就緒" : $"◇ 榮耀加身：護盾充能 {left:0.0}s", style,
+                            shieldReady ? new Color(0.5f, 0.85f, 1f) : GameUI.MutedColor);
+            y += 22f;
         }
         if (Has(Perk.Berserk) && HealthRatio < berserkThreshold)
         {
-            GUI.color = new Color(1f, 0.4f, 0.3f);
-            GUI.Label(new Rect(x, y, 260f, 20f), $"浴血奮鬥：攻擊 ×{berserkMultiplier:0.0#}", style);
-            y += 18f;
+            GameUI.Shadowed(new Rect(x, y, 300f, 22f), $"浴血奮鬥：攻擊 ×{berserkMultiplier:0.0#}", style, GameUI.Danger);
+            y += 22f;
         }
         if (Has(Perk.Lifesteal) && HealthRatio < lifestealThreshold)
-        {
-            GUI.color = new Color(0.9f, 0.3f, 0.5f);
-            GUI.Label(new Rect(x, y, 260f, 20f), $"嗜血狂妄：吸血 {lifestealRatio * 100f:0}%", style);
-        }
+            GameUI.Shadowed(new Rect(x, y, 300f, 22f), $"嗜血狂妄：吸血 {lifestealRatio * 100f:0}%", style, new Color(1f, 0.4f, 0.6f));
 
         DrawPerkList();
 
         float since = Time.time - popupTime;
-        if (since < 0.8f)
-        {
-            var big = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
-            GUI.color = new Color(0.7f, 0.95f, 1f, 1f - since / 0.8f);
-            GUI.Label(new Rect(0f, Screen.height * 0.4f - since * 30f, Screen.width, 40f), popupText, big);
-        }
+        if (since < 0.8f) GameUI.Banner(popupText, new Color(0.7f, 0.95f, 1f), 1f - since / 0.8f);
         GUI.color = Color.white;
     }
 
@@ -187,39 +176,32 @@ public class PlayerPerks : MonoBehaviour
     void DrawPerkList()
     {
         if (string.IsNullOrEmpty(BasicUpgrade) && perks.Count == 0) return;
-        if (listStyle == null)
+
+        var rows = new List<(string text, Color color)>();
+        if (!string.IsNullOrEmpty(BasicUpgrade)) rows.Add(($"{PathName(UpgradePath)}之種　{BasicUpgrade}", GameUI.Good));
+        foreach (var p in perks)
         {
-            listTitleStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleRight };
-            listStyle = new GUIStyle(GUI.skin.label) { fontSize = 15, alignment = TextAnchor.MiddleRight };
-            listShadowStyle = new GUIStyle(listStyle);
+            var o = Describe(p);
+            rows.Add(($"{o.title}　{o.detail.Replace("\n", "")}", GameUI.TextColor));
         }
 
         // 小地圖是 1920x1080 參考解析度、寬高各半縮放的 Canvas，右上角約 340 像素高
         float uiScale = Mathf.Sqrt(Screen.width / 1920f * (Screen.height / 1080f));
-        float right = Screen.width - 24f, w = 260f;
-        float y = 340f * uiScale + 8f;
+        const float w = 300f, rowH = 22f, margin = 24f;
+        var panel = new Rect(Screen.width - w - margin, 340f * uiScale + 8f, w, 36f + rows.Count * rowH);
+        GameUI.Panel(panel);
 
-        Label(new Rect(right - w, y, w, 22f), "已獲得能力", listTitleStyle, new Color(1f, 0.85f, 0.5f));
-        y += 22f;
-        if (!string.IsNullOrEmpty(BasicUpgrade))
+        var title = new GUIStyle(GameUI.Small) { fontStyle = FontStyle.Bold };
+        GUI.color = GameUI.Accent;
+        GUI.Label(new Rect(panel.x + 12f, panel.y + 6f, w - 24f, 24f), "已獲得能力", title);
+        float y = panel.y + 30f;
+        foreach (var (text, color) in rows)
         {
-            Label(new Rect(right - w, y, w, 20f), $"{PathName(UpgradePath)}之種　{BasicUpgrade}", listStyle, new Color(0.75f, 1f, 0.75f));
-            y += 20f;
+            GUI.color = color;
+            GUI.Label(new Rect(panel.x + 12f, y, w - 24f, rowH), text, GameUI.Small);
+            y += rowH;
         }
-        foreach (var p in perks)
-        {
-            var o = Describe(p);
-            Label(new Rect(right - w, y, w, 20f), $"{o.title}　{o.detail.Replace("\n", "")}", listStyle, Color.white);
-            y += 20f;
-        }
-    }
-
-    void Label(Rect r, string text, GUIStyle style, Color c)
-    {
-        GUI.color = new Color(0f, 0f, 0f, 0.8f);
-        GUI.Label(new Rect(r.x + 1f, r.y + 1f, r.width, r.height), text, style);
-        GUI.color = c;
-        GUI.Label(r, text, style);
+        GUI.color = Color.white;
     }
 
     static string PathName(Path p) => p == Path.Speed ? "疾風" : p == Path.Power ? "力量" : p == Path.Health ? "生命" : "能力";

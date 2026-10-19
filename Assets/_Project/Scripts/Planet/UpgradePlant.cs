@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 能力植物：走近按 E 撿起 → 遊戲暫停，三選一升級：
+/// 能力植物：走近按 F 撿起 → 遊戲暫停，三選一升級：
 ///   1. 跑速  ：走路 / 衝刺速度 ×(1 + speedBonus)
 ///   2. 攻擊力 ：PlayerCombat.damageMultiplier + attackBonus（近戰和遠程都吃）
 ///   3. 最大生命：PlayerHealth.maxHealth + healthBonus，並補上同樣的血量
@@ -14,8 +14,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class UpgradePlant : MonoBehaviour
 {
-    [Header("互動")]
-    public Key interactKey = Key.E;
+    [Header("互動（按鍵統一用 InteractPrompt.InteractKey = F）")]
     [Tooltip("離植物多近可以撿 (m)")]
     public float interactRange = 3f;
 
@@ -40,7 +39,7 @@ public class UpgradePlant : MonoBehaviour
     ThirdPersonCamera cam;
     bool menuOpen;
     float prevTimeScale = 1f;
-    GUIStyle titleStyle, buttonStyle, hintStyle;
+    GUIStyle optionStyle;
 
     PlayerPerks perks;
 
@@ -77,18 +76,19 @@ public class UpgradePlant : MonoBehaviour
         }
     }
 
-    bool PlayerInRange()
+    /// <summary>玩家離植物的水平距離；找不到玩家或玩家死掉時回傳無限大</summary>
+    float PlayerDistance()
     {
         if (player == null)
         {
             InitPlayerReferences();
-            if (player == null) return false;
+            if (player == null) return float.PositiveInfinity;
         }
 
-        if (health != null && health.IsDead) return false;
+        if (health != null && health.IsDead) return float.PositiveInfinity;
         Vector3 d = player.position - transform.position;
         d.y = 0f;
-        return d.magnitude <= interactRange;
+        return d.magnitude;
     }
 
     void Update()
@@ -98,7 +98,12 @@ public class UpgradePlant : MonoBehaviour
 
         if (!menuOpen)
         {
-            if (PlayerInRange() && kb[interactKey].wasPressedThisFrame && CanOpen()) OpenMenu();
+            float dist = PlayerDistance();
+            if (dist > interactRange) return;
+            bool canOpen = CanOpen();
+            InteractPrompt.Offer(this, dist,
+                canOpen ? $"撿起{(advanced ? "進階" : "")}能力植物" : "植物沒有反應……先到蜘蛛巢穴取得第一株能力植物", canOpen);
+            if (InteractPrompt.Pressed(this)) OpenMenu();
             return;
         }
 
@@ -211,49 +216,48 @@ public class UpgradePlant : MonoBehaviour
 
     void OnGUI()
     {
-        if (!menuOpen)
-        {
-            if (!PlayerInRange()) return;
-            var prompt = new GUIStyle(GUI.skin.label) { fontSize = 22, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-            string text = CanOpen() ? $"按 {interactKey} 撿起{(advanced ? "進階" : "")}能力植物"
-                                    : "植物沒有反應……先到蜘蛛巢穴取得第一株能力植物";
-            GUI.Label(new Rect(0, Screen.height * 0.62f, Screen.width, 40f), text, prompt);
-            return;
-        }
+        if (!menuOpen) return; // 互動提示由 InteractPrompt 統一畫
 
-        if (titleStyle == null)
-        {
-            titleStyle = new GUIStyle(GUI.skin.label) { fontSize = 32, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-            buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = 22, fontStyle = FontStyle.Bold, wordWrap = true };
-            hintStyle = new GUIStyle(GUI.skin.label) { fontSize = 16, alignment = TextAnchor.MiddleCenter };
-        }
+        if (optionStyle == null)
+            optionStyle = new GUIStyle(GameUI.Button) { fontSize = 20, alignment = TextAnchor.MiddleCenter, padding = new RectOffset(10, 10, 34, 10) };
 
-        GUI.color = new Color(0f, 0f, 0f, 0.65f);
+        GUI.color = new Color(0f, 0f, 0f, 0.6f);
         GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
         GUI.color = Color.white;
 
-        float cy = Screen.height * 0.5f;
-        GUI.Label(new Rect(0, cy - 170f, Screen.width, 50f), advanced ? "選擇一項進階能力" : "選擇一項能力升級", titleStyle);
+        // 標題 + 三個選項放在同一個面板裡
+        const float w = 220f, h = 170f, gap = 24f;
+        float panelW = w * 3f + gap * 2f + 60f, panelH = h + 150f;
+        var panel = new Rect((Screen.width - panelW) * 0.5f, (Screen.height - panelH) * 0.5f, panelW, panelH);
+        GameUI.Panel(panel);
+        GUI.color = GameUI.Accent;
+        GUI.Label(new Rect(panel.x, panel.y + 18f, panel.width, 44f), advanced ? "選擇一項進階能力" : "選擇一項能力升級", GameUI.Title);
+        GUI.color = Color.white;
 
         string[] labels;
         if (advanced)
         {
             var opts = PlayerPerks.OptionsFor(perks.UpgradePath);
             labels = new string[opts.Length];
-            for (int i = 0; i < opts.Length; i++) labels[i] = $"{i + 1}\n{opts[i].title}\n{opts[i].detail}";
+            for (int i = 0; i < opts.Length; i++) labels[i] = $"{opts[i].title}\n\n{opts[i].detail}";
         }
         else labels = new[]
         {
-            $"1\n跑速\n+{speedBonus * 100f:0}%",
-            $"2\n攻擊力\n+{attackBonus * 100f:0}%",
-            $"3\n最大生命\n+{healthBonus:0}",
+            $"跑速\n\n+{speedBonus * 100f:0}%",
+            $"攻擊力\n\n+{attackBonus * 100f:0}%",
+            $"最大生命\n\n+{healthBonus:0}",
         };
-        const float w = 200f, h = 160f, gap = 30f;
-        float x0 = (Screen.width - (w * 3f + gap * 2f)) * 0.5f;
+        float x0 = panel.x + 30f, y0 = panel.y + 80f;
         for (int i = 0; i < labels.Length; i++)
-            if (GUI.Button(new Rect(x0 + i * (w + gap), cy - 90f, w, h), labels[i], buttonStyle)) Choose(i);
+        {
+            var r = new Rect(x0 + i * (w + gap), y0, w, h);
+            if (GUI.Button(r, labels[i], optionStyle)) Choose(i);
+            GameUI.Key(new Rect(r.x + (w - 26f) * 0.5f, r.y + 10f, 26f, 26f), (i + 1).ToString());
+        }
 
-        GUI.Label(new Rect(0, cy + 90f, Screen.width, 30f), "點擊或按 1 / 2 / 3 選擇", hintStyle);
+        GUI.color = GameUI.MutedColor;
+        GUI.Label(new Rect(panel.x, panel.yMax - 46f, panel.width, 30f), "點擊或按 1 / 2 / 3 選擇", GameUI.Center);
+        GUI.color = Color.white;
     }
 
     void OnDisable()
