@@ -22,6 +22,8 @@ public class Portal : MonoBehaviour
 
     [Header("互動")]
     public Key interactKey = Key.E;
+    [Tooltip("勾選 = 改用統一的互動提示（[E] 進入傳送門，跟第一關其他互動一樣），上面的 Interact Key 不用")]
+    public bool useSharedInteractPrompt = false;
     [Tooltip("離門多近可以互動 (m)")]
     public float interactDistance = 3.5f;
 
@@ -97,7 +99,15 @@ public class Portal : MonoBehaviour
         if (glowLight != null)
             glowLight.intensity = lightBaseIntensity * (IsOpen ? 1f + 0.25f * Mathf.Sin(Time.time * 3f) : 0.35f);
 
-        if (!IsOpen || Busy || !PlayerInRange()) return;
+        if (Busy || !PlayerInRange()) return;
+        if (useSharedInteractPrompt)
+        {
+            InteractPrompt.Offer(this, Vector3.Distance(player.position, transform.position),
+                                 IsOpen ? $"進入傳送門 → {TargetTitle()}" : "傳送門尚未啟動", IsOpen);
+            if (InteractPrompt.Pressed(this)) Enter();
+            return;
+        }
+        if (!IsOpen) return;
         if (Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame) Enter();
     }
 
@@ -122,6 +132,13 @@ public class Portal : MonoBehaviour
 
     void OnGUI()
     {
+        if (useSharedInteractPrompt)
+        {
+            // 統一格式：開啟訊息用共用橫幅，互動提示由 InteractPrompt 畫
+            float since = Time.time - openedTime;
+            if (since < 3f && !GameUI.OverlayOpen) GameUI.Banner("傳送門已開啟", openColor, Mathf.Clamp01((3f - since) / 0.5f));
+            return;
+        }
         var style = new GUIStyle(GUI.skin.label) { fontSize = 22, alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
 
         if (Time.time - openedTime < 3f)

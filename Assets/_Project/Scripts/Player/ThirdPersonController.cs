@@ -37,6 +37,16 @@ public class ThirdPersonController : MonoBehaviour
     public float coyoteTime = 0.12f;
     [Tooltip("落地前提早按跳躍仍會生效的時間 (秒)")]
     public float jumpBufferTime = 0.12f;
+    // 動作鎖定：對話、喝藥水時不能跳、翻滾、攻擊、用技能（可以多個來源同時鎖，全部解開才恢復）
+    int actionLocks;
+    float suppressJumpUntil = float.NegativeInfinity;
+    /// <summary>不能跳躍 / 翻滾 / 攻擊 / 使用道具與技能</summary>
+    public bool ActionsLocked => actionLocks > 0;
+    public void LockActions() => actionLocks++;
+    public void UnlockActions() => actionLocks = Mathf.Max(0, actionLocks - 1);
+    /// <summary>接下來 seconds 秒內按空白鍵不會跳（關掉對話框的那一下不要順便跳起來）</summary>
+    public void SuppressJump(float seconds) => suppressJumpUntil = Time.unscaledTime + seconds;
+
     [Tooltip("二段跳（能力植物「一步登天」會打開）：在空中可以再跳一次")]
     public bool doubleJumpEnabled = false;
     [Tooltip("二段跳的高度 (m)")]
@@ -303,6 +313,8 @@ public class ThirdPersonController : MonoBehaviour
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
         }
 
+        // 動作鎖定中（對話、喝藥水）或剛結束對話：這一下空白鍵不算跳躍
+        if (ActionsLocked || Time.unscaledTime < suppressJumpUntil) jumpPressed = false;
         if (rollPressed) TryStartRoll(moveDir);
         if (IsRolling)
         {
@@ -424,7 +436,7 @@ public class ThirdPersonController : MonoBehaviour
 
     void TryStartRoll(Vector3 requestedDirection)
     {
-        if (aiControlled || !inputEnabled || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
+        if (aiControlled || !inputEnabled || ActionsLocked || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
         requestedDirection.y = 0f;
         rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
         FaceDirection(rollDirection);

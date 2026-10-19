@@ -103,7 +103,8 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (mouse == null || aimCamera == null) return;
 
         if (!aiming && !executing && heldChunk == null && Cursor.lockState == CursorLockMode.Locked &&
-            mouse.middleButton.wasPressedThisFrame && Time.unscaledTime >= nextUseTime && (health == null || !health.IsDead))
+            mouse.middleButton.wasPressedThisFrame && Time.unscaledTime >= nextUseTime && (health == null || !health.IsDead) &&
+            (movement == null || !movement.ActionsLocked))
         {
             BeginAiming(false);
             return;
