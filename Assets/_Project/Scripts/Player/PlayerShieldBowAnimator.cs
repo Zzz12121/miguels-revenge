@@ -7,7 +7,8 @@ using UnityEngine;
 ///   BlockHit     用盾牌擋下攻擊（破防的那一下由 PlayerVisualAnimator 播受擊）
 ///   BowDraw      第二關在船上拉弓：瞄準時停在拉滿弓、射箭時放手（Mixamo Longbow 的拉弓放箭）
 /// 動畫狀態在 AC_PlayerCatWarrior.controller（用聖騎士的 Mixamo 動畫，Humanoid 可以直接套用）。
-/// 弓和盾牌的模型、手臂姿勢由 PlayerVisualAnimator 負責；這裡只播動畫，弓箭模式時把光劍收在腰上。
+/// 弓箭模式時左手拿敵艦弓箭手的弓（PlayerArcherBow，會自動加上），光劍收在腰上。
+/// 盾牌是原本聖騎士的盾牌模型，由 PlayerPaladinShield 負責。
 /// 播這些動畫的時候 Overriding = true，PlayerVisualAnimator 不會切去待機 / 移動動畫。
 /// </summary>
 [DisallowMultipleComponent]
@@ -39,6 +40,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         health = GetComponent<PlayerHealth>();
         animator = GetComponentInChildren<Animator>(true);
         weaponPresenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
+        if (GetComponent<PlayerArcherBow>() == null) gameObject.AddComponent<PlayerArcherBow>();
     }
 
     void OnEnable()
@@ -85,7 +87,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         current = null;
         bowAiming = false;
         redrawAt = float.PositiveInfinity;
-        if (animator == null) return;
+        if (animator == null || !animator.isActiveAndEnabled) return; // 關掉 / 離開場景時 Animator 已經停用
         animator.speed = 1f;
         if (health == null || !health.IsDead) animator.CrossFadeInFixedTime("Idle", 0.15f, 0, 0f);
     }

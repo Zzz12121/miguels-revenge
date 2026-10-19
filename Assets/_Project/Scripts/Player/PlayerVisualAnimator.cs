@@ -14,6 +14,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     [SerializeField] PlayerHealth health;
     [SerializeField] PlayerWeaponPresenter weaponPresenter;
     PlayerShieldBowAnimator shieldBow; // 盾牌格擋 / 盾擊 / 拉弓的動畫（自動加上）
+    PlayerPaladinShield paladinShield; // 原本聖騎士的盾牌模型（PlayerRig 上有掛才有）
+    PlayerArcherBow archerBow;         // 敵艦弓箭手的弓（PlayerShieldBowAnimator 會自動加上）
     [SerializeField] Vector2 idleChangeInterval = new Vector2(5.5f, 8.5f);
     [Header("弓與盾（共用角色視覺）")]
     [SerializeField] Color bowWoodColor = new Color(0.32f, 0.14f, 0.055f, 1f);
@@ -74,6 +76,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         ResolveReferences();
         shieldBow = GetComponent<PlayerShieldBowAnimator>();
         if (shieldBow == null) shieldBow = gameObject.AddComponent<PlayerShieldBowAnimator>();
+        paladinShield = GetComponent<PlayerPaladinShield>();
         if (health != null) previousHealth = health.Health;
         CacheHumanoidBones();
         CacheVisualRoot();
@@ -374,8 +377,11 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void UpdateBowAndShieldVisuals()
     {
         if (combat == null || animator == null || !animator.isHuman) return;
-        bool showBow = combat.bowMode;
-        bool showShield = combat.ShieldUp; // 盾擊或按住右鍵格擋時拿出盾牌
+        // 弓和盾牌改用：敵艦弓箭手的弓（PlayerArcherBow）、聖騎士的盾牌（PlayerPaladinShield）。
+        // 這裡內建的弓 / 盾和手臂姿勢只在那兩個元件沒準備好時才用
+        if (archerBow == null) archerBow = GetComponent<PlayerArcherBow>();
+        bool showBow = combat.bowMode && (archerBow == null || !archerBow.Ready);
+        bool showShield = combat.ShieldUp && (paladinShield == null || !paladinShield.Ready);
 
         if (showBow && bowProp == null) bowProp = BuildBowProp();
         if (showShield && shieldProp == null) shieldProp = BuildShieldProp();

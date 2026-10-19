@@ -139,6 +139,7 @@ GameObject:
   - component: {fileID: 8093258362946606612}
   - component: {fileID: 4081382645895145605}
   - component: {fileID: 8451787265956136475}
+  - component: {fileID: 725821596434030251}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -329,6 +330,24 @@ MonoBehaviour:
   enableRangedAttack: 1
   rangedDamage: 35
   rangedCooldown: 0.5
+--- !u!114 &725821596434030251
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4678902694574221153}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 42e2ecb02ffc42f08ac54c9f7e3c5518, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerPaladinShield
+  paladinModel: {fileID: 919132149155446097, guid: 91627488995924122b13c0e49bb415db, type: 3}
+  paladinController: {fileID: 9100000, guid: 4b571cd5cb3ad47a3a1b509200e9202e, type: 2}
+  paladinMaterial: {fileID: 0}
+  paladinScale: 1.1304362
+  referenceState: BlockIdle
+  referenceTime: 0.5
 --- !u!114 &8451787265956136475
 MonoBehaviour:
   m_ObjectHideFlags: 0
