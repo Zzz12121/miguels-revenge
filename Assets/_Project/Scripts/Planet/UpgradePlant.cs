@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 /// <summary>
-/// 能力植物：走近按 F 撿起 → 遊戲暫停，三選一升級：
+/// 能力植物：走近按 E 撿起 → 遊戲暫停，三選一升級：
 ///   1. 跑速  ：走路 / 衝刺速度 ×(1 + speedBonus)
 ///   2. 攻擊力 ：PlayerCombat.damageMultiplier + attackBonus（近戰和遠程都吃）
 ///   3. 最大生命：PlayerHealth.maxHealth + healthBonus，並補上同樣的血量
@@ -14,7 +14,7 @@ using UnityEngine.InputSystem;
 /// </summary>
 public class UpgradePlant : MonoBehaviour
 {
-    [Header("互動（按鍵統一用 InteractPrompt.InteractKey = F）")]
+    [Header("互動（按鍵統一用 InteractPrompt.InteractKey = E）")]
     [Tooltip("離植物多近可以撿 (m)")]
     public float interactRange = 3f;
 

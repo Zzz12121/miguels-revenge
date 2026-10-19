@@ -99,8 +99,45 @@ public class SpiderBurrow : MonoBehaviour
     void EnterEgg()
     {
         phase = Phase.Egg;
+        float width = EggWidth(); // 要在模型藏起來之前量大小
         Hide(true);
-        BuildEgg();
+        SnapToGround(); // 場景裡的蜘蛛可能浮在半空中，卵要放在地上
+        BuildEgg(width);
+    }
+
+    /// <summary>依照蜘蛛模型的大小決定卵的寬度</summary>
+    float EggWidth()
+    {
+        var b = new Bounds(transform.position, Vector3.zero);
+        bool any = false;
+        foreach (var r in renderers)
+        {
+            if (r == null || !r.enabled || r is ParticleSystemRenderer) continue;
+            if (!any) { b = r.bounds; any = true; }
+            else b.Encapsulate(r.bounds);
+        }
+        return Mathf.Clamp(Mathf.Max(b.size.x, b.size.z) * 0.75f, 0.9f, 3f);
+    }
+
+    /// <summary>把蜘蛛（和之後的卵）放到正下方的地面上：先找碰撞體，找不到再用地形高度</summary>
+    void SnapToGround()
+    {
+        Vector3 p = transform.position;
+        float ground = float.NegativeInfinity;
+        // 自己的碰撞體在 Hide 時已經關掉，往下打一條線找到的第一個東西就是地面
+        var hits = Physics.RaycastAll(p + Vector3.up * 0.5f, Vector3.down, 30f, ~0, QueryTriggerInteraction.Ignore);
+        foreach (var h in hits)
+        {
+            if (h.collider.transform.IsChildOf(transform) || h.collider is CharacterController) continue;
+            if (h.point.y > ground) ground = h.point.y;
+        }
+        if (float.IsNegativeInfinity(ground))
+        {
+            var terrain = Terrain.activeTerrain;
+            if (terrain == null) return;
+            ground = terrain.SampleHeight(p) + terrain.transform.position.y;
+        }
+        transform.position += Vector3.up * (ground - FeetY);
     }
 
     /// <summary>藏起來：AI、移動、碰撞、射絲都關掉，模型也看不到（還在卵裡 / 鑽進沙裡）</summary>
@@ -142,18 +179,8 @@ public class SpiderBurrow : MonoBehaviour
 
     float FeetY => transform.position.y - (cc != null ? cc.height * 0.5f - cc.center.y : 1f);
 
-    void BuildEgg()
+    void BuildEgg(float width)
     {
-        // 依照蜘蛛模型的大小決定卵的大小
-        var b = new Bounds(transform.position, Vector3.zero);
-        bool any = false;
-        foreach (var r in renderers)
-        {
-            if (r == null || r is ParticleSystemRenderer) continue;
-            if (!any) { b = r.bounds; any = true; }
-            else b.Encapsulate(r.bounds);
-        }
-        float width = Mathf.Clamp(Mathf.Max(b.size.x, b.size.z) * 0.75f, 0.9f, 3f);
         float height = width * 1.3f;
 
         var shell = MakeMaterial(eggColor, 0.55f);

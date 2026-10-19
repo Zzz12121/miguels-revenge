@@ -55,7 +55,7 @@ public class HarvestablePlant : MonoBehaviour
         float dist = Vector3.Distance(transform.position, player.position);
         if (dist > interactRange) return;
 
-        // 統一的互動提示：[F] 採集草藥（多個東西重疊時只有最近的會反應）
+        // 統一的互動提示：[E] 採集草藥（多個東西重疊時只有最近的會反應）
         InteractPrompt.Offer(this, dist, $"採集{DisplayName}");
         if (InteractPrompt.Pressed(this)) Harvest();
     }

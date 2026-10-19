@@ -99,16 +99,16 @@ public static class GameUI
 }
 
 /// <summary>
-/// 統一的互動提示「[F] 撿起能力植物」。所有可以互動的東西（能力植物、草藥、營火、商人）都用這個：
+/// 統一的互動提示「[E] 撿起能力植物」。所有可以互動的東西（能力植物、草藥、營火、商人）都用這個：
 ///   - 在 Update 裡玩家在範圍內就呼叫 Offer(this, 距離, 文字)
 ///   - 只有最近的那一個會顯示提示，也只有它的 Pressed(this) 會是 true，
-///     所以同一下 F 不會同時觸發兩個東西（例如草藥長在營火旁邊）
+///     所以同一下 E 不會同時觸發兩個東西（例如草藥長在營火旁邊）
 /// 提示固定畫在畫面下方中央。
 /// </summary>
 public class InteractPrompt : MonoBehaviour
 {
     /// <summary>第一關所有互動的按鍵</summary>
-    public const Key InteractKey = Key.F;
+    public const Key InteractKey = Key.E;
     public static string KeyName => InteractKey.ToString();
 
     static InteractPrompt host;
@@ -134,7 +134,7 @@ public class InteractPrompt : MonoBehaviour
 
     /// <summary>
     /// 玩家在範圍內時每幀呼叫。distance 用來決定多個互動物件重疊時顯示誰。
-    /// enabled = false 時仍顯示提示（灰色），但按 F 不會有反應（例如「植物沒有反應」）
+    /// enabled = false 時仍顯示提示（灰色），但按 E 不會有反應（例如「植物沒有反應」）
     /// </summary>
     public static void Offer(object owner, float distance, string text, bool enabled = true)
     {
@@ -149,7 +149,7 @@ public class InteractPrompt : MonoBehaviour
         }
     }
 
-    /// <summary>這一幀 owner 是不是被選中的互動對象，而且剛按下 F</summary>
+    /// <summary>這一幀 owner 是不是被選中的互動對象，而且剛按下 E</summary>
     public static bool Pressed(object owner)
     {
         var kb = Keyboard.current;

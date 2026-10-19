@@ -22,7 +22,7 @@ public class Portal : MonoBehaviour
 
     [Header("互動")]
     public Key interactKey = Key.E;
-    [Tooltip("勾選 = 改用統一的互動提示（[F] 進入傳送門，跟第一關其他互動一樣），上面的 Interact Key 不用")]
+    [Tooltip("勾選 = 改用統一的互動提示（[E] 進入傳送門，跟第一關其他互動一樣），上面的 Interact Key 不用")]
     public bool useSharedInteractPrompt = false;
     [Tooltip("離門多近可以互動 (m)")]
     public float interactDistance = 3.5f;
