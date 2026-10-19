@@ -212,8 +212,13 @@ public abstract class MeleeCombat : MonoBehaviour
         {
             var c = overlap[i];
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
-            if (TryDamage(c, damage, c.ClosestPoint(center), hitThisSwing))
-                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), c.ClosestPoint(center), soundVolume,
+            // ClosestPoint does not support terrain or non-convex mesh colliders.
+            // Keep the existing damage filtering, using a safe approximate hit position for those shapes.
+            bool supportsClosestPoint = c is BoxCollider || c is SphereCollider || c is CapsuleCollider
+                || (c is MeshCollider meshCollider && meshCollider.convex);
+            Vector3 hitPoint = supportsClosestPoint ? c.ClosestPoint(center) : c.bounds.ClosestPoint(center);
+            if (TryDamage(c, damage, hitPoint, hitThisSwing))
+                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), hitPoint, soundVolume,
                                  soundPitch * PitchScale * Random.Range(0.9f, 1.1f), 1f, 30f);
         }
     }
