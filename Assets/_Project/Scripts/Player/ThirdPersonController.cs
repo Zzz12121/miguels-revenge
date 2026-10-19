@@ -251,6 +251,15 @@ public class ThirdPersonController : MonoBehaviour
         ClearTemporarySpeedEffects();
     }
 
+    /// <summary>
+    /// 只停止目前的水平移動，不影響跳躍、重力或其他暫時速度效果。
+    /// 給舉盾等需要立刻站穩、但不該重設整個移動狀態的動作用。
+    /// </summary>
+    public void StopHorizontalMotion()
+    {
+        horizontalVelocity = Vector3.zero;
+    }
+
     bool ballistic;
     /// <summary>正在拋物線飛行中（Launch 之後、落地之前）</summary>
     public bool IsBallistic => ballistic;

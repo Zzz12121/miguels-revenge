@@ -13,15 +13,17 @@ public sealed class PlayerTailAnimator : MonoBehaviour
     [Header("尾巴動態")]
     [SerializeField, Range(3, 7)] int tailBoneCount = 5;
     [Tooltip("每節尾巴左右擺動的最大角度。骨鏈會累積成柔和曲線。")]
-    [SerializeField, Range(0f, 12f)] float swayPerJoint = 8.5f;
+    [SerializeField, Range(0f, 18f)] float swayPerJoint = 13.5f;
+    [Tooltip("把模型原本偏向左側的尾巴轉回身體後方；只套用在第一節，不會沿骨鏈累積。")]
+    [SerializeField, Range(-120f, 120f)] float centerYaw = -68f;
     [Tooltip("每節尾巴上下起伏的最大角度。")]
-    [SerializeField, Range(0f, 8f)] float liftPerJoint = 4f;
-    [SerializeField, Range(0.2f, 8f)] float swaySpeed = 2.35f;
-    [SerializeField, Range(0f, 2f)] float phaseDelay = 0.62f;
+    [SerializeField, Range(0f, 8f)] float liftPerJoint = 4.5f;
+    [SerializeField, Range(0.2f, 8f)] float swaySpeed = 2.55f;
+    [SerializeField, Range(0f, 2f)] float phaseDelay = 0.48f;
     [Tooltip("打破完全規則的正弦波，讓尾巴有細微自主動作。")]
-    [SerializeField, Range(0f, 1f)] float irregularity = 0.55f;
+    [SerializeField, Range(0f, 1f)] float irregularity = 0.42f;
     [Tooltip("角色移動越快，尾巴會稍微更活躍。")]
-    [SerializeField, Range(0f, 1f)] float movementResponse = 0.65f;
+    [SerializeField, Range(0f, 1.5f)] float movementResponse = 0.9f;
 
     [Header("此模型的尾巴頂點範圍")]
     [SerializeField] string sourceBoneName = "Spine";
@@ -58,14 +60,18 @@ public sealed class PlayerTailAnimator : MonoBehaviour
         float clock = Time.time * swaySpeed * (1f + smoothedMovement * 0.32f);
         for (int i = 0; i < tailBones.Length; i++)
         {
-            float tipWeight = Mathf.Lerp(0.56f, 1f, i / Mathf.Max(1f, tailBones.Length - 1f));
+            float tipWeight = Mathf.Lerp(0.62f, 1f, i / Mathf.Max(1f, tailBones.Length - 1f));
             float phase = clock - i * phaseDelay;
-            float noise = (Mathf.PerlinNoise(noiseSeed + i * 0.41f, Time.time * 0.47f) - 0.5f) * 2f;
-            float secondary = Mathf.Sin(phase * 0.47f + 1.9f) * 0.24f;
+            // 兩個不同頻率的正弦波會自然回到左右兩側，不會像慢速 Perlin Noise
+            // 那樣長時間維持同一個正負值，造成尾巴看起來一直卡在某一邊。
+            float noise = Mathf.Sin(Time.time * 1.13f + noiseSeed + i * 1.71f) * 0.65f
+                        + Mathf.Sin(Time.time * 1.87f + noiseSeed * 0.63f + i * 0.79f) * 0.35f;
+            float secondary = Mathf.Sin(phase * 0.47f + 1.9f) * 0.2f;
             float sway = (Mathf.Sin(phase) + secondary + noise * irregularity) * swayPerJoint * tipWeight * activity;
             float lift = (Mathf.Sin(phase * 0.73f + 0.85f) + noise * irregularity * 0.45f)
                 * liftPerJoint * tipWeight * activity;
-            tailBones[i].localRotation = restLocalRotations[i] * Quaternion.Euler(0f, sway, lift);
+            float centeredYaw = i == 0 ? centerYaw : 0f;
+            tailBones[i].localRotation = restLocalRotations[i] * Quaternion.Euler(0f, centeredYaw + sway, lift);
         }
     }
 
