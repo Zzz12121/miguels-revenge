@@ -41,7 +41,12 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     Transform leftForearm;
     Transform leftHand;
     Transform leftUpperLeg;
+    Transform leftLowerLeg;
+    Transform leftFoot;
     Transform rightUpperLeg;
+    Transform rightLowerLeg;
+    Transform rightFoot;
+    Transform head;
     Transform visualRoot;
     Vector3 visualRootRestPosition;
     Quaternion visualRootRestRotation;
@@ -49,6 +54,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     int slashSide;
     bool wasRolling;
     float animatorSpeedBeforeRoll = 1f;
+    BoneRestPose[] rollPose;
+
+    struct BoneRestPose
+    {
+        public Transform bone;
+        public Vector3 localPosition;
+        public Quaternion localRotation;
+    }
 
     void Awake()
     {
@@ -273,7 +286,12 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         leftForearm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm);
         leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
         leftUpperLeg = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+        leftLowerLeg = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
+        leftFoot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
         rightUpperLeg = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+        rightLowerLeg = animator.GetBoneTransform(HumanBodyBones.RightLowerLeg);
+        rightFoot = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+        head = animator.GetBoneTransform(HumanBodyBones.Head);
     }
 
     void CacheVisualRoot()
@@ -311,9 +329,11 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             animator.Update(0f);
             animator.speed = 0f;
             CacheVisualRoot();
+            CaptureRollPose();
         }
         else if (!rolling && wasRolling)
         {
+            RestoreRollPose();
             animator.speed = Mathf.Max(.01f, animatorSpeedBeforeRoll);
             if (visualRoot != null)
             {
@@ -330,8 +350,117 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (visualRoot == null || controller == null) return;
         float u = controller.RollNormalizedTime;
         float eased = Mathf.SmoothStep(0f, 1f, u);
-        visualRoot.localPosition = visualRootRestPosition + Vector3.down * (.18f * Mathf.Sin(u * Mathf.PI));
-        visualRoot.localRotation = visualRootRestRotation * Quaternion.Euler(360f * eased, 0f, 0f);
+        float curlIn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / .16f));
+        float curlOut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - .78f) / .22f));
+        float curl = curlIn * curlOut;
+
+        // Animator 暫停在站姿後，每幀先還原骨架，避免程序姿勢逐幀累加而扭曲。
+        RestoreRollPose();
+
+        // 以胸腹附近作為旋轉中心，而不是讓直立角色繞腳底翻一整圈。
+        Quaternion spin = Quaternion.Euler(360f * eased, 0f, 0f);
+        Vector3 localBallCenter = Vector3.up * .82f;
+        visualRoot.localRotation = visualRootRestRotation * spin;
+        visualRoot.localPosition = visualRootRestPosition
+            + visualRootRestRotation * localBallCenter
+            - visualRoot.localRotation * localBallCenter
+            + Vector3.up * (.05f * Mathf.Sin(u * Mathf.PI));
+
+        Transform actor = controller.transform;
+        Quaternion restWorldRotation = visualRoot.parent != null
+            ? visualRoot.parent.rotation * visualRootRestRotation
+            : visualRootRestRotation;
+        Quaternion rollDelta = visualRoot.rotation * Quaternion.Inverse(restWorldRotation);
+        Vector3 rollRight = rollDelta * actor.right;
+        Vector3 rollForward = rollDelta * actor.forward;
+        Vector3 rollUp = rollDelta * actor.up;
+
+        // 縮下巴、彎腰，雙膝收向胸口；手掌再抱向小腿，形成清楚的球狀輪廓。
+        RotateBoneWorld(chest, rollRight, 38f * curl);
+        RotateBoneWorld(head, rollRight, 24f * curl);
+
+        if (hips != null)
+        {
+            Vector3 leftFootGoal = hips.position + rollForward * .39f + rollUp * .10f - rollRight * .16f;
+            Vector3 rightFootGoal = hips.position + rollForward * .39f + rollUp * .10f + rollRight * .16f;
+            SolveLimbWorld(leftUpperLeg, leftLowerLeg, leftFoot,
+                Vector3.Lerp(leftFoot != null ? leftFoot.position : leftFootGoal, leftFootGoal, curl), rollForward);
+            SolveLimbWorld(rightUpperLeg, rightLowerLeg, rightFoot,
+                Vector3.Lerp(rightFoot != null ? rightFoot.position : rightFootGoal, rightFootGoal, curl), rollForward);
+
+            Vector3 leftHandGoal = leftLowerLeg != null
+                ? leftLowerLeg.position + rollForward * .04f - rollRight * .05f
+                : hips.position + rollForward * .36f + rollUp * .32f - rollRight * .18f;
+            Vector3 rightHandGoal = rightLowerLeg != null
+                ? rightLowerLeg.position + rollForward * .04f + rollRight * .05f
+                : hips.position + rollForward * .36f + rollUp * .32f + rollRight * .18f;
+            SolveLimbWorld(leftUpperArm, leftForearm, leftHand,
+                Vector3.Lerp(leftHand != null ? leftHand.position : leftHandGoal, leftHandGoal, curl), -rollRight + rollForward * .2f);
+            SolveLimbWorld(rightUpperArm, rightForearm, rightHand,
+                Vector3.Lerp(rightHand != null ? rightHand.position : rightHandGoal, rightHandGoal, curl), rollRight + rollForward * .2f);
+        }
+    }
+
+    void CaptureRollPose()
+    {
+        Transform[] bones =
+        {
+            hips, chest, head,
+            leftUpperArm, leftForearm, leftHand,
+            rightUpperArm, rightForearm, rightHand,
+            leftUpperLeg, leftLowerLeg, leftFoot,
+            rightUpperLeg, rightLowerLeg, rightFoot
+        };
+        rollPose = new BoneRestPose[bones.Length];
+        for (int i = 0; i < bones.Length; i++)
+        {
+            Transform bone = bones[i];
+            rollPose[i] = new BoneRestPose
+            {
+                bone = bone,
+                localPosition = bone != null ? bone.localPosition : Vector3.zero,
+                localRotation = bone != null ? bone.localRotation : Quaternion.identity
+            };
+        }
+    }
+
+    void RestoreRollPose()
+    {
+        if (rollPose == null) return;
+        for (int i = 0; i < rollPose.Length; i++)
+        {
+            BoneRestPose pose = rollPose[i];
+            if (pose.bone == null) continue;
+            pose.bone.localPosition = pose.localPosition;
+            pose.bone.localRotation = pose.localRotation;
+        }
+    }
+
+    static void RotateBoneWorld(Transform bone, Vector3 axis, float degrees)
+    {
+        if (bone != null && axis.sqrMagnitude > .0001f)
+            bone.rotation = Quaternion.AngleAxis(degrees, axis.normalized) * bone.rotation;
+    }
+
+    static void SolveLimbWorld(Transform upper, Transform lower, Transform end, Vector3 goal, Vector3 poleDirection)
+    {
+        if (upper == null || lower == null || end == null) return;
+        Vector3 root = upper.position;
+        Vector3 toGoal = goal - root;
+        if (toGoal.sqrMagnitude < .0001f) return;
+
+        float upperLength = Vector3.Distance(root, lower.position);
+        float lowerLength = Vector3.Distance(lower.position, end.position);
+        float distance = Mathf.Clamp(toGoal.magnitude, .01f, upperLength + lowerLength - .001f);
+        Vector3 direction = toGoal.normalized;
+        float along = (upperLength * upperLength - lowerLength * lowerLength + distance * distance) / (2f * distance);
+        float bendAmount = Mathf.Sqrt(Mathf.Max(0f, upperLength * upperLength - along * along));
+        Vector3 bend = Vector3.ProjectOnPlane(poleDirection, direction).normalized;
+        if (bend.sqrMagnitude < .0001f) bend = Vector3.ProjectOnPlane(Vector3.up, direction).normalized;
+        Vector3 joint = root + direction * along + bend * bendAmount;
+
+        upper.rotation = Quaternion.FromToRotation(lower.position - root, joint - root) * upper.rotation;
+        lower.rotation = Quaternion.FromToRotation(end.position - lower.position, goal - lower.position) * lower.rotation;
     }
 
     void ApplyShortKesaSlash()
