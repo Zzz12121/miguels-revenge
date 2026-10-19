@@ -86,10 +86,10 @@ public sealed partial class VoidRendSkillDemo
 
         if (!playing)
         {
-            if (Keyboard.current.zKey.wasPressedThisFrame) BeginTargeting(PreviewSkill.VoidRend);
-            else if (Keyboard.current.cKey.wasPressedThisFrame) BeginTargeting(PreviewSkill.CatPounce);
-            else if (Keyboard.current.qKey.wasPressedThisFrame) BeginTargeting(PreviewSkill.CrescentDash);
-            else if (Keyboard.current.eKey.wasPressedThisFrame) BeginTargeting(PreviewSkill.SkyfallCross);
+            if (Keyboard.current.digit1Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.VoidRend);
+            else if (Keyboard.current.digit2Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CatPounce);
+            else if (Keyboard.current.digit3Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CrescentDash);
+            else if (Keyboard.current.digit4Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.SkyfallCross);
             else UpdatePracticeMovement();
         }
     }
@@ -540,8 +540,8 @@ public sealed partial class VoidRendSkillDemo
             normal = { textColor = new Color(0.78f, 0.94f, 1f, 0.94f) }
         };
         GUI.Box(new Rect(18f, Screen.height - 91f, 610f, 67f), GUIContent.none);
-        GUI.Label(new Rect(31f, Screen.height - 83f, 590f, 24f), "WASD 移動　空白：跳躍　V：翻滾　滑鼠：視角　Z：虛空連斬", controls);
-        GUI.Label(new Rect(31f, Screen.height - 56f, 590f, 24f), "C：貓躍雙斬　Q：月弧突進　E：空中十字斬（技能需滑鼠選取）", controls);
+        GUI.Label(new Rect(31f, Screen.height - 83f, 700f, 24f), "WASD 移動　空白：跳躍　V：翻滾　滑鼠：視角", controls);
+        GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
 
         if (!IsTargeting) return;
         GUIStyle title = new GUIStyle(GUI.skin.label)
