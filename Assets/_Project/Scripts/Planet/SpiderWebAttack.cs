@@ -6,6 +6,9 @@ using UnityEngine;
 /// </summary>
 public class SpiderWebAttack : MonoBehaviour
 {
+    [Tooltip("要不要吐蜘蛛網。關掉 = 蜘蛛只用近身攻擊")]
+    public bool shootWebs = true;
+
     [Header("發射設定")]
     [Tooltip("蜘蛛絲發射點 (如蜘蛛嘴部)")]
     public Transform firePoint;
@@ -40,7 +43,7 @@ public class SpiderWebAttack : MonoBehaviour
 
     void Update()
     {
-        if (target == null || ai == null) return;
+        if (!shootWebs || target == null || ai == null) return;
 
         // 僅在進入戰鬥狀態且冷卻完畢時發射
         if (ai.IsEngaged && Time.time >= nextFireTime)
@@ -70,9 +73,7 @@ public class SpiderWebAttack : MonoBehaviour
         // 生成蜘蛛網物件
         GameObject webGO = Instantiate(webProjectilePrefab, firePoint.position, Quaternion.LookRotation(direction));
 
-        // 攻擊特效：嘴邊噴出一團白絲，蜘蛛絲後面拖著尾巴
-        CombatVFX.Puff(firePoint.position, direction, new Color(0.92f, 0.92f, 1f, 0.85f));
-        CombatVFX.Trail(webGO.transform, new Color(0.85f, 0.9f, 1f, 0.9f), 0.22f);
+        // 吐絲的聲音（蜘蛛不加粒子特效）
         GameAudio.Play("SFX/RPG/cloth3", firePoint.position, 0.8f, 1.4f, 0.1f, 1f, 30f);
         
         // 給予飛行物理速度

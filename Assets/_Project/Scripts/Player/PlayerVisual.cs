@@ -9,6 +9,8 @@ using UnityEngine;
 ///   Jump、Fall、Land         起跳、在空中、落地
 ///   Slash01、Slash02、Stab   近戰連擊的第 1、2、3 段（左鍵）
 ///   ShieldBash               右鍵舉盾衝撞（完整播完才回到移動動畫）
+///   BlockIdle                右鍵按住舉盾格擋
+///   BlockHit                 用盾牌擋下攻擊（破防的那一下改播 Hit）
 ///   Hit                      受到傷害
 ///   Death                    死亡（重生後回到 Idle）
 ///   BowDraw                  在船上拉弓（Mixamo Longbow 的拉弓放箭）：瞄準時停在拉滿弓、射箭時放手
@@ -41,13 +43,13 @@ public class PlayerVisual : MonoBehaviour
         new EnemyVisual.AttackAnim { state = "Stab",    hitTime = 0.5f },
     };
     [Tooltip("連擊動畫的播放速度（1 = 原本速度，動畫完整播放；傷害判定的時間會照這個速度算）")]
-    public float attackAnimSpeed = 1f;
+    public float attackAnimSpeed = 1.35f;
     [Tooltip("每一刀有傷害判定的時間 (秒)")]
     public float attackHitWindow = 0.18f;
     [Tooltip("砍完之後的收招時間（佔剩下動畫的比例）。1 = 等整段動畫播完才算結束")]
-    [Range(0.2f, 1f)] public float comboRecoveryRatio = 1f;
+    [Range(0.2f, 1f)] public float comboRecoveryRatio = 0.6f;
     [Tooltip("收招播到多少比例之後才能接下一段（有先按攻擊鍵的話）。越接近 1 動畫越完整")]
-    [Range(0f, 1f)] public float comboChainAfter = 0.9f;
+    [Range(0f, 1f)] public float comboChainAfter = 0.5f;
     [Tooltip("受擊動畫最短播多久 (秒)。實際會等受擊動畫完整播完才回到移動動畫")]
     public float hitDuration = 0.35f;
     [Tooltip("落地動畫最短播多久 (秒)。實際會等落地動畫完整播完")]
@@ -98,6 +100,8 @@ public class PlayerVisual : MonoBehaviour
             combat.OnBowAim += OnBowAim;
             combat.OnBowShot += OnBowShot;
             combat.OnShieldBash += OnShieldBash;
+            combat.OnBlockChanged += OnBlockChanged;
+            combat.OnBlockedHit += OnBlockedHit;
         }
         if (health != null)
         {
@@ -124,6 +128,8 @@ public class PlayerVisual : MonoBehaviour
             combat.OnBowAim -= OnBowAim;
             combat.OnBowShot -= OnBowShot;
             combat.OnShieldBash -= OnShieldBash;
+            combat.OnBlockChanged -= OnBlockChanged;
+            combat.OnBlockedHit -= OnBlockedHit;
         }
         if (health != null)
         {
@@ -186,6 +192,12 @@ public class PlayerVisual : MonoBehaviour
 
         if (Time.time < busyUntil) return;
         if (combat != null && (combat.IsAttacking || combat.IsShieldBashing)) return;
+        if (combat != null && combat.IsBlocking)
+        {
+            animator.speed = 1f;
+            Go("BlockIdle", 0.12f);
+            return;
+        }
 
         if (!grounded)
         {
@@ -272,6 +284,24 @@ public class PlayerVisual : MonoBehaviour
         Go("ShieldBash", 0.06f, true);
         busyUntil = Time.time + combat.shieldBashWindup + combat.shieldBashActive + combat.shieldBashRecovery;
         HoldForFull("ShieldBash");
+    }
+
+    void OnBlockChanged(bool blocking)
+    {
+        if (!HasAnimator || dead || !blocking || Time.time < busyUntil) return;
+        animator.speed = 1f;
+        Go("BlockIdle", 0.1f);
+    }
+
+    /// <summary>盾牌擋下攻擊：播擋下的衝擊動畫；破防那一下由 OnHit 播受擊動畫</summary>
+    void OnBlockedHit(bool broke)
+    {
+        if (!HasAnimator || dead || broke) return;
+        if (combat != null && combat.IsShieldBashing) return; // 盾擊中擋到不打斷盾擊動畫
+        animator.speed = 1.2f;
+        Go("BlockHit", 0.05f, true);
+        busyUntil = Time.time + 0.3f;
+        HoldForFull("BlockHit");
     }
 
     // ---------------- 弓箭 ----------------

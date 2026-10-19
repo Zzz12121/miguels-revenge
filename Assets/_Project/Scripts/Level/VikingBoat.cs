@@ -69,11 +69,13 @@ public class VikingBoat : MonoBehaviour
     [Tooltip("進入目的地的觸發半徑")]
     public float destinationRadius = 16.0f;
 
-    [Header("波浪起伏手感")]
-    public float waveFrequency = 1.6f;
-    public float waveAmplitude = 0.15f;
-    public float pitchAmount = 2.0f;
-    public float rollAmount = 3.2f;
+    [Header("隨海浪起伏（海面高度由 SeaWaves 依 Water 的波浪算出，浪的大小改 WaterSurfaceData.asset）")]
+    [Tooltip("船身傾斜程度：1 = 完全照海面坡度，越小越平穩")]
+    [Range(0f, 2f)] public float waveTiltScale = 1f;
+    [Tooltip("船身跟上海面的速度：越大越跟手，越小越慢、越滑順")]
+    public float waveFollowSmooth = 8f;
+    [Tooltip("船身吃水：船的原點比海面高多少 (m)。負的 = 往下沉一點，船身邊緣壓進水裡，看不到船和水之間的縫")]
+    public float waveDraft = -0.2f;
 
     [Header("特效與提示")]
     [Tooltip("船上未解鎖 / 解鎖時的指示標記物件（例如金色光柱）")]
@@ -94,6 +96,10 @@ public class VikingBoat : MonoBehaviour
     public float enemyBoatHealth = 80f;
     [Tooltip("敵艦船首偏移（與 boatForwardOffsetAngle 保持一致）")]
     public float enemyBoatForwardOffset = 90f;
+    [Tooltip("離終點剩多少公尺時，終點附近出現增援敵艦")]
+    public float reinforcementDistance = 50f;
+    [Tooltip("增援敵艦數量（0 = 不增援）")]
+    public int reinforcementCount = 3;
 
     // 運行期私有變數
     GameObject playerObj;
@@ -105,6 +111,9 @@ public class VikingBoat : MonoBehaviour
     string lockedReason = "村莊內仍有湧出的敵人，請先擊潰所有敵人才能啟航！";
     Vector3 boardedStartPosition;
     bool hasTriggeredPursuit = false;
+    bool hasTriggeredReinforcement = false;
+    float reinforcementMessageTime = float.NegativeInfinity;
+    Vector3 wavePose; // 平滑後的 (高度, 俯仰, 翻滾)
 
     void Awake()
     {
@@ -116,6 +125,7 @@ public class VikingBoat : MonoBehaviour
         Vector3 p = transform.position;
         p.y = baseWaterY;
         transform.position = p;
+        wavePose = new Vector3(baseWaterY + waveDraft, 0f, 0f);
     }
 
     void Start()
@@ -299,13 +309,14 @@ public class VikingBoat : MonoBehaviour
         // 4. 記錄啟航初始位置，等待玩家真正開船駛向外海後再生成敵艦追擊
         boardedStartPosition = transform.position;
         hasTriggeredPursuit = false;
+        hasTriggeredReinforcement = false;
 
         GameAudio.Play("SFX/RPG/drawSword", transform.position, 1f, 0.9f);
         Debug.Log("[VikingBoat] 玩家已登船掌舵！可用 W/S 前進倒退，A/D 轉向！");
     }
 
     /// <summary>
-    /// 延遲生成追擊敵艦，從玩家船尾後方出現
+    /// 延遲生成追擊敵艦，從玩家船尾後方出現（後方是陸地的話往玩家這邊找一個水夠深的位置）
     /// </summary>
     System.Collections.IEnumerator SpawnEnemyBoatsDelayed(float delay)
     {
@@ -314,69 +325,132 @@ public class VikingBoat : MonoBehaviour
         // 計算船尾方向（視覺船首的反方向）
         Vector3 bowDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
         Vector3 sternDir = -bowDir;
-
-        // 計算垂直於航向的右方橫向向量 (用以保持船與船之間橫向 10 公尺間距)
+        // 垂直於航向的橫向向量（船與船左右展開）
         Vector3 sternRight = Vector3.Cross(Vector3.up, sternDir).normalized;
 
         for (int i = 0; i < enemyBoatCount; i++)
         {
-            // 基礎位置在身後 100 公尺處，每艘船之間間隔 30 公尺（呈左右展開陣型）
+            // 基礎位置在身後 enemyBoatSpawnDistance 公尺處，每艘船之間間隔 30 公尺（呈左右展開陣型）
             float lateralOffset = (i - (enemyBoatCount - 1) * 0.5f) * 30.0f;
-            Vector3 spawnOffset = (sternDir * enemyBoatSpawnDistance) + (sternRight * lateralOffset);
-            Vector3 spawnPos = transform.position + spawnOffset;
-            spawnPos.y = 1.3f; // 固定在海平面
+            Vector3 wanted = transform.position + sternDir * enemyBoatSpawnDistance + sternRight * lateralOffset;
+            if (FindOpenWater(wanted, transform.position, out var spawnPos))
+                SpawnEnemyBoat(spawnPos, $"EnemyBoat_{i + 1}");
+            else
+                Debug.LogWarning($"[VikingBoat] 船尾後方找不到夠深的海面，少生成一艘敵艦");
+        }
+    }
 
-            GameObject boatObj = null;
+    /// <summary>離終點剩 reinforcementDistance 公尺：終點另一側出現增援敵艦，迎面攔截</summary>
+    void SpawnReinforcements()
+    {
+        Vector3 toDest = destinationPoint - transform.position;
+        toDest.y = 0f;
+        Vector3 dir = toDest.sqrMagnitude > 0.01f ? toDest.normalized
+                    : Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
+        Vector3 right = Vector3.Cross(Vector3.up, dir);
+        Vector3 centre = new Vector3(destinationPoint.x, baseWaterY, destinationPoint.z) + dir * 35f;
 
-            // 優先用指定 prefab；其次複製玩家自己的船體 mesh
-            if (enemyBoatPrefab != null)
+        int spawned = 0;
+        for (int i = 0; i < reinforcementCount; i++)
+        {
+            float lateral = (i - (reinforcementCount - 1) * 0.5f) * 25f;
+            // 找不到水就往終點 / 玩家這邊靠過來找
+            if (FindOpenWater(centre + right * lateral, transform.position, out var pos))
             {
-                boatObj = Instantiate(enemyBoatPrefab, spawnPos, Quaternion.identity);
+                var eb = SpawnEnemyBoat(pos, $"EnemyBoat_Reinforcement_{i + 1}");
+                if (eb != null)
+                {
+                    // 一出現就面向玩家
+                    Vector3 face = transform.position - pos;
+                    face.y = 0f;
+                    eb.FaceTowards(face);
+                    spawned++;
+                }
+            }
+        }
+        if (spawned == 0) return;
+        reinforcementMessageTime = Time.time;
+        GameAudio.Play("SFX/RPG/metalLatch", transform.position, 1f, 0.6f, 0f, 1f, 80f);
+        Debug.Log($"[VikingBoat] 離終點 {reinforcementDistance} 公尺：{spawned} 艘增援敵艦出現！");
+    }
+
+    /// <summary>從 wanted 往 towards 每 10 公尺找一次，找到放得下一艘船的海面就回傳</summary>
+    bool FindOpenWater(Vector3 wanted, Vector3 towards, out Vector3 result)
+    {
+        wanted.y = baseWaterY;
+        towards.y = baseWaterY;
+        float dist = Vector3.Distance(wanted, towards);
+        for (float d = 0f; d < dist - 15f; d += 10f)
+        {
+            Vector3 p = Vector3.MoveTowards(wanted, towards, d);
+            if (BoatNavigation.IsOpenWater(p, hullHalfLength, hullHalfWidth, baseWaterY, minWaterDepth))
+            {
+                result = p;
+                return true;
+            }
+        }
+        result = wanted;
+        return false;
+    }
+
+    /// <summary>在 spawnPos 生成一艘追擊玩家的敵艦</summary>
+    EnemyBoat SpawnEnemyBoat(Vector3 spawnPos, string boatName)
+    {
+        spawnPos.y = baseWaterY; // 固定在海平面
+        GameObject boatObj = null;
+
+        // 優先用指定 prefab；其次複製玩家自己的船體 mesh
+        if (enemyBoatPrefab != null)
+        {
+            boatObj = Instantiate(enemyBoatPrefab, spawnPos, Quaternion.identity);
+        }
+        else
+        {
+            // 從 Resources 載入相同船體
+            var bPrefab = Resources.Load<GameObject>("Prefabs/pf_build_boat_01");
+            if (bPrefab != null)
+            {
+                boatObj = Instantiate(bPrefab, spawnPos, Quaternion.identity);
+                VikingBoat.SetStaticRecursively(boatObj, false);
+                foreach (var col in boatObj.GetComponentsInChildren<Collider>())
+                    col.enabled = false;
             }
             else
             {
-                // 從 Resources 載入相同船體
-                var bPrefab = Resources.Load<GameObject>("Prefabs/pf_build_boat_01");
-                if (bPrefab != null)
+                // 最後退路：建立一個簡單的 Cube 當佔位
+                boatObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                boatObj.transform.localScale = new Vector3(3f, 1f, 7f);
+                boatObj.transform.position = spawnPos;
+                Destroy(boatObj.GetComponent<Collider>());
+                var mr = boatObj.GetComponent<MeshRenderer>();
+                if (mr != null)
                 {
-                    boatObj = Instantiate(bPrefab, spawnPos, Quaternion.identity);
-                    VikingBoat.SetStaticRecursively(boatObj, false);
-                    foreach (var col in boatObj.GetComponentsInChildren<Collider>())
-                        col.enabled = false;
-                }
-                else
-                {
-                    // 最後退路：建立一個簡單的 Cube 當佔位
-                    boatObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    boatObj.transform.localScale = new Vector3(3f, 1f, 7f);
-                    boatObj.transform.position = spawnPos;
-                    Destroy(boatObj.GetComponent<Collider>());
-                    var mr = boatObj.GetComponent<MeshRenderer>();
-                    if (mr != null)
-                    {
-                        var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
-                        mat.color = new Color(0.6f, 0.25f, 0.1f);
-                        mr.sharedMaterial = mat;
-                    }
+                    var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Color"));
+                    mat.color = new Color(0.6f, 0.25f, 0.1f);
+                    mr.sharedMaterial = mat;
                 }
             }
-
-            if (boatObj == null) continue;
-            boatObj.name = $"EnemyBoat_{i + 1}";
-
-            // 附加 EnemyBoat 腳本
-            var eb = boatObj.AddComponent<EnemyBoat>();
-            eb.targetBoat = this.transform;
-            eb.chaseSpeed = enemyBoatChaseSpeed;
-            eb.maxHealth  = enemyBoatHealth;
-            eb.boatForwardOffsetAngle = enemyBoatForwardOffset;
-            eb.waveFrequency = waveFrequency;
-            eb.waveAmplitude = waveAmplitude * 0.8f;
-            eb.pitchAmount   = pitchAmount   * 0.8f;
-            eb.rollAmount    = rollAmount    * 0.8f;
-
-            Debug.Log($"[VikingBoat] 敵艦 {boatObj.name} 已從船尾後方生成，正在追擊玩家！");
         }
+
+        if (boatObj == null) return null;
+        boatObj.name = boatName;
+
+        // 附加 EnemyBoat 腳本：船身大小、水深限制、海浪起伏都和玩家的船一樣
+        var eb = boatObj.AddComponent<EnemyBoat>();
+        eb.targetBoat = this.transform;
+        eb.chaseSpeed = enemyBoatChaseSpeed;
+        eb.maxHealth  = enemyBoatHealth;
+        eb.boatForwardOffsetAngle = enemyBoatForwardOffset;
+        eb.hullHalfLength = hullHalfLength;
+        eb.hullHalfWidth = hullHalfWidth;
+        eb.minWaterDepth = minWaterDepth;
+        eb.waterY = baseWaterY;
+        eb.waveTiltScale = waveTiltScale * 0.9f;
+        eb.waveFollowSmooth = waveFollowSmooth;
+        eb.waveDraft = waveDraft;
+
+        Debug.Log($"[VikingBoat] 敵艦 {boatObj.name} 已在 {spawnPos} 生成，正在追擊玩家！");
+        return eb;
     }
 
     /// <summary>
@@ -420,7 +494,8 @@ public class VikingBoat : MonoBehaviour
         // 前進推進（依 currentYaw 與 boatForwardOffsetAngle 計算精確的視覺船首方向）
         Vector3 forwardDir = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
         Vector3 move = forwardDir * (currentSpeed * dt);
-        if (move.sqrMagnitude > 0f && WouldRunAground(move, forwardDir))
+        if (move.sqrMagnitude > 0f &&
+            BoatNavigation.WouldRunAground(transform, move, hullHalfLength, hullHalfWidth, baseWaterY, minWaterDepth))
         {
             // 前面是陸地 / 淺灘 / 碼頭：撞一下停住（還是可以轉向、倒退離開）
             if (Mathf.Abs(currentSpeed) > 2f)
@@ -444,89 +519,34 @@ public class VikingBoat : MonoBehaviour
             }
         }
 
+        // 離終點剩 reinforcementDistance 公尺：增援敵艦出現
+        if (!hasTriggeredReinforcement && reinforcementCount > 0)
+        {
+            Vector2 d = new Vector2(destinationPoint.x - transform.position.x, destinationPoint.z - transform.position.z);
+            if (d.magnitude <= reinforcementDistance)
+            {
+                hasTriggeredReinforcement = true;
+                SpawnReinforcements();
+            }
+        }
+
         // 加上海浪顛簸與浮動效果
         ApplyWaveFloating(currentSpeed);
     }
 
     /// <summary>
-    /// 水面起伏動態模擬
+    /// 船身隨海浪起伏：跟著海面高度與坡度（BoatNavigation.FloatOnWaves），航行時船頭微微上揚
     /// </summary>
-    static readonly RaycastHit[] groundHits = new RaycastHit[16];
-
-    /// <summary>
-    /// 這一步會不會開上陸地：在船頭（倒退時是船尾）中間和左右兩側往下探測地面高度，
-    /// 新位置的地面比「海平面 - minWaterDepth」高、而且比現在更淺，就不能走。
-    /// 「比現在更淺」才擋：船停在碼頭邊（本來就很淺）時，還是可以往外海開走
-    /// </summary>
-    bool WouldRunAground(Vector3 move, Vector3 forwardDir)
-    {
-        float limit = baseWaterY - minWaterDepth;
-        Vector3 dir = currentSpeed >= 0f ? forwardDir : -forwardDir;
-        Vector3 side = Vector3.Cross(Vector3.up, forwardDir).normalized;
-        Vector3[] offsets =
-        {
-            dir * hullHalfLength,
-            dir * hullHalfLength * 0.7f + side * hullHalfWidth,
-            dir * hullHalfLength * 0.7f - side * hullHalfWidth,
-        };
-        foreach (var o in offsets)
-        {
-            float now = GroundHeight(transform.position + o);
-            float next = GroundHeight(transform.position + move + o);
-            if (next > limit && next > now + 0.01f) return true;
-        }
-        return false;
-    }
-
-    /// <summary>某一點底下最高的地面（陸地、海底、碼頭）；忽略自己這艘船和船上的玩家</summary>
-    float GroundHeight(Vector3 p)
-    {
-        int n = Physics.RaycastNonAlloc(new Vector3(p.x, baseWaterY + 30f, p.z), Vector3.down, groundHits, 60f,
-                                        ~0, QueryTriggerInteraction.Ignore);
-        float best = float.NegativeInfinity;
-        for (int i = 0; i < n; i++)
-        {
-            var t = groundHits[i].collider.transform;
-            if (t.IsChildOf(transform)) continue;
-            if (groundHits[i].collider is CharacterController) continue;
-            if (groundHits[i].collider.GetComponentInParent<EnemyBoat>() != null) continue; // 敵艦不算陸地
-            if (groundHits[i].point.y > best) best = groundHits[i].point.y;
-        }
-        return best;
-    }
-
     void ApplyWaveFloating(float speed)
     {
-        float t = Time.time;
-        float speedRatio = Mathf.Clamp01(Mathf.Abs(speed) / forwardSpeed);
-
-        float freq = waveFrequency * (1f + speedRatio * 0.4f);
-        float amp = waveAmplitude * (1f + speedRatio * 0.7f);
-
-        Vector3 p = transform.position;
-        p.y = baseWaterY + Mathf.Sin(t * freq) * amp;
-        transform.position = p;
-
-        float pitch = Mathf.Sin(t * (freq * 1.2f)) * (pitchAmount * (1f + speedRatio * 0.5f));
-        if (speed > 0.1f) pitch -= 1.6f * speedRatio; // 航行時船頭微微上揚
-
-        float roll = Mathf.Cos(t * freq) * (rollAmount * (1f + speedRatio * 0.3f));
-
-        transform.rotation = Quaternion.Euler(pitch, currentYaw, roll);
+        float speedRatio = Mathf.Clamp01(Mathf.Abs(speed) / Mathf.Max(forwardSpeed, 0.01f));
+        float lift = speed > 0.1f ? -1.6f * speedRatio : 0f;
+        Vector3 fwd = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
+        BoatNavigation.FloatOnWaves(transform, currentYaw, fwd, hullHalfLength, hullHalfWidth, baseWaterY,
+                                    waveDraft, lift, waveTiltScale, waveFollowSmooth, ref wavePose);
     }
 
-    void ApplyIdleFloating()
-    {
-        float t = Time.time;
-        Vector3 p = transform.position;
-        p.y = baseWaterY + Mathf.Sin(t * waveFrequency) * (waveAmplitude * 0.4f);
-        transform.position = p;
-
-        float pitch = Mathf.Sin(t * 1.2f) * (pitchAmount * 0.4f);
-        float roll = Mathf.Cos(t * 1.0f) * (rollAmount * 0.4f);
-
-        transform.rotation = Quaternion.Euler(pitch, currentYaw, roll);
-    }
+    void ApplyIdleFloating() => ApplyWaveFloating(0f);
 
     /// <summary>
     /// 檢查是否駛入指定地點
@@ -595,6 +615,16 @@ public class VikingBoat : MonoBehaviour
     void OnGUI()
     {
         var cam = Camera.main;
+
+        // 增援敵艦出現的提示
+        float sinceReinforce = Time.time - reinforcementMessageTime;
+        if (sinceReinforce < 3f)
+        {
+            var warn = new GUIStyle(GUI.skin.label) { fontSize = 26, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+            GUI.color = new Color(1f, 0.35f, 0.25f, Mathf.Clamp01(3f - sinceReinforce));
+            GUI.Label(new Rect(0f, Screen.height * 0.28f, Screen.width, 40f), "⚠ 前方出現敵艦增援！", warn);
+            GUI.color = Color.white;
+        }
 
         // Debug 提示與按鈕（非駕駛模式時顯示在左下角）
         if (currentState != BoatState.Driving && currentState != BoatState.Transitioning)

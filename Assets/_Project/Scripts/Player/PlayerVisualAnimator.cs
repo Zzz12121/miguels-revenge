@@ -13,6 +13,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     [SerializeField] PlayerCombat combat;
     [SerializeField] PlayerHealth health;
     [SerializeField] PlayerWeaponPresenter weaponPresenter;
+    PlayerShieldBowAnimator shieldBow; // 盾牌格擋 / 盾擊 / 拉弓的動畫（自動加上）
+    PlayerPaladinShield paladinShield; // 原本聖騎士的盾牌模型（PlayerRig 上有掛才有）
+    PlayerArcherBow archerBow;         // 敵艦弓箭手的弓（PlayerShieldBowAnimator 會自動加上）
     [SerializeField] Vector2 idleChangeInterval = new Vector2(5.5f, 8.5f);
     [Header("弓與盾（共用角色視覺）")]
     [SerializeField] Color bowWoodColor = new Color(0.32f, 0.14f, 0.055f, 1f);
@@ -71,6 +74,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void Awake()
     {
         ResolveReferences();
+        shieldBow = GetComponent<PlayerShieldBowAnimator>();
+        if (shieldBow == null) shieldBow = gameObject.AddComponent<PlayerShieldBowAnimator>();
+        paladinShield = GetComponent<PlayerPaladinShield>();
         if (health != null) previousHealth = health.Health;
         CacheHumanoidBones();
         CacheVisualRoot();
@@ -125,20 +131,27 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (controller != null)
         {
             float referenceSpeed = Mathf.Max(0.01f, controller.sprintSpeed);
-            normalizedSpeed = controller.CurrentSpeed / referenceSpeed;
-            grounded = controller.IsGrounded;
+            // 站在船上時移動腳本被停用：當成站在地上，不要播往下掉
+            bool standingOnBoat = !controller.isActiveAndEnabled;
+            normalizedSpeed = standingOnBoat ? 0f : controller.CurrentSpeed / referenceSpeed;
+            grounded = standingOnBoat || controller.IsGrounded;
             animator.SetFloat(SpeedHash, normalizedSpeed, 0.1f, Time.deltaTime);
             animator.SetBool(GroundedHash, grounded);
             animator.SetFloat(VerticalSpeedHash, controller.VerticalVelocity);
         }
 
-        ForceLocomotionWhenMoving(normalizedSpeed, grounded);
+        // 盾牌 / 拉弓動畫播放中、或站在船上（移動腳本停用）：不要切去待機 / 移動 / 跳躍動畫
+        bool overriding = shieldBow != null && shieldBow.Overriding;
+        bool onBoat = controller != null && !controller.isActiveAndEnabled;
+        if (!overriding && !onBoat) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
         UpdateSprintJumpFeedback(grounded);
-        UpdateIdleCycle(normalizedSpeed, grounded);
+        if (!overriding) UpdateIdleCycle(normalizedSpeed, grounded);
 
         if (health != null)
         {
-            if (!health.IsDead && health.Health < previousHealth) PlayHitReaction();
+            // 拉弓瞄準時被打不打斷（和以前的聖騎士一樣）
+            bool aimingBow = combat != null && combat.bowMode && overriding;
+            if (!health.IsDead && health.Health < previousHealth && !aimingBow) PlayHitReaction();
             previousHealth = health.Health;
         }
     }
@@ -364,8 +377,11 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void UpdateBowAndShieldVisuals()
     {
         if (combat == null || animator == null || !animator.isHuman) return;
-        bool showBow = combat.bowMode;
-        bool showShield = combat.IsShieldBashing;
+        // 弓和盾牌改用：敵艦弓箭手的弓（PlayerArcherBow）、聖騎士的盾牌（PlayerPaladinShield）。
+        // 這裡內建的弓 / 盾和手臂姿勢只在那兩個元件沒準備好時才用
+        if (archerBow == null) archerBow = GetComponent<PlayerArcherBow>();
+        bool showBow = combat.bowMode && (archerBow == null || !archerBow.Ready);
+        bool showShield = combat.ShieldUp && (paladinShield == null || !paladinShield.Ready);
 
         if (showBow && bowProp == null) bowProp = BuildBowProp();
         if (showShield && shieldProp == null) shieldProp = BuildShieldProp();

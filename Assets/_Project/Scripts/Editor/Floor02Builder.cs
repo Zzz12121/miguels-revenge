@@ -236,7 +236,7 @@ public static class Floor02Builder
         return prefab;
     }
 
-    static GameObject CreateCheckpoint(Vector3 pos, Material glowMat)
+    internal static GameObject CreateCheckpoint(Vector3 pos, Material glowMat)
     {
         var cp = new GameObject("Checkpoint");
         cp.transform.position = pos;

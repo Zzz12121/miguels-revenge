@@ -10,9 +10,10 @@ using UnityEngine;
 /// 1. 建立傳送門外觀用的材質與 Assets/_Project/Prefabs/Portal.prefab（已經有就沿用）
 /// 2. Build Settings 設成：主選單 → 星球 → 維京村莊 → 地下城（關卡順序要和 GameManager.levels 一樣）
 /// 3. 星球：
-///      - 時鐘敵人（ClockEnemyHealth）掛上 SpawnOnDeath，死掉後在原地長出傳送門 → 維京村莊
+///      - 只放一個傳送門 Portal_Exit 在 Boss 附近的火堆旁：一直都在，但鎖著，打倒時鐘敵人（ClockEnemyHealth）才打開 → 維京村莊
 ///      - 蜘蛛（SpiderWebAttack）附近 PlantSearchRadius 公尺內的植物（Succulent 開頭、不是 Herb 採集點）
 ///        掛上 UpgradePlant：撿起後三選一升級
+///      - Boss 戰的重生點用場景裡的石碑檢查點 BossCheckpoint_StoneStele（以前自動放的 Checkpoint_Boss 會被拿掉）
 /// 4. 維京村莊靠搭船、地下城是最後一關，都不放傳送門；船改成交給 GameManager 決定下一關
 /// 每次執行會先刪掉場景裡擺好的傳送門，所以可以重複執行。
 /// </summary>
@@ -23,6 +24,9 @@ public static class PortalInstaller
     const string StoneMatPath = Root + "/Materials/M_PortalStone.mat";
     const string SurfaceMatPath = Root + "/Materials/M_PortalSurface.mat";
     const float PlantSearchRadius = 35f;
+    const string OldBossCheckpointName = "Checkpoint_Boss";
+    const string BossSteleName = "BossCheckpoint_StoneStele";
+    const float PortalFromFire = 6f;
 
     const string MainMenuScene = Root + "/Scenes/MainMenu.unity";
 
@@ -41,7 +45,7 @@ public static class PortalInstaller
             if (!EditorUtility.DisplayDialog("設定關卡流程",
                     "會做這些事：\n" +
                     "・Build Settings 改成：主選單 → 星球 → 維京村莊 → 地下城\n" +
-                    "・星球：時鐘敵人死後生成傳送門；蜘蛛附近的植物改成三選一能力植物\n" +
+                    "・星球：火堆旁放一個傳送門（打倒時鐘敵人才打開）；蜘蛛附近的植物改成三選一能力植物\n" +
                     "・刪掉場景裡原本擺好的傳送門\n" +
                     "・維京村莊的船改成依關卡順序前往下一關\n\n" +
                     "建議先 commit。要繼續嗎？", "繼續", "取消"))
@@ -56,7 +60,7 @@ public static class PortalInstaller
 
         SetupScene(LevelScenes[0], () =>
         {
-            SetupClockEnemyPortal(prefab);
+            SetupClockEnemyBoss(prefab);
             SetupUpgradePlants();
             // 第一關不放補血道具
             var pickups = GameObject.Find("HealthPickups");
@@ -89,42 +93,56 @@ public static class PortalInstaller
     }
 
     /// <summary>
-    /// 星球：只有一個固定位置的傳送門（擺在時鐘 Boss 一開始站的地方，面向玩家起點），一開始關著，
-    /// 打倒 Boss 之後才出現。想換位置直接在場景裡拖「Portal_Exit」就好（它一開始是不啟用的，在 Hierarchy 裡是灰色）
+    /// 星球：只有一個傳送門 Portal_Exit，擺在離 Boss 最近的火堆（Campfire）旁邊 PortalFromFire 公尺、面向 Boss 戰檢查點。
+    /// 傳送門一直都在，但一開始鎖著（Start Locked），打倒 Boss 時 ClockEnemyHealth 會呼叫 Unlock() 才能進入。
+    /// 想換位置直接在場景裡拖 Portal_Exit 就好。也會拿掉以前掛上的 SpawnOnDeath
     /// </summary>
-    static void SetupClockEnemyPortal(GameObject portalPrefab)
+    static void SetupClockEnemyBoss(GameObject portalPrefab)
     {
         var enemies = Object.FindObjectsByType<ClockEnemyHealth>(FindObjectsInactive.Include);
         if (enemies.Length == 0)
         {
-            Debug.LogWarning("[PortalInstaller] 星球裡找不到時鐘敵人（ClockEnemyHealth），傳送門不會出現！");
+            Debug.LogWarning("[PortalInstaller] 星球裡找不到時鐘敵人（ClockEnemyHealth），沒辦法放傳送門和 Boss 戰檢查點！");
             return;
         }
         var boss = enemies[0];
 
-        Vector3 pos = boss.transform.position;
-        if (Physics.Raycast(pos + Vector3.up * 5f, Vector3.down, out var hit, 40f, ~0, QueryTriggerInteraction.Ignore))
-            pos = hit.point;
-        var player = Object.FindAnyObjectByType<PlayerHealth>();
-        Vector3 face = player != null ? player.transform.position - pos : Vector3.back;
-        face.y = 0f;
-
-        var portal = (GameObject)PrefabUtility.InstantiatePrefab(portalPrefab);
-        portal.name = "Portal_Exit";
-        portal.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(face.sqrMagnitude > 0.01f ? face : Vector3.back));
-        portal.GetComponent<Portal>().destination = Portal.Destination.NextLevel;
-        portal.SetActive(false); // 打倒 Boss 才出現
-
         foreach (var enemy in enemies)
         {
             var spawner = enemy.GetComponent<SpawnOnDeath>();
-            if (spawner == null) spawner = Undo.AddComponent<SpawnOnDeath>(enemy.gameObject);
-            spawner.revealTarget = portal;
-            spawner.prefab = null;
-            EditorUtility.SetDirty(spawner);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(spawner);
+            if (spawner != null) Undo.DestroyObjectImmediate(spawner);
         }
-        Debug.Log($"[PortalInstaller] {boss.name}：打倒後在固定位置 {pos} 出現傳送門");
+
+        var player = Object.FindAnyObjectByType<PlayerHealth>();
+        Vector3 bossPos = boss.transform.position;
+        Vector3 playerStart = player != null ? player.transform.position : bossPos + Vector3.back * 20f;
+        // Boss 戰的重生點用場景裡的石碑檢查點（BossCheckpoint_StoneStele）；以前自動放的 Checkpoint_Boss 拿掉
+        var oldCheckpoint = GameObject.Find(OldBossCheckpointName);
+        if (oldCheckpoint != null) Object.DestroyImmediate(oldCheckpoint);
+        var stele = GameObject.Find(BossSteleName);
+        Vector3 checkpointPos = stele != null ? stele.transform.position : playerStart;
+
+        // 傳送門：離 Boss 最近的火堆旁邊，往石碑（玩家走過來的方向）偏一點
+        var fires = Object.FindObjectsByType<Campfire>(FindObjectsInactive.Include);
+        Vector3 anchor = fires.Length > 0
+            ? fires.OrderBy(f => Vector3.Distance(f.transform.position, bossPos)).First().transform.position
+            : bossPos;
+        Vector3 toCheckpoint = checkpointPos - anchor;
+        toCheckpoint.y = 0f;
+        toCheckpoint = toCheckpoint.sqrMagnitude > 0.01f ? toCheckpoint.normalized : Vector3.back;
+        Vector3 pos = anchor + toCheckpoint * PortalFromFire;
+        if (Physics.Raycast(new Vector3(pos.x, anchor.y + 40f, pos.z), Vector3.down, out var hit, 120f, ~0, QueryTriggerInteraction.Ignore))
+            pos = hit.point;
+
+        var portalGO = (GameObject)PrefabUtility.InstantiatePrefab(portalPrefab);
+        portalGO.name = "Portal_Exit";
+        portalGO.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(toCheckpoint));
+        var portal = portalGO.GetComponent<Portal>();
+        portal.destination = Portal.Destination.NextLevel;
+        portal.startLocked = true; // 打倒 Boss 才打開
+        EditorUtility.SetDirty(portal);
+        PrefabUtility.RecordPrefabInstancePropertyModifications(portal);
+        Debug.Log($"[PortalInstaller] 傳送門放在火堆旁 {pos}，打倒 {boss.name} 後才能進入");
     }
 
     static void SetupUpgradePlants()

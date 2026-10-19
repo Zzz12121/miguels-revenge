@@ -51,6 +51,8 @@ public static class PlayerInstaller
         ("Hit", "pack:sword and shield block (2)"),
         ("Death", "pack:sword and shield death"),
         ("ShieldBash", "pack:sword and shield block"),  // 右鍵舉盾衝撞
+        ("BlockIdle", "pack:sword and shield block idle"), // 右鍵按住格擋
+        ("BlockHit", "pack:sword and shield block (2)"),   // 盾牌擋下攻擊
         ("BowDraw", "bow:standing draw arrow"),        // 在船上拉弓（Longbow Pack）
     };
 

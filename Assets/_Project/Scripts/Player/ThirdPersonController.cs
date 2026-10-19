@@ -157,6 +157,13 @@ public class ThirdPersonController : MonoBehaviour
     public float CurrentSpeed => horizontalVelocity.magnitude;
     public float VerticalVelocity => verticalVelocity;
 
+    // 受擊僵直：這段時間內不吃移動 / 跳躍輸入（擊退照樣有效）
+    float stunUntil = float.NegativeInfinity;
+    /// <summary>正在受擊僵直</summary>
+    public bool IsStunned => Time.time < stunUntil;
+    /// <summary>僵直 seconds 秒（玩家受傷時使用）</summary>
+    public void Stun(float seconds) => stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+
     /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
     public void AddImpulse(Vector3 impulse)
     {
@@ -311,6 +318,7 @@ public class ThirdPersonController : MonoBehaviour
                 camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
             }
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
+            if (IsStunned) { moveDir = Vector3.zero; sprint = false; jumpPressed = false; rollPressed = false; }
         }
 
         // 動作鎖定中（對話、喝藥水）或剛結束對話：這一下空白鍵不算跳躍
