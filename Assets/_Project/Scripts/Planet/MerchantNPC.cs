@@ -304,16 +304,23 @@ public class MerchantNPC : MonoBehaviour
         oy += oh + 8f;
         GUI.color = Color.white;
         var leave = new Rect(ox, oy, ow, oh);
-        if (GUI.Button(leave, $"        離開（或按 {InteractPrompt.KeyName}）", GameUI.Button)) EndAll();
+        bool leaveClicked = GameUI.Option(leave);
         GameUI.Key(new Rect(leave.x + 10f, leave.y + 9f, 24f, 24f), "3");
+        GUI.color = GameUI.TextColor;
+        GUI.Label(new Rect(leave.x + 44f, leave.y, leave.width - 52f, leave.height), $"離開（或按 {InteractPrompt.KeyName}）", OptionText);
+        GUI.color = Color.white;
+        if (leaveClicked) EndAll();
     }
+
+    static GUIStyle OptionText => new GUIStyle(GameUI.Small) { fontSize = 18 };
 
     bool Option(Rect r, string key, string text, int cost, int owned)
     {
         bool afford = Herbs >= cost;
-        GUI.color = afford ? Color.white : new Color(1f, 1f, 1f, 0.55f);
-        bool clicked = GUI.Button(r, "        " + text, GameUI.Button);
+        bool clicked = GameUI.Option(r, afford);
         GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), key, afford ? 1f : 0.55f);
+        GUI.color = afford ? GameUI.TextColor : GameUI.MutedColor;
+        GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), text, OptionText);
         GUI.color = afford ? GameUI.Good : GameUI.Bad;
         GUI.Label(new Rect(r.x, r.y, r.width - 14f, r.height), $"持有 {owned}　{resourceDisplayName} ×{cost}",
                   new GUIStyle(GameUI.SmallRight) { fontStyle = FontStyle.Bold });

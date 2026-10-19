@@ -39,7 +39,9 @@ public class UpgradePlant : MonoBehaviour
     ThirdPersonCamera cam;
     bool menuOpen;
     float prevTimeScale = 1f;
-    GUIStyle optionStyle;
+    // NonSerialized：GUIStyle 可以被序列化，不加的話 Unity 會塞一個空白的預設樣式進來（字小、灰色、靠左），
+    // 下面的 null 檢查就不會建立正確的樣式
+    [System.NonSerialized] GUIStyle optionStyle;
 
     PlayerPerks perks;
 
@@ -117,6 +119,8 @@ public class UpgradePlant : MonoBehaviour
 
     void OpenMenu()
     {
+        if (advanced && perks == null) return;
+        VictoryBanner.HideCurrent(); // 剛撿草藥之類的標題還在的話先收掉
         menuOpen = true;
         prevTimeScale = Time.timeScale;
         Time.timeScale = 0f;
@@ -217,9 +221,12 @@ public class UpgradePlant : MonoBehaviour
     void OnGUI()
     {
         if (!menuOpen) return; // 互動提示由 InteractPrompt 統一畫
+        if (advanced && perks == null) return;
+        // 畫在所有 HUD 和過關標題（VictoryBanner 是 -1000）的上面，不會被別的東西蓋住
+        GUI.depth = -1500;
 
         if (optionStyle == null)
-            optionStyle = new GUIStyle(GameUI.Button) { fontSize = 20, alignment = TextAnchor.MiddleCenter, padding = new RectOffset(10, 10, 34, 10) };
+            optionStyle = new GUIStyle(GameUI.Body) { fontSize = 18, alignment = TextAnchor.UpperCenter };
 
         GUI.color = new Color(0f, 0f, 0f, 0.6f);
         GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), Texture2D.whiteTexture);
@@ -234,26 +241,36 @@ public class UpgradePlant : MonoBehaviour
         GUI.Label(new Rect(panel.x, panel.y + 18f, panel.width, 44f), advanced ? "選擇一項進階能力" : "選擇一項能力升級", GameUI.Title);
         GUI.color = Color.white;
 
-        string[] labels;
+        // 每個選項：名稱（大字）+ 說明
+        string[] titles, details;
         if (advanced)
         {
             var opts = PlayerPerks.OptionsFor(perks.UpgradePath);
-            labels = new string[opts.Length];
-            for (int i = 0; i < opts.Length; i++) labels[i] = $"{opts[i].title}\n\n{opts[i].detail}";
+            titles = new string[opts.Length];
+            details = new string[opts.Length];
+            for (int i = 0; i < opts.Length; i++) { titles[i] = opts[i].title; details[i] = opts[i].detail; }
         }
-        else labels = new[]
+        else
         {
-            $"跑速\n\n+{speedBonus * 100f:0}%",
-            $"攻擊力\n\n+{attackBonus * 100f:0}%",
-            $"最大生命\n\n+{healthBonus:0}",
-        };
+            titles = new[] { "跑速", "攻擊力", "最大生命" };
+            details = new[] { $"+{speedBonus * 100f:0}%", $"+{attackBonus * 100f:0}%", $"+{healthBonus:0}" };
+        }
+        var nameStyle = new GUIStyle(GameUI.Title) { fontSize = 24 };
         float x0 = panel.x + 30f, y0 = panel.y + 80f;
-        for (int i = 0; i < labels.Length; i++)
+        int chosen = -1;
+        for (int i = 0; i < titles.Length; i++)
         {
             var r = new Rect(x0 + i * (w + gap), y0, w, h);
-            if (GUI.Button(r, labels[i], optionStyle)) Choose(i);
-            GameUI.Key(new Rect(r.x + (w - 26f) * 0.5f, r.y + 10f, 26f, 26f), (i + 1).ToString());
+            if (GameUI.Option(r)) chosen = i;
+            GameUI.Key(new Rect(r.x + (w - 26f) * 0.5f, r.y + 12f, 26f, 26f), (i + 1).ToString());
+            GUI.color = GameUI.Accent;
+            GUI.Label(new Rect(r.x, r.y + 48f, r.width, 36f), titles[i], nameStyle);
+            GUI.color = GameUI.TextColor;
+            GUI.Label(new Rect(r.x + 10f, r.y + 94f, r.width - 20f, r.height - 100f), details[i], optionStyle);
+            GUI.color = Color.white;
         }
+        // 畫完才處理選擇（Choose 會刪掉這個物件）
+        if (chosen >= 0) Choose(chosen);
 
         GUI.color = GameUI.MutedColor;
         GUI.Label(new Rect(panel.x, panel.yMax - 46f, panel.width, 30f), "點擊或按 1 / 2 / 3 選擇", GameUI.Center);
