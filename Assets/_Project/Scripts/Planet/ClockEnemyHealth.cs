@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 時鐘敵人血量：底部 Boss 血條、說話系統（二階段變紅字）、受擊無敵幀、二階段觸發、死亡台詞與傳送門
+/// 時鐘敵人血量：底部 Boss 血條、說話系統（二階段變紅字）、受擊無敵幀、二階段觸發、死亡台詞，打倒後打開火堆旁的傳送門（傳送門一直都在，打倒 Boss 前進不去）
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class ClockEnemyHealth : MonoBehaviour, IDamageable
@@ -19,9 +19,9 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
     [Tooltip("被打時閃的顏色")]
     public Color flashColor = Color.white;
 
-    [Header("傳送門設定")]
-    public GameObject portalPrefab;
-    public Vector3 portalSpawnPosition = new Vector3(680f, 1f, 570f);
+    [Header("打倒後")]
+    [Tooltip("打倒後打開的傳送門（一直擺在場景裡、Start Locked 打勾）。留空 = 自動找場景裡的傳送門（第一關只有一個）")]
+    public Portal exitPortal;
 
     [Header("說話系統設定")]
     public List<string> dialogueList = new List<string>
@@ -161,11 +161,9 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
         StartCoroutine(PlayDeathDialogueRoutine());
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.7f, 0.08f, 1f, 30f);
 
-        if (portalPrefab != null)
-        {
-            Instantiate(portalPrefab, portalSpawnPosition, Quaternion.identity);
-            Debug.Log($"【Boss 擊敗】傳送門已生成於指定座標：{portalSpawnPosition}");
-        }
+        if (exitPortal == null) exitPortal = FindAnyObjectByType<Portal>();
+        if (exitPortal != null) exitPortal.Unlock();
+        else Debug.LogWarning("[ClockEnemyHealth] 場景裡找不到傳送門，打倒 Boss 後沒辦法離開這一關");
 
         if (controller != null) controller.enabled = false;
         OnDied?.Invoke();

@@ -264,7 +264,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7663043799414396530}
-  - {fileID: 625245102672000827}
+  - {fileID: 1572060665629454055}
   m_Father: {fileID: 5582457813797752160}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &1636657726273938399
@@ -393,7 +393,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerHealth
   maxHealth: 100
-  invincibleTime: 0.6
+  invincibleTime: 0.1
+  hitStunTime: 0.1
   killY: -8
   respawnDelay: 2.5
   respawnPoint: {fileID: 0}
@@ -437,7 +438,10 @@ MonoBehaviour:
   shieldBashLunge: 7
   shieldBashReach: 1.1
   shieldBashRadius: 1.3
-  shieldBlockDamageScale: 0.3
+  blockHitsBeforeBreak: 3
+  blockMoveMultiplier: 0.35
+  guardBreakTime: 0.8
+  blockFrontDot: 0.3
   bowMode: 0
   arrowSpeed: 70
   arrowCooldown: 0.55
@@ -454,7 +458,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 818d0580e0bc14a9886b3ae2754e82db, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerVisual
-  animator: {fileID: 6795225741709339969}
+  animator: {fileID: 4841712699149186205}
   idleThreshold: 0.25
   runThreshold: 2.6
   walkAnimSpeed: 1.8
@@ -471,10 +475,10 @@ MonoBehaviour:
   - state: Stab
     hitTime: 0.78000003
     clipLength: 1.7333335
-  attackAnimSpeed: 1
+  attackAnimSpeed: 1.35
   attackHitWindow: 0.18
-  comboRecoveryRatio: 1
-  comboChainAfter: 0.9
+  comboRecoveryRatio: 0.6
+  comboChainAfter: 0.5
   hitDuration: 0.35
   landDuration: 0.25
   bowFullDraw: 0.55
@@ -723,7 +727,7 @@ MonoBehaviour:
       m_PostInfinity: 2
       m_RotationOrder: 4
   CustomBlends: {fileID: 0}
---- !u!1001 &1092096962882982096
+--- !u!1001 &1322841843410946316
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -820,13 +824,13 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 91627488995924122b13c0e49bb415db, type: 3}
---- !u!4 &625245102672000827 stripped
+--- !u!4 &1572060665629454055 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 91627488995924122b13c0e49bb415db, type: 3}
-  m_PrefabInstance: {fileID: 1092096962882982096}
+  m_PrefabInstance: {fileID: 1322841843410946316}
   m_PrefabAsset: {fileID: 0}
---- !u!95 &6795225741709339969 stripped
+--- !u!95 &4841712699149186205 stripped
 Animator:
   m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 91627488995924122b13c0e49bb415db, type: 3}
-  m_PrefabInstance: {fileID: 1092096962882982096}
+  m_PrefabInstance: {fileID: 1322841843410946316}
   m_PrefabAsset: {fileID: 0}

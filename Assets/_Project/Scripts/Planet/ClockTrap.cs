@@ -55,23 +55,10 @@ public class ClockTrap : MonoBehaviour
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
-                StartCoroutine(RootPlayerRoutine(playerController));
+                playerController.ApplySlow(0f, rootDuration); // 定身，時間到自動解除
             }
 
             TriggerExplosion();
-        }
-    }
-
-    IEnumerator RootPlayerRoutine(ThirdPersonController controller)
-    {
-        float originalMultiplier = controller.speedMultiplier;
-        controller.speedMultiplier = 0f; // 定身
-
-        yield return new WaitForSeconds(rootDuration);
-
-        if (controller != null)
-        {
-            controller.speedMultiplier = originalMultiplier; // 解除定身
         }
     }
 

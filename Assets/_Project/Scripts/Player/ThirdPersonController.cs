@@ -121,6 +121,25 @@ public class ThirdPersonController : MonoBehaviour
     public float VerticalVelocity => verticalVelocity;
 
     /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
+    // 緩速 / 定身（蜘蛛網、時鐘陷阱）：和 speedMultiplier 分開算，攻擊、舉盾改 speedMultiplier 時不會互相蓋掉
+    float slowMultiplier = 1f, slowUntil = float.NegativeInfinity;
+    float StatusMultiplier => Time.time < slowUntil ? slowMultiplier : 1f;
+
+    /// <summary>緩速 duration 秒（multiplier = 0 就是定身）。效果重疊時取比較慢的倍率、比較晚的結束時間</summary>
+    public void ApplySlow(float multiplier, float duration)
+    {
+        bool active = Time.time < slowUntil;
+        slowMultiplier = active ? Mathf.Min(slowMultiplier, multiplier) : multiplier;
+        slowUntil = Mathf.Max(active ? slowUntil : Time.time, Time.time + duration);
+    }
+
+    // 受擊僵直：這段時間內不吃移動 / 跳躍輸入（擊退照樣有效）
+    float stunUntil = float.NegativeInfinity;
+    /// <summary>正在受擊僵直</summary>
+    public bool IsStunned => Time.time < stunUntil;
+    /// <summary>僵直 seconds 秒（玩家受傷時使用）</summary>
+    public void Stun(float seconds) => stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+
     public void AddImpulse(Vector3 impulse)
     {
         horizontalVelocity += new Vector3(impulse.x, 0f, impulse.z);
@@ -219,11 +238,12 @@ public class ThirdPersonController : MonoBehaviour
                 camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
             }
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
+            if (IsStunned) { moveDir = Vector3.zero; sprint = false; jumpPressed = false; }
         }
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * (IsPushing ? pushFactor : 1f);
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * StatusMultiplier * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;
         if (ballistic)

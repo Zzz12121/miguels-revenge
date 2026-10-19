@@ -11,7 +11,9 @@ public class PlayerHealth : MonoBehaviour
 {
     public float maxHealth = 100f;
     [Tooltip("受傷後的無敵時間 (秒)，避免同一招連續扣血")]
-    public float invincibleTime = 0.6f;
+    public float invincibleTime = 0.1f;
+    [Tooltip("受傷後的僵直時間 (秒)：不能移動、攻擊，正在揮的劍會被打斷")]
+    public float hitStunTime = 0.1f;
     [Tooltip("低於這個高度就判定掉下去死亡")]
     public float killY = -8f;
     public float respawnDelay = 2.5f;
@@ -75,11 +77,25 @@ public class PlayerHealth : MonoBehaviour
             if (Time.time - lastHitTime < invincibleTime) return false;
             lastHitTime = Time.time;
         }
+        // 舉盾（右鍵）時正面的攻擊會被盾牌擋下：不扣血、只被往後推一點（連續擋到破防那一下才會扣血）
+        if (combat != null && amount > 0f)
+        {
+            amount = combat.ApplyShieldBlock(amount, knockback);
+            if (amount <= 0f)
+            {
+                controller.AddImpulse(knockback * 0.35f);
+                return true;
+            }
+        }
         lastFlashTime = Time.time;
-        // 舉盾（右鍵盾擊）時正面的攻擊會被擋下大部分
-        if (combat != null) amount = combat.ApplyShieldBlock(amount, knockback);
         Health = Mathf.Max(0f, Health - amount);
         controller.AddImpulse(knockback);
+        // 受擊僵直（持續傷害例如光束不算，不然會一直被定住）
+        if (!ignoreInvincibility && hitStunTime > 0f && amount > 0f)
+        {
+            controller.Stun(hitStunTime);
+            combat.CancelAttack();
+        }
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
         if (Health <= 0f) Die(deathReason);

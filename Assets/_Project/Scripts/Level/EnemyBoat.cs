@@ -9,6 +9,8 @@ using UnityEngine;
 ///   沒有弓箭手 Prefab 時用骷髏代替（選單 GeminiGrowUp > 安裝敵艦弓箭手 會建立）。
 /// - 敵船船頭轉向校正預設為 90 度（配合模型外觀軸向）。
 /// - 接近時仍有衝撞傷害。
+/// - 和玩家的船一樣不能開上陸地：前方水太淺就左右找方向繞過去，都不行就停住（BoatNavigation）。
+/// - 船身跟著海浪起伏（SeaWaves）。
 /// - 船身打不壞（實作 IDamageable 只是為了顯示「無效」）；要用弓箭射倒船上的弓箭手（BoatCrewMember），
 ///   船員全部倒下船就會沉入水中。
 /// </summary>
@@ -62,11 +64,19 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     float lastInvalidTime = float.NegativeInfinity;
     Vector3 lastInvalidPoint;
 
-    [Header("波浪起伏")]
-    public float waveFrequency = 1.4f;
-    public float waveAmplitude = 0.12f;
-    public float pitchAmount = 1.8f;
-    public float rollAmount = 2.5f;
+    [Header("不能開上陸地（VikingBoat 生成時會改成和玩家的船一樣）")]
+    public float hullHalfLength = 4.5f;
+    public float hullHalfWidth = 1.4f;
+    public float minWaterDepth = 0.5f;
+    [Tooltip("海平面高度")]
+    public float waterY = 1.3f;
+
+    [Header("隨海浪起伏")]
+    [Range(0f, 2f)] public float waveTiltScale = 0.9f;
+    public float waveFollowSmooth = 8f;
+    public float waveDraft = -0.2f;
+    Vector3 wavePose; // 平滑後的 (高度, 俯仰, 翻滾)
+    static readonly float[] AvoidAngles = { 30f, -30f, 60f, -60f, 90f, -90f, 120f, -120f };
 
     [Header("船首偏移校正")]
     [Tooltip("敵人船頭角度校正，預設為 90 度以配合模型視覺朝向")]
@@ -79,7 +89,6 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     const float BAR_SHOW_TIME = 6f;
 
     float currentYaw;
-    float baseY;
     Renderer[] renderers;
     bool isAttackingPlayer;
     PlayerHealth playerHealth;
@@ -96,13 +105,22 @@ public class EnemyBoat : MonoBehaviour, IDamageable
 
     public bool IsDead => isDead;
 
+    /// <summary>直接把視覺船首轉向 dir（生成時面向玩家用）</summary>
+    public void FaceTowards(Vector3 dir)
+    {
+        dir.y = 0f;
+        if (dir.sqrMagnitude < 0.01f) return;
+        currentYaw = (Quaternion.LookRotation(dir) * Quaternion.Euler(0f, -boatForwardOffsetAngle, 0f)).eulerAngles.y;
+        transform.rotation = Quaternion.Euler(0f, currentYaw, 0f);
+    }
+
     void Awake()
     {
         if (!AllEnemyBoats.Contains(this)) AllEnemyBoats.Add(this);
         health = maxHealth;
         renderers = GetComponentsInChildren<Renderer>(true);
         currentYaw = transform.eulerAngles.y;
-        baseY = transform.position.y;
+        wavePose = new Vector3(transform.position.y, 0f, 0f);
 
         // 確保 EnemyBoat 具有可用於射擊/近戰碰撞檢測的 Collider
         var col = GetComponent<Collider>();
@@ -294,7 +312,25 @@ public class EnemyBoat : MonoBehaviour, IDamageable
 
         // 加上排斥推力位移
         moveVelocity += separationForce;
-        transform.position += moveVelocity * Time.deltaTime;
+        Vector3 step = moveVelocity * Time.deltaTime;
+        if (step.sqrMagnitude > 1e-8f && Blocked(step))
+        {
+            // 前面是陸地 / 淺灘：左右找一個能走的方向繞過去，船頭也慢慢轉過去；都不行就停住
+            bool found = false;
+            foreach (float a in AvoidAngles)
+            {
+                Vector3 alt = Quaternion.Euler(0f, a, 0f) * step;
+                if (Blocked(alt)) continue;
+                step = alt;
+                found = true;
+                Quaternion want = Quaternion.LookRotation(new Vector3(alt.x, 0f, alt.z)) * Quaternion.Euler(0f, -boatForwardOffsetAngle, 0f);
+                if (currentTargetSpeed < 0f) want *= Quaternion.Euler(0f, 180f, 0f); // 倒退時船尾朝那個方向
+                currentYaw = Quaternion.RotateTowards(Quaternion.Euler(0f, currentYaw, 0f), want, turnSpeed * Time.deltaTime).eulerAngles.y;
+                break;
+            }
+            if (!found) step = Vector3.zero;
+        }
+        transform.position += step;
 
         // 船員轉向面對玩家
         if (playerTransform != null)
@@ -420,16 +456,15 @@ public class EnemyBoat : MonoBehaviour, IDamageable
         r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    bool Blocked(Vector3 step) =>
+        BoatNavigation.WouldRunAground(transform, step, hullHalfLength, hullHalfWidth, waterY, minWaterDepth);
+
+    /// <summary>船身隨海浪起伏（和玩家的船同一套）</summary>
     void ApplyWave()
     {
-        float t = Time.time;
-        Vector3 p = transform.position;
-        p.y = baseY + Mathf.Sin(t * waveFrequency) * waveAmplitude;
-        transform.position = p;
-
-        float pitch = Mathf.Sin(t * (waveFrequency * 1.2f)) * pitchAmount;
-        float roll = Mathf.Cos(t * waveFrequency) * rollAmount;
-        transform.rotation = Quaternion.Euler(pitch, currentYaw, roll);
+        Vector3 fwd = Quaternion.Euler(0f, currentYaw + boatForwardOffsetAngle, 0f) * Vector3.forward;
+        BoatNavigation.FloatOnWaves(transform, currentYaw, fwd, hullHalfLength, hullHalfWidth, waterY,
+                                    waveDraft, 0f, waveTiltScale, waveFollowSmooth, ref wavePose);
     }
 
 

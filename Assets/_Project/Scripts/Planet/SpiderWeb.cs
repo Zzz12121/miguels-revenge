@@ -98,7 +98,7 @@ public class SpiderWeb : MonoBehaviour
             var playerController = other.GetComponentInParent<ThirdPersonController>();
             if (playerController != null)
             {
-                StartCoroutine(ApplyWebEffectRoutine(playerController, other.transform));
+                ApplyWebEffect(playerController, other.transform);
             }
 
             Destroy(gameObject); // 擊中玩家後銷毀網子本體[cite: 5]
@@ -110,11 +110,9 @@ public class SpiderWeb : MonoBehaviour
         }
     }
 
-    IEnumerator ApplyWebEffectRoutine(ThirdPersonController controller, Transform playerTransform)
+    // 網子打中後馬上被刪掉，所以不能用協程等時間：緩速由 ThirdPersonController 計時、特效用 Destroy 延遲刪
+    void ApplyWebEffect(ThirdPersonController controller, Transform playerTransform)
     {
-        // 記錄原本的速度倍率[cite: 5]
-        float originalMultiplier = controller.speedMultiplier;
-
         // 生成在玩家身上的粒子特效物件
         GameObject activeEffect = null;
         if (webStunEffectPrefab != null)
@@ -123,30 +121,10 @@ public class SpiderWeb : MonoBehaviour
             activeEffect = Instantiate(webStunEffectPrefab, playerTransform.position + Vector3.up * 1f, Quaternion.identity, playerTransform);
         }
 
-        if (enableRoot)
-        {
-            // 定身：將速度倍率歸零[cite: 5]
-            controller.speedMultiplier = 0f;
-        }
-        else
-        {
-            // 緩速：將速度倍率乘上緩速比例[cite: 5]
-            controller.speedMultiplier *= slowMultiplier;
-        }
+        // 定身（倍率 0）或緩速，時間到自動解除
+        controller.ApplySlow(enableRoot ? 0f : slowMultiplier, effectDuration);
 
-        // 等待持續時間結束[cite: 5]
-        yield return new WaitForSeconds(effectDuration);
-
-        // 恢復原本的速度倍率[cite: 5]
-        if (controller != null)
-        {
-            controller.speedMultiplier = originalMultiplier;
-        }
-
-        // 銷毀身上的定身特效
-        if (activeEffect != null)
-        {
-            Destroy(activeEffect);
-        }
+        // 時間到銷毀身上的定身特效
+        if (activeEffect != null) Destroy(activeEffect, effectDuration);
     }
 }

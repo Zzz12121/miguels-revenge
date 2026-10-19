@@ -5,7 +5,8 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 玩家的攻擊：
 /// - 滑鼠左鍵：近戰揮劍連擊（三段連擊），攻擊方向 = 鏡頭朝向
-/// - 滑鼠右鍵：舉盾衝撞（盾擊）：往前頂一步，前方的敵人受到傷害並被大力撞開；舉盾期間正面受到的傷害會減少
+/// - 滑鼠右鍵（按一下）：舉盾衝撞（盾擊）：往前頂一步，前方的敵人受到傷害並被大力撞開
+/// - 滑鼠右鍵（按住）：舉盾格擋。正面的攻擊完全擋下，但連續擋第 3 下會破防（那一下照樣扣血、盾牌放下一會兒）
 /// - 在船上（bowMode）：右鍵按住瞄準、左鍵射箭
 /// </summary>
 public class PlayerCombat : MeleeCombat
@@ -30,14 +31,33 @@ public class PlayerCombat : MeleeCombat
     public float shieldBashLunge = 7f;
     [Tooltip("判定球離角色中心往前多遠 / 半徑")]
     public float shieldBashReach = 1.1f, shieldBashRadius = 1.3f;
-    [Tooltip("舉盾期間，正面受到的傷害剩幾成（0.3 = 只受 30% 傷害）")]
-    [Range(0f, 1f)] public float shieldBlockDamageScale = 0.3f;
 
-    /// <summary>正在盾擊（舉著盾牌）</summary>
+    [Header("格擋（右鍵按住，在陸地上）")]
+    [Tooltip("連續擋幾下會破防：第幾下的攻擊會穿過盾牌扣血（3 = 擋兩下，第三下扣血）")]
+    public int blockHitsBeforeBreak = 3;
+    [Tooltip("舉盾時的移動速度倍率")]
+    [Range(0f, 1f)] public float blockMoveMultiplier = 0.35f;
+    [Tooltip("破防之後多久不能再舉盾 (秒)")]
+    public float guardBreakTime = 0.8f;
+    [Tooltip("攻擊要從正面多少範圍內來才擋得住（和面向的夾角餘弦，0.3 ≈ 前方 145 度）")]
+    [Range(-1f, 1f)] public float blockFrontDot = 0.3f;
+
+    /// <summary>正在盾擊（舉著盾牌往前頂）</summary>
     public bool IsShieldBashing { get; private set; }
+    /// <summary>正在按住右鍵舉盾格擋</summary>
+    public bool IsBlocking { get; private set; }
+    /// <summary>盾牌舉著（格擋或盾擊中）：正面攻擊會被擋下</summary>
+    public bool ShieldUp => IsBlocking || IsShieldBashing;
+    /// <summary>這一輪連續擋了幾下（放下盾牌或破防就歸零）</summary>
+    public int BlockStreak { get; private set; }
     /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
     public event System.Action OnShieldBash;
-    float nextBashTime;
+    /// <summary>開始 / 停止格擋</summary>
+    public event System.Action<bool> OnBlockChanged;
+    /// <summary>用盾牌擋下攻擊（參數 true = 這一下破防了）</summary>
+    public event System.Action<bool> OnBlockedHit;
+    float nextBashTime, guardBrokenUntil = float.NegativeInfinity, lastBlockTime = float.NegativeInfinity;
+    bool lastBlockBroke;
 
     [Header("弓箭（在船上，VikingBoat 登船時打開）")]
     [Tooltip("打開後：右鍵按住瞄準（鏡頭拉近放大），左鍵射箭；不能揮劍")]
@@ -51,7 +71,7 @@ public class PlayerCombat : MeleeCombat
     /// <summary>正在按住右鍵瞄準</summary>
     public bool IsAimingBow { get; private set; }
     /// <summary>瞄準中、或剛射完箭：角色面向由弓箭控制（VikingBoat 不要把角色轉回船頭）</summary>
-    public bool ControlsFacing => IsAttacking || IsShieldBashing || (bowMode && (IsAimingBow || Time.time < faceAimUntil));
+    public bool ControlsFacing => IsAttacking || ShieldUp || (bowMode && (IsAimingBow || Time.time < faceAimUntil));
     public event System.Action<bool> OnBowAim;   // true = 開始瞄準，false = 放開
     public event System.Action OnBowShot;
 
@@ -78,33 +98,109 @@ public class PlayerCombat : MeleeCombat
         }
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        bool leftClick = false, rightClick = false;
+        bool leftClick = false, rightClick = false, rightHeld = false;
         var mouse = Mouse.current;
         if (mouse != null)
         {
             leftClick = mouse.leftButton.wasPressedThisFrame;
             rightClick = mouse.rightButton.wasPressedThisFrame;
+            rightHeld = mouse.rightButton.isPressed;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
         {
             leftClick = Input.GetMouseButtonDown(0);
             rightClick = Input.GetMouseButtonDown(1);
+            rightHeld = Input.GetMouseButton(1);
         }
 #endif
 
-        // 右鍵：舉盾衝撞（揮劍連擊中不能用）
-        if (rightClick && !IsAttacking && !IsShieldBashing && Time.time >= nextBashTime)
+        // 受擊僵直中不能攻擊 / 舉盾
+        if (controller.IsStunned)
         {
+            attackQueued = false;
+            if (IsBlocking) SetBlocking(false, !rightHeld);
+            return;
+        }
+
+        // 右鍵按一下：舉盾衝撞（揮劍連擊中、破防中不能用）
+        bool guardBroken = Time.time < guardBrokenUntil;
+        if (rightClick && !IsAttacking && !IsShieldBashing && !guardBroken && Time.time >= nextBashTime)
+        {
+            if (IsBlocking) SetBlocking(false, false);
             StartCoroutine(ShieldBash());
             return;
         }
 
-        // 左鍵：近戰連擊（攻擊中再按 = 接下一段）；盾擊中不能揮劍
-        if (leftClick && !IsShieldBashing)
+        // 右鍵按住：舉盾格擋（盾擊結束時還按著就接著舉著）
+        bool wantBlock = rightHeld && !IsAttacking && !IsShieldBashing && !guardBroken;
+        if (wantBlock != IsBlocking) SetBlocking(wantBlock, !rightHeld);
+        if (IsBlocking) controller.FaceDirection(GetAimDirection());
+
+        // 左鍵：近戰連擊（攻擊中再按 = 接下一段）；舉盾時不能揮劍
+        if (leftClick && !ShieldUp)
         {
             if (!BeginAttack()) attackQueued = true;
         }
+    }
+
+    // ---------------- 格擋（右鍵按住） ----------------
+
+    /// <summary>開始 / 停止舉盾。released = 玩家放開右鍵（連續格擋的次數歸零）</summary>
+    void SetBlocking(bool on, bool released)
+    {
+        if (IsBlocking == on) return;
+        IsBlocking = on;
+        if (on)
+        {
+            controller.lockRotation = true;
+            controller.speedMultiplier = blockMoveMultiplier;
+            GameAudio.Play("SFX/RPG/clothBelt2", transform.position, 0.6f, 1.1f, 0.05f, 1f, 20f);
+        }
+        else
+        {
+            controller.lockRotation = false;
+            controller.speedMultiplier = 1f;
+            if (released) BlockStreak = 0;
+        }
+        OnBlockChanged?.Invoke(on);
+    }
+
+    /// <summary>
+    /// 舉盾時擋下正面的攻擊（PlayerHealth 受傷時呼叫）：回傳實際要扣的傷害。
+    /// 擋下 → 0；連續擋到第 blockHitsBeforeBreak 下 → 破防，這一下照扣、盾牌放下一會兒。
+    /// knockback = 攻擊把玩家推開的方向（用來判斷攻擊從哪裡來；沒有方向的攻擊例如光束擋不住）
+    /// </summary>
+    public float ApplyShieldBlock(float damage, Vector3 knockback)
+    {
+        if (!ShieldUp || bowMode || knockback.sqrMagnitude < 0.0001f) return damage;
+        Vector3 from = -knockback; // 攻擊從哪個方向來
+        from.y = 0f;
+        if (from.sqrMagnitude < 0.0001f || Vector3.Dot(from.normalized, transform.forward) < blockFrontDot) return damage;
+
+        BlockStreak++;
+        lastBlockTime = Time.time;
+        Vector3 shieldPoint = transform.position + Vector3.up * 0.3f + transform.forward * 0.6f;
+        if (BlockStreak >= Mathf.Max(1, blockHitsBeforeBreak))
+        {
+            // 破防：這一下穿過盾牌，盾牌放下一會兒
+            BlockStreak = 0;
+            lastBlockBroke = true;
+            guardBrokenUntil = Time.time + guardBreakTime;
+            SetBlocking(false, false);
+            GameAudio.Play("SFX/RPG/metalPot1", shieldPoint, 1f, 0.6f, 0.05f, 1f, 35f);
+            CombatVFX.Impact(shieldPoint, new Color(1f, 0.45f, 0.3f));
+            ThirdPersonCamera.ShakeMain(0.2f, 0.2f);
+            OnBlockedHit?.Invoke(true);
+            return damage;
+        }
+
+        lastBlockBroke = false;
+        GameAudio.Play("SFX/RPG/metalPot3", shieldPoint, 1f, 1.2f, 0.05f, 1f, 30f);
+        CombatVFX.Impact(shieldPoint, new Color(1f, 0.95f, 0.7f));
+        ThirdPersonCamera.ShakeMain(0.06f, 0.1f);
+        OnBlockedHit?.Invoke(false);
+        return 0f;
     }
 
     // ---------------- 盾擊（右鍵） ----------------
@@ -170,18 +266,6 @@ public class PlayerCombat : MeleeCombat
             CombatVFX.Impact(point, new Color(0.85f, 0.9f, 1f));
             ThirdPersonCamera.ShakeMain(0.15f, 0.15f);
         }
-    }
-
-    /// <summary>舉盾擋下正面的攻擊：回傳實際要扣的傷害（PlayerHealth 呼叫）。knockback = 攻擊把玩家推開的方向</summary>
-    public float ApplyShieldBlock(float damage, Vector3 knockback)
-    {
-        if (!IsShieldBashing || knockback.sqrMagnitude < 0.0001f) return damage;
-        Vector3 from = -knockback; // 攻擊從哪個方向來
-        from.y = 0f;
-        if (Vector3.Dot(from.normalized, transform.forward) < 0.3f) return damage; // 不是從正面來
-        GameAudio.Play("SFX/RPG/metalPot3", transform.position + Vector3.up, 1f, 1.2f, 0.05f, 1f, 30f);
-        CombatVFX.Impact(transform.position + Vector3.up * 0.3f + transform.forward * 0.6f, new Color(1f, 0.95f, 0.7f));
-        return damage * shieldBlockDamageScale;
     }
 
     // ---------------- 弓箭（在船上） ----------------
@@ -263,9 +347,14 @@ public class PlayerCombat : MeleeCombat
 
     void OnGUI()
     {
-        if (!bowMode || (health != null && health.IsDead)) return;
+        if (health != null && health.IsDead) return;
         var gm = GameManager.Instance;
         if (gm != null && gm.IsOverlayOpen) return;
+        if (!bowMode)
+        {
+            DrawShieldHud();
+            return;
+        }
 
         // 準心：瞄準時比較小、比較亮
         float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
@@ -289,6 +378,39 @@ public class PlayerCombat : MeleeCombat
         var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
         GUI.color = new Color(1f, 1f, 1f, 0.75f);
         GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        GUI.color = Color.white;
+    }
+
+    /// <summary>舉盾時畫面下方顯示盾牌還能擋幾下；破防時跳出「破防！」</summary>
+    void DrawShieldHud()
+    {
+        float sinceBlock = Time.time - lastBlockTime;
+        bool show = ShieldUp || sinceBlock < 1f;
+        if (!show) return;
+
+        var style = new GUIStyle(GUI.skin.label) { fontSize = 20, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter };
+        float cx = Screen.width * 0.5f, y = Screen.height * 0.72f;
+        if (lastBlockBroke && sinceBlock < 1f)
+        {
+            GUI.color = new Color(1f, 0.4f, 0.3f, 1f - sinceBlock);
+            GUI.Label(new Rect(cx - 150f, y - 40f, 300f, 34f), "破防！", style);
+        }
+        if (!ShieldUp) { GUI.color = Color.white; return; }
+
+        // 盾牌耐久：亮的格子 = 還能完全擋下幾下
+        int total = Mathf.Max(1, blockHitsBeforeBreak);
+        int left = total - 1 - BlockStreak; // 最後一格是「破防的那一下」
+        const float w = 26f, h = 10f, gap = 6f;
+        float x0 = cx - (total * w + (total - 1) * gap) * 0.5f;
+        for (int i = 0; i < total; i++)
+        {
+            bool lit = i < left;
+            GUI.color = lit ? new Color(0.85f, 0.9f, 1f, 0.95f) : new Color(1f, 0.35f, 0.3f, 0.6f);
+            GUI.DrawTexture(new Rect(x0 + i * (w + gap), y, w, h), Texture2D.whiteTexture);
+        }
+        GUI.color = new Color(1f, 1f, 1f, 0.8f);
+        var small = new GUIStyle(style) { fontSize = 15, fontStyle = FontStyle.Normal };
+        GUI.Label(new Rect(cx - 200f, y + 12f, 400f, 24f), left > 0 ? $"格擋中：還能擋 {left} 下" : "再被打中就會破防！", small);
         GUI.color = Color.white;
     }
 
