@@ -154,6 +154,8 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateTargetSelection()
     {
+        if (Mouse.current != null && practiceOrbitCamera != null)
+            practiceOrbitCamera.PanFromScreenEdge(Mouse.current.position.ReadValue(), Time.unscaledDeltaTime);
         hoveredSelection = FindTargetUnderPointer();
         hoveredTarget = hoveredSelection.marker;
         UpdateTargetingReticle(hoveredSelection);

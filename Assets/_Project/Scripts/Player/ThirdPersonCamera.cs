@@ -45,6 +45,10 @@ public class ThirdPersonCamera : MonoBehaviour
     public float maxPitch = 70f;
     [Tooltip("開始時鏡頭的俯角")]
     public float startPitch = 15f;
+    [Tooltip("技能瞄準時，游標距離畫面左右邊緣多少像素開始轉鏡頭")]
+    [Min(8f)] public float edgePanMargin = 52f;
+    [Tooltip("技能瞄準時靠近畫面邊緣的水平轉向速度（度／秒）")]
+    [Min(10f)] public float edgePanSpeed = 92f;
 
     [Header("防穿牆（Cinemachine Avoid Obstacles）")]
     public LayerMask collisionMask = ~(1 << 2); // 不含 Ignore Raycast
@@ -93,6 +97,31 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         aiming = on;
         if (who != null) aimTarget = who;
+    }
+
+    /// <summary>
+    /// 游標解鎖的指定技可呼叫此方法：靠近畫面左右邊緣時仍能環繞角色，
+    /// 讓玩家不必取消瞄準就能搜尋更大的範圍。
+    /// </summary>
+    public void PanFromScreenEdge(Vector2 pointerPosition, float unscaledDeltaTime)
+    {
+        float margin = Mathf.Clamp(edgePanMargin, 8f, Screen.width * .35f);
+        float direction = pointerPosition.x <= margin ? -1f : pointerPosition.x >= Screen.width - margin ? 1f : 0f;
+        if (Mathf.Abs(direction) < .01f) return;
+        float edgeDepth = direction < 0f
+            ? 1f - Mathf.Clamp01(pointerPosition.x / margin)
+            : 1f - Mathf.Clamp01((Screen.width - pointerPosition.x) / margin);
+        yaw += direction * edgePanSpeed * Mathf.Lerp(.35f, 1f, edgeDepth) * unscaledDeltaTime;
+        ApplyUnlockedAimRotation();
+    }
+
+    void ApplyUnlockedAimRotation()
+    {
+        if (target == null || cameraTarget == null) return;
+        Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
+        Vector3 pivot = target.position + targetOffset;
+        cameraTarget.SetPositionAndRotation(pivot + rotation * Vector3.right * shoulderOffset, rotation);
+        if (cinemachineCamera != null) cinemachineCamera.PreviousStateIsValid = false;
     }
 
     /// <summary>畫面震動（Boss 拍地、怒吼時使用）</summary>

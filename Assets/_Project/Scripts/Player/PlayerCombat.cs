@@ -66,6 +66,10 @@ public class PlayerCombat : MeleeCombat
     {
         base.Awake();
         health = GetComponent<PlayerHealth>();
+        // 所有場景都共用同一個玩家物件；缺少時自動補上雙極牽引技能，
+        // 靶場與正式關卡不需要各自維護一份技能 Prefab。
+        if (GetComponent<EnergyTetherSkill>() == null)
+            gameObject.AddComponent<EnergyTetherSkill>();
     }
 
     void Update()
