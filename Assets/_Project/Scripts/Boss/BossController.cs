@@ -377,6 +377,21 @@ public class BossController : MonoBehaviour
         if (autoStart) BeginFight();
     }
 
+    bool skillAirborne;
+    public void SetSkillAirborne(bool held)
+    {
+        if (skillAirborne == held) return;
+        skillAirborne = held;
+        if (held)
+        {
+            StopAllCoroutines(); HideBeam(); HideLandMark(false); EndAnim();
+            airborne = false;
+            if (health) health.Invulnerable = false;
+            if (bodyPivot) { bodyPivot.localRotation = Quaternion.identity; bodyPivot.localScale = Vector3.one; }
+        }
+        else if (!dead && FightActive && isActiveAndEnabled) StartCoroutine(Brain());
+    }
+
     void Update()
     {
         FollowGround();

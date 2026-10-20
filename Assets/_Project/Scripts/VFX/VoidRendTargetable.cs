@@ -103,8 +103,13 @@ public sealed class VoidRendTargetable : MonoBehaviour
     public void PlayHitReaction()
     {
         if (!animateHitReaction || cachedAnimator == null || !cachedAnimator.isActiveAndEnabled) return;
-        string state = HitStates[hitIndex++ % HitStates.Length];
-        cachedAnimator.CrossFadeInFixedTime(state, 0.06f, 0, 0f);
+        for (int i = 0; i < HitStates.Length; i++)
+        {
+            string state = HitStates[hitIndex++ % HitStates.Length];
+            if (!cachedAnimator.HasState(0, Animator.StringToHash(state))) continue;
+            cachedAnimator.CrossFadeInFixedTime(state, 0.06f, 0, 0f);
+            break;
+        }
     }
 }
 
