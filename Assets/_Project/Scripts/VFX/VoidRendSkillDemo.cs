@@ -139,6 +139,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
         if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
+        UpdateLiftedVictims();
         if (skillCamera == null) return;
 
         shakeStrength = Mathf.MoveTowards(shakeStrength, 0f, Time.unscaledDeltaTime * 3.5f);

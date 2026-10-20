@@ -120,6 +120,22 @@ public class ClockEnemyController : MonoBehaviour
         if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
     }
 
+    bool skillAirborne;
+    public void SetSkillAirborne(bool held)
+    {
+        if (held == skillAirborne) return;
+        skillAirborne = held;
+        if (held)
+        {
+            StopAllCoroutines(); isActing = false;
+            if (faceClock) faceClock.localScale = faceClockScale;
+        }
+        else if (hasActivated && enemyHealth && !enemyHealth.IsDead && isActiveAndEnabled)
+        {
+            StartCoroutine(SummonClockRoutine()); StartCoroutine(CombatLoopRoutine()); StartCoroutine(FloorTrapRoutine());
+        }
+    }
+
     void SpawnClock(Vector3 pos)
     {
         var clock = Instantiate(clockPrefab, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));

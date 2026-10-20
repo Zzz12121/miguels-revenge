@@ -45,6 +45,12 @@ public class PlayerHealth : MonoBehaviour
     float lastHitTime = float.NegativeInfinity;
     float lastFlashTime = float.NegativeInfinity;
     float dodgeInvulnerableUntil = float.NegativeInfinity;
+    readonly System.Collections.Generic.HashSet<Object> skillInvulnerability = new();
+    public void SetSkillInvulnerability(Object owner, bool active)
+    {
+        if (active && owner) skillInvulnerability.Add(owner);
+        else skillInvulnerability.Remove(owner);
+    }
     string deathReason = "";
 
     void Awake()
@@ -83,6 +89,8 @@ public class PlayerHealth : MonoBehaviour
                            string deathReason = "被打倒了")
     {
         if (IsDead) return false;
+        skillInvulnerability.RemoveWhere(owner => !owner);
+        if (skillInvulnerability.Count > 0) return false;
         // 翻滾是完整無敵：連原本可忽略受傷無敵時間的持續傷害也不能穿透。
         if ((controller != null && controller.IsRolling) || Time.unscaledTime < dodgeInvulnerableUntil) return false;
         if (!ignoreInvincibility)

@@ -474,6 +474,9 @@ MonoBehaviour:
   holsterOffset: {x: 0.3, y: -0.22, z: -0.32}
   holsterBladeDirection: {x: -2, y: 0, z: 0}
   holsterRollDegrees: -4
+  materializeSound: {fileID: 0}
+  disperseSound: {fileID: 0}
+  arcSoundVolume: 0.32
 --- !u!114 &9059492451037893971
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -494,6 +497,12 @@ MonoBehaviour:
   phaseDelay: 0.38
   irregularity: 0.42
   movementResponse: 0.45
+  turnCounterSwing: 55
+  idleTipCurl: 32
+  idleTipFlick: 22
+  idleTempo: 0.55
+  runningVerticalSwing: 18
+  idleGroundPat: 24
   sourceBoneName: Spine
   tailBoundsMin: {x: -0.35, y: 0.27, z: -0.16}
   tailBoundsMax: {x: -0.02, y: 0.58, z: -0.05}
@@ -670,7 +679,7 @@ PrefabInstance:
     - target: {fileID: 8970656684036898450, guid: 17d2a328d1c56b6408d732293b92b7df, type: 3}
       propertyPath: m_Mesh
       value: 
-      objectReference: {fileID: 4300000, guid: f4c32aa3c2e6a3c4481c1a464dced670, type: 2}
+      objectReference: {fileID: 4300000, guid: 9a60160de04354f4d83fc3debfdc3f1d, type: 2}
     - target: {fileID: 8970656684036898450, guid: 17d2a328d1c56b6408d732293b92b7df, type: 3}
       propertyPath: m_AABB.m_Extent.x
       value: 0.75823164

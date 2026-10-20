@@ -44,10 +44,6 @@ public sealed partial class VoidRendSkillDemo
     bool targetLocked, cinematicCamera, voidRendCinematicActive;
     RenderPipelineAsset previousPipeline;
     bool pipelineChanged;
-    Rigidbody victimBody;
-    bool wasKinematic, usedGravity;
-    Vector3 oldVelocity, oldAngularVelocity;
-    readonly Dictionary<Behaviour, bool> suspended = new Dictionary<Behaviour, bool>();
     readonly Dictionary<Transform, Quaternion> poseRest = new Dictionary<Transform, Quaternion>();
     readonly Dictionary<Transform, HumanoidBonePose> humanoidUprightPose = new Dictionary<Transform, HumanoidBonePose>();
     Transform leftUpper, leftFore, leftHand, weapon, sheath;
@@ -139,18 +135,7 @@ public sealed partial class VoidRendSkillDemo
         victimHome = target.position;
         victimRotation = target.rotation;
         victimHeld = victimHome;
-        victimBody = target.GetComponent<Rigidbody>();
-        if (victimBody)
-        {
-            wasKinematic = victimBody.isKinematic; usedGravity = victimBody.useGravity;
-            oldVelocity = victimBody.linearVelocity; oldAngularVelocity = victimBody.angularVelocity;
-            victimBody.isKinematic = true; victimBody.useGravity = false;
-        }
-        suspended.Clear();
-        foreach (Behaviour controller in targetControllers)
-            SuspendVictimBehaviour(controller);
-        foreach (Behaviour controller in target.GetComponentsInChildren<Behaviour>(true))
-            if (ShouldSuspendVictimBehaviour(controller)) SuspendVictimBehaviour(controller);
+        HoldVictim(target);
         targetLocked = true;
         onTargetLocked.Invoke();
     }
@@ -164,30 +149,11 @@ public sealed partial class VoidRendSkillDemo
         return type.Contains("AI") || type.Contains("Attack") || type.Contains("Combat") || type.Contains("Controller");
     }
 
-    void SuspendVictimBehaviour(Behaviour controller)
-    {
-        if (controller == null || controller == this || suspended.ContainsKey(controller)) return;
-        if (controller is EnemyCombat combat) combat.CancelAttack();
-        if (controller is ThirdPersonController movement)
-        {
-            movement.SetAIInput(Vector3.zero);
-            movement.ResetMotion();
-        }
-        suspended.Add(controller, controller.enabled);
-        controller.enabled = false;
-    }
-
     void ReleaseVictim(bool restorePosition = true)
     {
         if (!targetLocked) return;
-        if (target) { target.position = restorePosition ? victimHome : victimLanding; target.rotation = victimRotation; }
-        if (victimBody)
-        {
-            victimBody.isKinematic = wasKinematic; victimBody.useGravity = usedGravity;
-            if (!wasKinematic) { victimBody.linearVelocity = oldVelocity; victimBody.angularVelocity = oldAngularVelocity; }
-        }
-        foreach (var pair in suspended) if (pair.Key) pair.Key.enabled = pair.Value;
-        suspended.Clear(); targetLocked = false;
+        ReleaseLiftedVictims(restorePosition);
+        targetLocked = false;
         onTargetReleased.Invoke();
     }
 
@@ -204,9 +170,11 @@ public sealed partial class VoidRendSkillDemo
     {
         SuspendPracticeControlsForSkill();
         playing = true; priorTimeScale = Time.timeScale; sequenceStart = Time.unscaledTime;
+        SetWindupInvulnerability(true);
         ResetPreviewState();
         // Reset the isolated demo only when the next replay actually begins.
-        if(completedLanding) { target.position=previewVictimStart; completedLanding=false; }
+        if(completedLanding && loopPreview) { target.position=previewVictimStart; }
+        completedLanding=false;
         LockVictim();
         if (casterAnimator)
         {
@@ -273,9 +241,9 @@ public sealed partial class VoidRendSkillDemo
         // 地面蓄力：先微蹲並把刀舉到頭頂，避免一開始就用不相干的對空斬。
         SetStage("OverheadWindup");
         SpawnRing(caster.position + Vector3.up * 0.06f, 0.18f, 1.75f, .08f, .62f, cyan);
-        for (float t = 0; t < .42f; t += Time.unscaledDeltaTime)
+        for (float t = 0; t < .16f; t += Time.unscaledDeltaTime)
         {
-            float u = Mathf.Clamp01(t / .42f);
+            float u = Mathf.Clamp01(t / .16f);
             cameraRadius = Mathf.Lerp(7.2f, spinCameraStartRadius, Mathf.SmoothStep(0, 1, u));
             cameraHeight = Mathf.Lerp(2.0f, 1.85f, u);
             cameraFocus = caster.position + Vector3.up * 1.35f;
@@ -285,12 +253,15 @@ public sealed partial class VoidRendSkillDemo
         }
 
         SetStage("Launch");
+        LaunchNearbyVictims();
+        victimHeld = victimHome + Vector3.up * .08f;
+        UpdateLiftedVictims();
         SpawnArc(victimHome, Quaternion.Euler(0, 0, 80), 3.2f, -100, 100, .18f, .55f, pale);
         PunchCamera(.78f, 7); Flash(cyan, .18f);
-        for (float t = 0; t < .6f; t += Time.unscaledDeltaTime)
+        for (float t = 0; t < .35f; t += Time.unscaledDeltaTime)
         {
-            float u = Mathf.Clamp01(t / .6f);
-            victimHeld = victimHome + Vector3.up * (launchHeight * (1 - Mathf.Pow(1-u, 3)));
+            float u = Mathf.Clamp01(t / .35f);
+            victimHeld = victimHome + Vector3.up * Mathf.Lerp(.08f, launchHeight, 1 - Mathf.Pow(1-u, 3));
             yield return null;
         }
         victimHeld = victimHome + Vector3.up * launchHeight;
@@ -335,6 +306,7 @@ public sealed partial class VoidRendSkillDemo
         Flash(pale, .68f); PunchCamera(.9f, 12); SetDistortion(.85f);
         yield return Wait(.42f);
         SetStage("DashLattice");
+        SetWindupInvulnerability(false);
         Vector3 center = victimHeld;
         cameraFocus = center - Vector3.up*1.2f;
         Vector3 last = caster.position;
@@ -375,7 +347,7 @@ public sealed partial class VoidRendSkillDemo
             if (halo) halo.SetPosition(1,next+Vector3.up*.9f);
             FracturedCut(last+Vector3.up*.9f,next+Vector3.up*.9f,.065f,8.4f,true);
             SpawnSpatialLattice(center, i, 5, 2.2f);
-            DamageCurrentTarget(voidRendDashDamage);
+            DamageDashArea(last + Vector3.up * .9f, next + Vector3.up * .9f);
             if (i%3==0)
             {
                 CreateSmoke(Vector3.Lerp(last,next,.5f),false,2.3f,.8f);
@@ -428,7 +400,8 @@ public sealed partial class VoidRendSkillDemo
         SetStage("FinalBreak");
         ReleaseDashLines(.4f);
         onFinisherImpact.Invoke();
-        DamageCurrentTarget(voidRendDamage);
+        UpdateLiftedVictims();
+        DamageExplosion(center);
         SpawnSpaceRift(center);
         SpawnSpatialLattice(center, 37, 32, 1.8f);
         SpawnRing(arenaCenter+.1f*Vector3.up,.5f,4.7f*effectRangeMultiplier,.4f,1.5f,pale);
@@ -475,7 +448,6 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateFinisherCamera(Vector3 shake,Vector3 rotationShake)
     {
-        if(targetLocked && target) { target.position=victimHeld; target.rotation=victimRotation; }
         if(playing) Elapsed=Time.unscaledTime-sequenceStart;
         if(refractionMaterial) refractionMaterial.SetFloat("_Clock",Time.unscaledTime);
         if (playing) Shader.SetGlobalFloat("_SpatialClock", Time.unscaledTime);
@@ -591,15 +563,15 @@ public sealed partial class VoidRendSkillDemo
 
         if (Stage == "OverheadWindup")
         {
-            float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / .32f));
-            grip = caster.TransformPoint(new Vector3(.08f, Mathf.Lerp(1.45f, 2.12f, u), .08f));
-            bladeDirection = Vector3.Slerp(caster.right, caster.forward, u).normalized;
+            float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / .16f));
+            grip = caster.TransformPoint(new Vector3(.22f, Mathf.Lerp(1.25f, .92f, u), .32f));
+            bladeDirection = (caster.forward - caster.up * .5f).normalized;
         }
         else if (Stage == "Launch")
         {
-            float u = Mathf.Clamp01(t / .6f);
-            grip = caster.TransformPoint(new Vector3(.08f, Mathf.Lerp(2.12f, 2.22f, u), Mathf.Lerp(.08f, .26f, u)));
-            bladeDirection = caster.forward;
+            float u = Mathf.SmoothStep(0, 1, Mathf.Clamp01(t / .20f));
+            grip = caster.TransformPoint(new Vector3(.14f, Mathf.Lerp(.92f, 2.12f, u), Mathf.Lerp(.32f, .08f, u)));
+            bladeDirection = Vector3.Slerp((caster.forward - caster.up * .5f).normalized, caster.forward, u);
             RotateBoneWorld(spine, caster.right, 16f * Mathf.Sin(u * Mathf.PI));
         }
         else
@@ -612,12 +584,15 @@ public sealed partial class VoidRendSkillDemo
             RotateBoneWorld(spine, caster.right, 8f);
         }
 
-        Vector3 leftGrip = grip - bladeDirection * .17f - caster.up * .025f;
+        // Keep both elbows stable. Only the independent weapon pivot rotates, not the support hand.
+        Vector3 leftGrip = Stage == "AerialRotor"
+            ? caster.TransformPoint(new Vector3(-.30f, 1.45f, .22f))
+            : grip - caster.forward * .17f - caster.up * .025f;
         SolveArm(rightUpperArm, rightForearm, rightHand, grip, caster.right);
         // IK 的手掌實際位置可能因角色手臂長度與 Avatar 比例而達不到理論 grip。
         // 武器必須貼著解算後的手掌，否則不同模型會出現刀浮在頭頂的情況。
         Vector3 solvedGrip = rightHand != null ? rightHand.position : grip;
-        leftGrip += solvedGrip - grip;
+        if (Stage != "AerialRotor") leftGrip += solvedGrip - grip;
         SolveArm(leftUpper, leftFore, leftHand, leftGrip, -caster.right);
         weapon.position = solvedGrip;
         AlignWeaponBlade(bladeDirection, caster.up);
@@ -786,11 +761,13 @@ public sealed partial class VoidRendSkillDemo
         if(caster) { caster.position=casterStartPosition;caster.rotation=casterStartRotation; }
         if(effectsRoot) foreach(Transform fx in effectsRoot)Destroy(fx.gameObject);
         ReleaseCinematicCamera();
+        if (practiceControlsSuspended) RestorePracticeControlsAfterSkill();
         playing=false;cinematicCamera=false;voidRendCinematicActive=false;Stage="Cancelled";
     }
 
     void CleanupFinisher()
     {
+        SetWindupInvulnerability(false);
         ReleaseDashLines(.15f);
         ReleaseVictim();SetDistortion(0);
         voidRendCinematicActive=false;
