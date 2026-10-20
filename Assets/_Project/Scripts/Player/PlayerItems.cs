@@ -42,11 +42,19 @@ public class PlayerItems : MonoBehaviour
     float messageTime = float.NegativeInfinity;
     string message;
 
+    [Header("動畫（Animator 裡的狀態名稱）")]
+    public string drinkAnimation = "agree";
+    public string throwAnimation = "fire";
+    public string doubleJumpAnimation = "Jump";
+
+    PlayerVisualAnimator visual;
+
     void Awake()
     {
         health = GetComponent<PlayerHealth>();
         controller = GetComponent<ThirdPersonController>();
         combat = GetComponent<PlayerCombat>();
+        visual = GetComponent<PlayerVisualAnimator>();
     }
 
     void OnEnable()
@@ -56,6 +64,7 @@ public class PlayerItems : MonoBehaviour
             health.OnRespawned += RefillPotions;
             health.OnDied += CancelDrink;
         }
+        if (controller != null) controller.OnDoubleJump += PlayDoubleJump;
     }
 
     void OnDisable()
@@ -65,7 +74,13 @@ public class PlayerItems : MonoBehaviour
             health.OnRespawned -= RefillPotions;
             health.OnDied -= CancelDrink;
         }
+        if (controller != null) controller.OnDoubleJump -= PlayDoubleJump;
         CancelDrink();
+    }
+
+    void PlayDoubleJump()
+    {
+        if (visual != null) visual.PlayGesture(doubleJumpAnimation, 0.6f);
     }
 
     /// <summary>重生時：治癒藥水補回買過的總數</summary>
@@ -130,6 +145,7 @@ public class PlayerItems : MonoBehaviour
             controller.ApplyTemporarySpeedMultiplier(drinkMoveMultiplier, drinkTime);
         }
         GameAudio.Play("SFX/RPG/beltHandle1", transform.position, 0.7f, 1.2f, 0.05f, 0.3f);
+        if (visual != null) visual.PlayGesture(drinkAnimation, drinkTime);
 
         yield return new WaitForSeconds(drinkTime);
 
@@ -173,6 +189,7 @@ public class PlayerItems : MonoBehaviour
         }
         Vector3 flat = new Vector3(dir.x, 0f, dir.z).normalized;
         if (controller != null) controller.FaceDirection(flat);
+        if (visual != null) visual.PlayGesture(throwAnimation, 0.8f);
         Vector3 origin = transform.position + Vector3.up * 1.2f + flat * 0.6f;
         FireBomb.Throw(origin, dir.normalized * throwSpeed + Vector3.up * throwUp, transform);
         GameAudio.Play("SFX/RPG/cloth2", origin, 0.9f, 1.2f, 0.08f, 0.5f);
