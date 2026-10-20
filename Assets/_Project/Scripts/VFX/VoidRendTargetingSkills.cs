@@ -77,6 +77,7 @@ public sealed partial class VoidRendSkillDemo
     void UpdatePreviewInputAndTargeting()
     {
         if (Keyboard.current == null) return;
+        if (Time.timeScale <= 0f) return;
 
         if (IsTargeting)
         {
@@ -86,6 +87,9 @@ public sealed partial class VoidRendSkillDemo
 
         if (!playing)
         {
+            // Dialogue/shop already owns movement input and the number keys.
+            if (GameUI.OverlayOpen || (practiceController != null &&
+                (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
             if (Keyboard.current.digit1Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.VoidRend);
             else if (Keyboard.current.digit2Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CatPounce);
             else if (Keyboard.current.digit3Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CrescentDash);
@@ -128,7 +132,8 @@ public sealed partial class VoidRendSkillDemo
     {
         if (!followCasterOutsideSkills || playing || IsTargeting || skillCamera == null || caster == null) return;
         // 有 ThirdPersonCamera 時由滑鼠環繞鏡頭；下面只保留舊場景的固定鏡頭 fallback。
-        if (practiceOrbitCamera != null && practiceOrbitCamera.enabled) return;
+        // Disabled by dialogue/menu is still an owned camera, not a legacy preview camera.
+        if (practiceOrbitCamera != null) return;
         Vector3 desired = caster.position + cameraFollowOffset;
         skillCamera.transform.position = Vector3.Lerp(skillCamera.transform.position, desired, 1f - Mathf.Exp(-5f * Time.unscaledDeltaTime));
         Quaternion look = Quaternion.LookRotation(caster.position + cameraLookOffset - skillCamera.transform.position, Vector3.up);
@@ -137,7 +142,8 @@ public sealed partial class VoidRendSkillDemo
 
     void BeginTargeting(PreviewSkill skill)
     {
-        if (playing || skill == PreviewSkill.None) return;
+        if (playing || skill == PreviewSkill.None || Time.timeScale <= 0f ||
+            !SkillAimCancellation.Register(CancelTargeting)) return;
         pendingSkill = skill;
         targetingStarted = Time.unscaledTime;
         timeScaleBeforeTargeting = Time.timeScale;
@@ -159,7 +165,12 @@ public sealed partial class VoidRendSkillDemo
         hoveredSelection = FindTargetUnderPointer();
         hoveredTarget = hoveredSelection.marker;
         UpdateTargetingReticle(hoveredSelection);
-        if (Keyboard.current.escapeKey.wasPressedThisFrame || Time.unscaledTime - targetingStarted >= targetingTimeout)
+        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        {
+            SkillAimCancellation.CancelForEscape();
+            return;
+        }
+        if (Time.unscaledTime - targetingStarted >= targetingTimeout)
         {
             CancelTargeting();
             return;
@@ -286,6 +297,7 @@ public sealed partial class VoidRendSkillDemo
 
     void RestoreTargetingTime()
     {
+        SkillAimCancellation.Release(CancelTargeting);
         Time.timeScale = timeScaleBeforeTargeting;
         Time.fixedDeltaTime = fixedDeltaStart;
     }
@@ -432,6 +444,9 @@ public sealed partial class VoidRendSkillDemo
             yield return null;
         }
         FracturedCut(start + Vector3.up, caster.position + Vector3.up, 0.09f, 1.4f, true);
+        SpawnArc(TargetAimPosition(), Quaternion.LookRotation(caster.forward), 2.8f, -125f, 70f, .075f, .45f, cyan);
+        SpawnSlashPair(TargetAimPosition(), caster.forward, 9f, .04f, .65f, pale);
+        PunchCamera(.38f, 4f);
         SpawnRing(TargetAimPosition(), 0.15f, 2.5f, 0.09f, 0.7f, pale);
         HitCurrentTarget();
         yield return Wait(0.5f);
@@ -460,6 +475,10 @@ public sealed partial class VoidRendSkillDemo
         SetStage("SkyfallCrossCut");
         PlaySwordAnimation(1);
         Vector3 impact = TargetAimPosition();
+        Vector3 crossAxis = skillCamera != null ? skillCamera.transform.right : caster.right;
+        SpawnSlashPair(impact, (crossAxis + Vector3.up).normalized, 8f, .055f, .75f, pale);
+        SpawnSlashPair(impact, (-crossAxis + Vector3.up).normalized, 8f, .055f, .75f, cyan);
+        SpawnRing(impact, .2f, 3.5f, .055f, .4f, pale);
         FracturedCut(impact + new Vector3(-2f, 2f, 0f), impact + new Vector3(2f, -1.2f, 0f), 0.12f, 1.6f, true);
         FracturedCut(impact + new Vector3(2f, 2f, 0f), impact + new Vector3(-2f, -1.2f, 0f), 0.12f, 1.6f, true);
         SpawnParticles(impact, 72, 1.1f, 10f, 0.025f, 0.11f, cyan);
@@ -498,6 +517,8 @@ public sealed partial class VoidRendSkillDemo
         Vector3 center = TargetAimPosition();
         Vector3 horizontal = skillCamera != null ? skillCamera.transform.right : caster.right;
         Vector3 vertical = Vector3.up * (1.25f * side);
+        SpawnArc(center, Quaternion.LookRotation(caster.forward) * Quaternion.Euler(0,0,side*35f), 2f, -100f, 80f, .07f, .32f, cyan);
+        SpawnSlashPair(center, (horizontal + Vector3.up * side * .65f).normalized, 5f, .035f, .5f, pale);
         FracturedCut(center - horizontal * 1.7f - vertical, center + horizontal * 1.7f + vertical, 0.085f, 1.25f, true);
         SpawnParticles(center, 24, 0.75f, 6f, 0.018f, 0.07f, pale);
         PunchCamera(0.28f, 2f);

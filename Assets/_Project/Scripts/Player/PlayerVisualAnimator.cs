@@ -212,7 +212,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void UpdateIdleCycle(float speed, bool grounded)
     {
-        if (Time.unscaledTime - slashStartedAt < .3f || (controller != null && controller.IsRolling)) return;
+        if (Time.time - slashStartedAt < .3f || (controller != null && controller.IsRolling)) return;
         if (!grounded || speed > 0.035f || Time.unscaledTime < nextIdleChange) return;
         AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
         if (current.IsName("Attack_1") || current.IsName("Attack_2") || current.IsName("Attack_3") ||
@@ -245,7 +245,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         animator.ResetTrigger(Attack2Hash);
         animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
         slashSide = comboIndex;
-        slashStartedAt = Time.unscaledTime;
+        slashStartedAt = Time.time;
         if (weaponPresenter != null) weaponPresenter.DrawForSeconds(0.52f);
         ScheduleNextIdle(.7f);
     }
@@ -337,7 +337,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             combat.stepSwing[i] = .12f;
             combat.stepRecovery[i] = i == count - 1 ? .18f : .11f;
         }
-        combat.chainAfter = .58f;
+        combat.chainAfter = 1f; // 接受單次緩衝，但完整收招後才能接下一刀。
     }
 
     void UpdateRollAnimationState()
@@ -604,32 +604,41 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void ApplyShortKesaSlash()
     {
-        float age = Time.unscaledTime - slashStartedAt;
+        float age = Time.time - slashStartedAt;
         if (age < 0f || age > .26f) return;
         float side = (slashSide & 1) == 0 ? 1f : -1f;
-        float cut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .025f) / .105f));
-        float recover = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .14f) / .12f));
-        float weight = Mathf.Min(cut, recover);
+        float prepare = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(age / .035f));
+        float cut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .035f) / .12f));
+        float recover = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .155f) / .105f));
+        float weight = prepare * recover;
         Transform actor = controller != null ? controller.transform : transform;
         if (chest != null)
-            chest.localRotation *= Quaternion.Euler(-7f * weight, 36f * side * (cut - .28f) * weight, 12f * side * weight);
+            chest.localRotation *= Quaternion.Euler(-3f * weight, 22f * side * (cut - .5f) * weight, 5f * side * weight);
 
         // 匯入骨架的 local 軸向和 Unity 人形骨架不一定一致。改用角色世界前方作為斬擊平面，
         // 可避免同一組 Euler 角在這個貓戰士模型上變成朝背後揮刀。
         if (rightUpperArm != null)
         {
             Vector3 shoulder = rightUpperArm.position;
-            Vector3 high = shoulder + actor.forward * .58f + actor.up * .34f + actor.right * (.42f * side);
-            Vector3 low = shoulder + actor.forward * .78f - actor.up * .48f - actor.right * (.40f * side);
-            Vector3 neutral = shoulder + actor.forward * .28f - actor.up * .10f + actor.right * (.18f * side);
-            Vector3 slashGoal = Vector3.Lerp(high, low, cut);
-            Vector3 goal = Vector3.Lerp(neutral, slashGoal, weight);
-            SolveArmWorld(rightUpperArm, rightForearm, rightHand, goal, actor.right * side + actor.up * .15f);
+            Vector3 high = shoulder + actor.forward * .26f + actor.up * .22f + actor.right * (.22f * side);
+            Vector3 low = shoulder + actor.forward * .36f - actor.up * .30f - actor.right * (.25f * side);
+            Vector3 slashGoal = Vector3.Lerp(high, low, cut) + actor.forward * (Mathf.Sin(cut * Mathf.PI) * .10f);
+            Vector3 goal = Vector3.Lerp(rightHand.position, slashGoal, weight);
+            // Preserve the animation's wrist orientation while solving arm positions.
+            // Otherwise both IK rotations accumulate into the hand and roll the blade.
+            Quaternion wrist = rightHand.rotation;
+            SolveArmWorld(rightUpperArm, rightForearm, rightHand, goal, actor.right - actor.up * .35f);
+            rightHand.rotation = wrist;
+            if (weaponPresenter != null)
+                weaponPresenter.AimSlashBlade(actor.forward + actor.up * Mathf.Lerp(.55f,-.25f,cut)
+                    + actor.right * Mathf.Lerp(.22f*side,-.15f*side,cut));
 
             if (leftUpperArm != null)
             {
-                Vector3 supportGoal = goal - actor.right * (.14f * side) - actor.forward * .06f;
-                SolveArmWorld(leftUpperArm, leftForearm, leftHand, supportGoal, -actor.right * side + actor.up * .1f);
+                // 單手刀：副手維持胸前平衡，不追著握刀手交叉扭動。
+                Vector3 supportGoal = leftUpperArm.position + actor.forward * .22f - actor.up * .18f;
+                supportGoal = Vector3.Lerp(leftHand.position, supportGoal, weight);
+                SolveArmWorld(leftUpperArm, leftForearm, leftHand, supportGoal, -actor.right - actor.up * .3f);
             }
         }
     }

@@ -6,6 +6,7 @@ using UnityEngine;
 /// 不處理傷害、命中或玩家輸入，可安全重用在正式 PlayerRig 與獨立 VFX 測試場景。
 /// </summary>
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(31000)]
 public sealed class PlayerWeaponPresenter : MonoBehaviour
 {
     [SerializeField] Animator animator;
@@ -41,12 +42,30 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     ParticleSystem weaponParticles;
     Material runtimeParticleMaterial;
     Texture2D runtimeLightningTexture;
+    Material lightningLineMaterial;
+    [Header("武器電弧音效（留空使用合成電流聲）")]
+    [SerializeField] AudioClip materializeSound;
+    [SerializeField] AudioClip disperseSound;
+    [SerializeField, Range(0f,1f)] float arcSoundVolume = .32f;
+    AudioClip generatedMaterializeSound, generatedDisperseSound;
+    readonly System.Collections.Generic.Dictionary<Renderer, Material[]> originalMaterials = new();
+    readonly System.Collections.Generic.Dictionary<Renderer, Material[]> dissolveMaterials = new();
+    float dissolveAmount = 1f;
+    float nextLightningAt;
+    bool dispersing;
 
     float drawUntilUnscaledTime;
     float revealAtUnscaledTime;
     bool skillDrawActive;
     bool drawn;
     bool pendingReveal;
+    Vector3 slashBladeDirection;
+    int slashPoseFrame = -1;
+    public void AimSlashBlade(Vector3 direction)
+    {
+        slashBladeDirection = direction.normalized;
+        slashPoseFrame = Time.frameCount;
+    }
 
     public bool IsDrawn => drawn;
 
@@ -58,10 +77,18 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
     void Update()
     {
-        if (pendingReveal && drawn && Time.unscaledTime >= revealAtUnscaledTime)
+        if (pendingReveal || dispersing)
         {
-            pendingReveal = false;
-            SetWeaponRenderers(true);
+            dissolveAmount = Mathf.MoveTowards(dissolveAmount, dispersing ? 1f : 0f,
+                Time.unscaledDeltaTime / (dispersing ? .65f : .18f));
+            ApplyDissolve();
+            if (Time.unscaledTime >= nextLightningAt)
+            {
+                EmitBladeLightning(dispersing);
+                nextLightningAt = Time.unscaledTime + .11f;
+            }
+            if (dispersing && dissolveAmount >= 1f) { dispersing = false; SetWeaponRenderers(false); RestoreMaterials(); }
+            else if (pendingReveal && dissolveAmount <= 0f) { pendingReveal = false; RestoreMaterials(); }
         }
         if (!skillDrawActive && drawn && Time.unscaledTime >= drawUntilUnscaledTime)
             DisperseAndHide();
@@ -69,14 +96,21 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
     void LateUpdate()
     {
-        // Humanoid 的 Hips 每幀都會被動畫改變。收刀時在動畫之後重新套用世界姿勢，
-        // 才不會因模型骨盆本身的軸向旋轉而跑到胸前或穿過身體。
-        if (!drawn && weaponRenderers != null && weaponRenderers.Length > 0 && weaponRenderers[0].enabled)
+        if (weaponRenderers == null || weaponRenderers.Length == 0) EnsureReferences();
+        // Visibility belongs to this presenter, not an animation's renderer-enabled curve.
+        SetWeaponRenderers(drawn || dispersing);
+        // MeleeCombat also rotates its legacy weapon pivot. Keep the visual grip fixed;
+        // the arm pose supplies the slash, not a second independent pivot spin.
+        if (drawn && !skillDrawActive && weaponPivot != null && weaponPivot.parent == handSocket)
         {
-            // Animator 在 Awake 時不一定已完成 Humanoid 初始化，因此在第一次 LateUpdate
-            // 再補抓一次骨盆與刀尖；成功後後續只會做輕量的姿勢更新。
-            if (hips == null || weaponTip == null) EnsureReferences();
-            else ApplyWaistSocketPose();
+            weaponPivot.localPosition = handLocalPosition;
+            weaponPivot.localRotation = Quaternion.Euler(handLocalEuler);
+            if (slashPoseFrame == Time.frameCount && animator != null)
+            {
+                Vector3 localAxis = LocalWeaponTip().normalized;
+                weaponPivot.rotation = Quaternion.LookRotation(slashBladeDirection, animator.transform.up)
+                    * Quaternion.FromToRotation(localAxis, Vector3.forward);
+            }
         }
     }
 
@@ -86,6 +120,10 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
         weaponPivot = newWeaponPivot;
         handSocket = newHandSocket;
         waistSocket = newWaistSocket;
+        weaponRenderers = null;
+        weaponTip = null;
+        EnsureReferences();
+        SetWeaponRenderers(drawn && !pendingReveal);
         ApplyWaistSocketPose();
     }
 
@@ -118,6 +156,9 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
     public void SetDrawnImmediate(bool shouldDraw)
     {
+        dispersing = false;
+        RestoreMaterials();
+        dissolveAmount = shouldDraw ? 0f : 1f;
         EnsureReferences();
         Transform destination = shouldDraw ? handSocket : waistSocket;
         if (weaponPivot == null || destination == null) return;
@@ -139,6 +180,8 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
         if (weaponPivot == null || handSocket == null) return;
 
         bool wasDrawn = drawn;
+        bool wasDispersing = dispersing;
+        dispersing = false;
         weaponPivot.SetParent(handSocket, false);
         weaponPivot.localPosition = handLocalPosition;
         weaponPivot.localRotation = Quaternion.Euler(handLocalEuler);
@@ -152,10 +195,12 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
         }
 
         // 只有真正從「無刀」切換成「有刀」時播放聚合；連段期間直接揮刀，不重播出場特效。
-        SetWeaponRenderers(false);
+        if (!wasDispersing) dissolveAmount = 1f;
+        SetWeaponRenderers(true);
         pendingReveal = true;
         revealAtUnscaledTime = Time.unscaledTime + materializeRevealDelay;
         EmitMaterialize(materializeParticleCount);
+        ApplyDissolve();
     }
 
     void DisperseAndHide()
@@ -163,7 +208,10 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
         if (!drawn) return;
         pendingReveal = false;
         EmitDisperse(disperseParticleCount);
-        SetWeaponRenderers(false);
+        PlayArcSound(true);
+        dispersing = true;
+        dissolveAmount = 0f;
+        ApplyDissolve();
         drawn = false;
         drawUntilUnscaledTime = 0f;
     }
@@ -172,7 +220,48 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     {
         if (weaponRenderers == null) return;
         foreach (Renderer item in weaponRenderers)
-            if (item != null) item.enabled = visible;
+            if (item != null)
+            {
+                item.enabled = visible;
+                item.forceRenderingOff = !visible;
+            }
+    }
+
+    void ApplyDissolve()
+    {
+        Shader shader = Resources.Load<Shader>("WeaponLightningDissolve");
+        if (shader == null || weaponRenderers == null) return;
+        foreach (Renderer r in weaponRenderers)
+        {
+            if (r == null) continue;
+            if (!dissolveMaterials.TryGetValue(r, out Material[] mats))
+            {
+                Material[] originals = r.sharedMaterials;
+                originalMaterials[r] = originals;
+                mats = new Material[originals.Length];
+                for (int i=0;i<mats.Length;i++)
+                {
+                    mats[i] = new Material(shader);
+                    var source = originals[i];
+                    if (source == null) continue;
+                    string map = source.HasProperty("_BaseMap") ? "_BaseMap" : "_MainTex";
+                    if (source.HasProperty(map))
+                    {
+                        mats[i].SetTexture("_BaseMap",source.GetTexture(map));
+                        mats[i].SetTextureScale("_BaseMap",source.GetTextureScale(map));
+                        mats[i].SetTextureOffset("_BaseMap",source.GetTextureOffset(map));
+                    }
+                    if (source.HasProperty("_BaseColor")) mats[i].SetColor("_BaseColor",source.GetColor("_BaseColor"));
+                }
+                dissolveMaterials[r] = mats;
+            }
+            r.sharedMaterials = mats;
+            foreach(var m in mats) m.SetFloat("_Amount",dissolveAmount);
+        }
+    }
+    void RestoreMaterials()
+    {
+        foreach(var pair in originalMaterials) if(pair.Key != null) pair.Key.sharedMaterials = pair.Value;
     }
 
     void EnsureReferences()
@@ -199,7 +288,7 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
         if (weaponPivot == null) weaponPivot = FindDeepChild(transform, "WeaponPivot");
         if (weaponTip == null && weaponPivot != null) weaponTip = FindDeepChild(weaponPivot, "WeaponTip");
-        if (weaponRenderers == null && weaponPivot != null)
+        if ((weaponRenderers == null || weaponRenderers.Length == 0) && weaponPivot != null)
         {
             Renderer[] all = weaponPivot.GetComponentsInChildren<Renderer>(true);
             var visibleMeshes = new System.Collections.Generic.List<Renderer>(all.Length);
@@ -324,44 +413,100 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
     void EmitMaterialize(int count)
     {
-        if (weaponParticles == null) return;
-        Vector3 tip = LocalWeaponTip();
-        for (int i = 0; i < count; i++)
+        EmitBladeLightning(false);
+    }
+
+    void PlayArcSound(bool disperse)
+    {
+        AudioClip clip = disperse ? disperseSound : materializeSound;
+        if (clip == null)
         {
-            float along = Random.value;
-            Vector3 targetPoint = Vector3.Lerp(Vector3.zero, tip, along);
-            Vector3 startPoint = targetPoint + Random.insideUnitSphere * Random.Range(0.10f, 0.30f);
-            float lifetime = Random.Range(0.065f, 0.14f);
-            var emit = new ParticleSystem.EmitParams
+            if (disperse)
             {
-                position = startPoint,
-                velocity = (targetPoint - startPoint) / lifetime,
-                startLifetime = lifetime,
-                startSize = Random.Range(0.018f, 0.045f),
-                startColor = Random.value > 0.38f ? energyBlue : energyWhite
-            };
-            weaponParticles.Emit(emit, 1);
+                if (generatedDisperseSound == null) generatedDisperseSound = CreateArcSound(true);
+                clip = generatedDisperseSound;
+            }
+            else
+            {
+                if (generatedMaterializeSound == null) generatedMaterializeSound = CreateArcSound(false);
+                clip = generatedMaterializeSound;
+            }
         }
+        GameAudio.PlayAt(clip, weaponPivot != null ? weaponPivot.position : transform.position,
+            Mathf.Clamp01(arcSoundVolume * 3f) * .8f, 1f, .35f, 28f);
+    }
+
+    static AudioClip CreateArcSound(bool disperse)
+    {
+        const int rate = 22050;
+        float duration = disperse ? .72f : .38f;
+        float[] data = new float[Mathf.CeilToInt(duration*rate)];
+        var random = new System.Random(disperse ? 927 : 413);
+        float filteredNoise = 0f, phase = 0f;
+        for (int i=0;i<data.Length;i++)
+        {
+            float t=i/(float)rate, u=t/duration;
+            float noise=(float)random.NextDouble()*2f-1f;
+            // Low-pass the crackle instead of differentiating it into a sharp hiss.
+            filteredNoise += .12f*(noise-filteredNoise);
+            phase += 2f*Mathf.PI*Mathf.Lerp(disperse ? 145f : 85f,disperse ? 65f : 135f,u)/rate;
+            float pulse=.48f+.52f*Mathf.Pow(.5f+.5f*Mathf.Sin(t*2f*Mathf.PI*24f),2f);
+            float buzz=Mathf.Sin(phase)*.22f+Mathf.Sin(phase*2f)*.10f+Mathf.Sin(phase*3f)*.06f;
+            float envelope=Mathf.SmoothStep(0f,1f,Mathf.Min(t/.025f,1f))*Mathf.Pow(1f-u,disperse ? 1.2f : .65f);
+            data[i]=Mathf.Clamp((filteredNoise*.8f+buzz)*pulse*envelope*1.8f,-.9f,.9f);
+        }
+        var clip=AudioClip.Create(disperse ? "Weapon Arc Disperse" : "Weapon Arc Assemble",data.Length,1,rate,false);
+        clip.SetData(data,0);
+        return clip;
     }
 
     void EmitDisperse(int count)
     {
-        if (weaponParticles == null) return;
-        Vector3 tip = LocalWeaponTip();
-        for (int i = 0; i < count; i++)
+        EmitBladeLightning(true);
+    }
+
+    void EmitBladeLightning(bool disperse)
+    {
+        if (weaponPivot == null) return;
+        if (lightningLineMaterial == null)
+            lightningLineMaterial = new Material(Shader.Find("Sprites/Default"));
+        Vector3 root = weaponPivot.position;
+        Vector3 tip = weaponPivot.TransformPoint(LocalWeaponTip());
+        Vector3 axis = (tip - root).normalized;
+        Vector3 side = Vector3.Cross(axis, Vector3.up).normalized;
+        if (side.sqrMagnitude < .01f) side = Vector3.right;
+        for (int i = 0; i < 12; i++)
         {
-            Vector3 bladePoint = Vector3.Lerp(Vector3.zero, tip, Random.value);
-            Vector3 outward = Random.insideUnitSphere;
-            outward.y = Mathf.Abs(outward.y) * 0.75f + 0.12f;
-            var emit = new ParticleSystem.EmitParams
+            var go = new GameObject("Weapon_DispersingFilament");
+            var line = go.AddComponent<LineRenderer>();
+            line.useWorldSpace = true;
+            line.sharedMaterial = lightningLineMaterial;
+            line.positionCount = 9;
+            line.widthCurve = new AnimationCurve(new Keyframe(0,0),new Keyframe(.2f,1),new Keyframe(.75f,.6f),new Keyframe(1,0));
+            float start = Random.Range(0f,.85f);
+            float end = Mathf.Min(1f,start+Random.Range(.04f,.18f));
+            Vector3 drift = side*(i-5.5f)*.07f + Vector3.up*Random.Range(-.08f,.15f);
+            for (int j = 0; j < 9; j++)
             {
-                position = bladePoint + Random.insideUnitSphere * 0.025f,
-                velocity = outward * Random.Range(0.18f, 0.55f),
-                startLifetime = Random.Range(0.30f, 0.65f),
-                startSize = Random.Range(0.025f, 0.075f),
-                startColor = Random.value > 0.45f ? energyBlue : energyWhite
-            };
-            weaponParticles.Emit(emit, 1);
+                float t = Mathf.Lerp(start,end,j/8f);
+                line.SetPosition(j, Vector3.Lerp(root, tip, t) + (disperse ? Vector3.zero : drift*.4f)
+                    + side*Random.Range(-.008f,.008f));
+            }
+            Color tint = new Color(.08f,.38f,.72f,.5f);
+            go.AddComponent<VoidRendTransientLine>().Initialize(line, disperse ? .65f : .3f, .012f,tint);
+            StartCoroutine(DriftFlash(line, drift * (disperse ? 1f : -1f), disperse ? .65f : .3f));
+        }
+    }
+
+    System.Collections.IEnumerator DriftFlash(LineRenderer line, Vector3 velocity, float duration)
+    {
+        float age = 0;
+        while (line != null && age < duration)
+        {
+            float dt = Time.unscaledDeltaTime;
+            for (int i = 0; i < line.positionCount; i++) line.SetPosition(i, line.GetPosition(i) + velocity * dt);
+            age += dt;
+            yield return null;
         }
     }
 
@@ -374,8 +519,22 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
 
     void OnDestroy()
     {
+        if (generatedMaterializeSound != null) Destroy(generatedMaterializeSound);
+        if (generatedDisperseSound != null) Destroy(generatedDisperseSound);
+        RestoreMaterials();
+        foreach(var pair in dissolveMaterials) foreach(var m in pair.Value) if(m != null) Destroy(m);
         if (runtimeParticleMaterial != null) Destroy(runtimeParticleMaterial);
         if (runtimeLightningTexture != null) Destroy(runtimeLightningTexture);
+        if (lightningLineMaterial != null) Destroy(lightningLineMaterial);
+    }
+
+    void OnDisable()
+    {
+        StopAllCoroutines();
+        dispersing = pendingReveal = drawn = skillDrawActive = false;
+        dissolveAmount = 1f;
+        SetWeaponRenderers(false);
+        RestoreMaterials();
     }
 
     void ApplyWaistSocketPose()
