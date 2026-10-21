@@ -124,6 +124,13 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     {
         if (animator == null) return;
 
+        // 倒下的期間什麼都不要切：被打飛時的移動 / 落下 / 翻滾畫面都會把「倒下」動畫蓋掉
+        if (health != null && health.IsDead)
+        {
+            previousHealth = health.Health;
+            return;
+        }
+
         UpdateRollAnimationState();
 
         float normalizedSpeed = 0f;
@@ -685,9 +692,21 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         ScheduleNextIdle(1.5f);
     }
 
+    static readonly int DeathStateHash = Animator.StringToHash("Death");
+
     void HandleDeath()
     {
-        if (animator != null) animator.SetTrigger(DieHash);
+        if (animator != null)
+        {
+            // 翻滾中死掉：翻滾時 Animator 是暫停的（speed = 0），要先恢復，不然倒下動畫不會動
+            RestoreRollVisualState();
+            // 直接切到倒下動畫（不靠 Trigger 等轉換線），同一幀其他腳本切的動畫也蓋不掉它；
+            // 找不到 Death 狀態時才退回用 Trigger
+            if (animator.HasState(0, DeathStateHash))
+                animator.CrossFadeInFixedTime(DeathStateHash, 0.1f, 0, 0f);
+            else
+                animator.SetTrigger(DieHash);
+        }
         if (weaponPresenter != null) weaponPresenter.SheatheNow();
     }
 

@@ -18,8 +18,6 @@ using UnityEngine.UI;
 ///
 /// 不用手動放進場景：按 Play 時會自動建立。想改關卡順序或標題，
 /// 可以在任一場景放一個掛著 GameManager 的物件，那個物件的設定會優先使用。
-///
-/// 測試用快捷鍵（只在 Editor / Development Build 有效）：Shift + 1 / 2 / 3 直接跳到第 N 關。
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -74,9 +72,6 @@ public class GameManager : MonoBehaviour
     [Header("存檔")]
     [Tooltip("進入每一關時自動存檔")]
     public bool autoSaveOnLevelStart = true;
-
-    [Header("測試")]
-    public bool debugHotkeys = true;
 
     /// <summary>正在換場景（傳送門用來避免重複觸發）</summary>
     public bool IsLoading { get; private set; }
@@ -374,11 +369,6 @@ public class GameManager : MonoBehaviour
             if (IsPaused) Resume();
             else if (Time.timeScale > 0f) Pause();
         }
-
-        if (!debugHotkeys || !Debug.isDebugBuild || !kb.shiftKey.isPressed) return;
-        if (kb.digit1Key.wasPressedThisFrame) LoadLevel(0);
-        else if (kb.digit2Key.wasPressedThisFrame) LoadLevel(1);
-        else if (kb.digit3Key.wasPressedThisFrame) LoadLevel(2);
     }
 
     // ================= 暫停 / Game Over / 通關畫面（uGUI） =================

@@ -53,7 +53,7 @@ public static class GolemInstaller
                 "繼續", "取消"))
             return;
 
-        if (Reinstall()) Debug.Log("[GeminiGrowUp] Boss 模型（骸骨巨像）已安裝到 BossRoom。按 Play 測試，數字鍵 1~4 可以叫 Boss 放招。");
+        if (Reinstall()) Debug.Log("[GeminiGrowUp] Boss 模型（骸骨巨像）已安裝到 BossRoom。按 Play 測試。");
     }
 
     /// <summary>

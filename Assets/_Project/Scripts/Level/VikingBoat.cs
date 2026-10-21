@@ -25,8 +25,6 @@ public class VikingBoat : MonoBehaviour
     [Header("Debug 快速測試")]
     [Tooltip("勾選後一按下 Play 就會直接將玩家傳送到船上並進入駕駛狀態！")]
     public bool autoBoardOnStart = false;
-    [Tooltip("按快捷鍵快速傳送登船（預設為 [B] 鍵，遊戲中隨時可按）")]
-    public bool enableShortcutToBoard = true;
 
     [Header("狀態設定")]
     public BoatState currentState = BoatState.Locked;
@@ -173,26 +171,6 @@ public class VikingBoat : MonoBehaviour
 
     void Update()
     {
-        // Debug 快捷鍵：任何時候按 [B] 鍵直接傳送到船上開始駕駛
-        if (enableShortcutToBoard && currentState != BoatState.Driving && currentState != BoatState.Transitioning)
-        {
-            bool bPressed = false;
-            var kb = Keyboard.current;
-            if (kb != null) bPressed = kb.bKey.wasPressedThisFrame;
-#if ENABLE_LEGACY_INPUT_MANAGER
-            if (!bPressed) bPressed = Input.GetKeyDown(KeyCode.B);
-#endif
-            if (bPressed)
-            {
-                if (playerObj == null) playerObj = GameObject.FindWithTag("Player");
-                if (playerObj != null)
-                {
-                    Debug.Log("[VikingBoat] 【Debug 快捷鍵 B】立即傳送登船！");
-                    BoardAndDrive(playerObj);
-                }
-            }
-        }
-
         switch (currentState)
         {
             case BoatState.Locked:

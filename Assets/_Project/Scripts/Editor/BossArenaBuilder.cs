@@ -157,7 +157,7 @@ public static class BossArenaBuilder
         EditorSceneManager.SaveScene(scene, ScenePath);
         AddToBuildSettings(ScenePath);
         Selection.activeGameObject = boss;
-        Debug.Log($"[GeminiGrowUp] 已建立 Boss 房：{ScenePath}。按 Play 開始，數字鍵 1/2/3 可直接測試三種招式。");
+        Debug.Log($"[GeminiGrowUp] 已建立 Boss 房：{ScenePath}。按 Play 開始。");
     }
 
     // ================= 工具函式 =================
