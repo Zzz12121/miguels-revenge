@@ -46,6 +46,8 @@ public sealed partial class VoidRendSkillDemo
     void HoldVictim(Transform root)
     {
         if (!root || liftedVictims.Exists(v => v.root == root)) return;
+        // The new lift takes over from a previous tether throw, never two motion owners at once.
+        root.GetComponent<TetherThrownMotion>()?.Interrupt();
         var v = new LiftedVictim { root = root, home = root.position, rotation = root.rotation,
             damageable = root.GetComponent<IDamageable>(), body = root.GetComponent<Rigidbody>() };
         if (v.damageable != null && v.damageable.IsDead) return;

@@ -21,6 +21,9 @@ public sealed class VoidRendTargetable : MonoBehaviour
     void Awake()
     {
         cachedAnimator = GetComponentInChildren<Animator>(true);
+        // Range-only: production enemies keep their existing health/death systems.
+        if (gameObject.scene.name == "VFX_VoidRend_Bocchi" && GetComponent<IDamageable>() == null)
+            gameObject.AddComponent<CalligraphyPracticeTarget>();
         if (generateFallbackAimZones) EnsureFallbackAimZones();
     }
 
@@ -121,6 +124,7 @@ public sealed class VoidRendMovingTarget : MonoBehaviour
     Vector3 start;
 
     void Awake() => start = transform.position;
+    public void RebaseAfterTether() => start = transform.position;
 
     void Update()
     {

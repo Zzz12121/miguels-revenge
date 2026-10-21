@@ -139,6 +139,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
         if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
+        UpdateDrawDashAfterimages();
         UpdateLiftedVictims();
         if (skillCamera == null) return;
 
@@ -487,7 +488,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         Destroy(go, lifetime + 0.6f);
     }
 
-    void CreateAfterimage()
+    void CreateAfterimage(bool drawDash = false)
     {
         if (afterimageMaterial == null || caster == null) return;
         foreach (SkinnedMeshRenderer source in caster.GetComponentsInChildren<SkinnedMeshRenderer>())
@@ -506,7 +507,10 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
             for (int i = 0; i < mats.Length; i++) mats[i] = afterimageMaterial;
             mr.sharedMaterials = mats;
             VoidRendAfterimage fade = ghost.AddComponent<VoidRendAfterimage>();
-            fade.Initialize(mr, baked, 0.48f, cyan);
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            fade.Initialize(mr, baked, drawDash ? .32f : .48f, drawDash ? new Color(.83f, .94f, 1f) : cyan,
+                drawDash ? caster.forward * 4.5f : Vector3.zero);
         }
     }
 
@@ -717,32 +721,39 @@ public sealed class VoidRendAfterimage : MonoBehaviour
     float age;
     Color color;
     MaterialPropertyBlock block;
+    Vector3 drift;
 
-    public void Initialize(MeshRenderer renderer, Mesh mesh, float seconds, Color tint)
+    public void Initialize(MeshRenderer renderer, Mesh mesh, float seconds, Color tint, Vector3 velocity = default)
     {
         target = renderer;
         ownedMesh = mesh;
         lifetime = seconds;
         color = tint;
         block = new MaterialPropertyBlock();
+        drift = velocity;
+        block.SetColor("_BaseColor", new Color(tint.r, tint.g, tint.b, drift.sqrMagnitude > 0 ? .18f : .55f));
+        block.SetFloat("_Intensity", drift.sqrMagnitude > 0 ? 1.1f : 2.8f);
+        target.SetPropertyBlock(block);
     }
 
     void Update()
     {
         age += Time.unscaledDeltaTime;
         float t = Mathf.Clamp01(age / lifetime);
+        transform.position += drift * ((1f - t * .65f) * Time.unscaledDeltaTime);
         Color c = color;
-        c.a = Mathf.Pow(1f - t, 1.6f) * 0.55f;
+        c.a = Mathf.Pow(1f - t, 1.6f) * (drift.sqrMagnitude > 0 ? .18f : .55f);
         target.GetPropertyBlock(block);
         block.SetColor("_BaseColor", c);
-        block.SetFloat("_Intensity", Mathf.Lerp(2.8f, 0.2f, t));
+        block.SetFloat("_Intensity", Mathf.Lerp(drift.sqrMagnitude > 0 ? 1.1f : 2.8f, 0.2f, t));
         target.SetPropertyBlock(block);
         transform.localScale *= 1f + Time.unscaledDeltaTime * 0.18f;
 
         if (age >= lifetime)
         {
-            if (ownedMesh != null) Destroy(ownedMesh);
             Destroy(gameObject);
         }
     }
+
+    void OnDestroy() { if (ownedMesh != null) Destroy(ownedMesh); }
 }

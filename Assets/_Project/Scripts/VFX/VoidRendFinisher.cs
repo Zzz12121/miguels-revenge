@@ -178,6 +178,7 @@ public sealed partial class VoidRendSkillDemo
         LockVictim();
         if (casterAnimator)
         {
+            CaptureDrawEntryPose();
             animatorWasEnabled = casterAnimator.enabled;
             animatorRootMotionWasEnabled = casterAnimator.applyRootMotion;
             casterAnimator.applyRootMotion = false;
@@ -205,53 +206,35 @@ public sealed partial class VoidRendSkillDemo
         float spinCameraStartRadius = Mathf.Max(7.2f, normalCameraRadius);
         float spinCameraEndRadius = spinCameraStartRadius + 3.4f;
 
-        // 先面向目標跑到擊飛位置；只啟動一次 Run，逐幀推進而不重播起始幀。
-        SetStage("ApproachRun");
+        // Blend from the actual locomotion frame into the left-waist draw pose.
         Vector3 approachStart = caster.position;
         Vector3 approachDirection = Vector3.ProjectOnPlane(arenaCenter - approachStart, Vector3.up);
         float approachDistance = approachDirection.magnitude;
+        Quaternion drawFacing = approachDistance > .05f
+            ? Quaternion.LookRotation(approachDirection.normalized, Vector3.up) : caster.rotation;
+        Quaternion entryFacing = caster.rotation;
+        SetStage("DrawPrepare");
+        for (float t = 0; t < drawBlendSeconds; t += Time.unscaledDeltaTime)
+        {
+            caster.rotation = Quaternion.Slerp(entryFacing, drawFacing, Mathf.SmoothStep(0, 1, t / Mathf.Max(.01f, drawBlendSeconds)));
+            cameraFocus = caster.position + Vector3.up * 1.35f;
+            yield return null;
+        }
+        caster.rotation = drawFacing;
+        SetStage("ApproachRun");
+        nextDrawGhostTime = 0f;
         if (approachDistance > .05f)
         {
-            caster.rotation = Quaternion.LookRotation(approachDirection.normalized, Vector3.up);
-            bool sampleRun = casterAnimator != null && !useLegacyProceduralPose;
-            if (sampleRun)
-            {
-                casterAnimator.SetFloat("Speed", 1f);
-                casterAnimator.SetBool("Grounded", true);
-                casterAnimator.SetFloat("VerticalSpeed", 0f);
-                casterAnimator.Play("Run", 0, 0f);
-            }
-            float approachDuration = Mathf.Max(.06f, approachDistance / 24f);
+            float approachDuration = Mathf.Max(.03f, approachDistance / Mathf.Max(1f, drawDashSpeed));
             for (float t = 0; t < approachDuration; t += Time.unscaledDeltaTime)
             {
                 caster.position = Vector3.Lerp(approachStart, arenaCenter, Mathf.Clamp01(t / approachDuration));
-                if (sampleRun) casterAnimator.Update(Time.unscaledDeltaTime * 2f);
                 cameraFocus = caster.position + Vector3.up * 1.35f;
                 yield return null;
             }
         }
         caster.position = arenaCenter;
-        if (casterAnimator != null && !useLegacyProceduralPose)
-        {
-            casterAnimator.SetFloat("Speed", 0f);
-            casterAnimator.Play("Idle", 0, 0f);
-            casterAnimator.Update(0f);
-        }
-
-        // 地面蓄力：先微蹲並把刀舉到頭頂，避免一開始就用不相干的對空斬。
-        SetStage("OverheadWindup");
-        SpawnRing(caster.position + Vector3.up * 0.06f, 0.18f, 1.75f, .08f, .62f, cyan);
-        for (float t = 0; t < .16f; t += Time.unscaledDeltaTime)
-        {
-            float u = Mathf.Clamp01(t / .16f);
-            cameraRadius = Mathf.Lerp(7.2f, spinCameraStartRadius, Mathf.SmoothStep(0, 1, u));
-            cameraHeight = Mathf.Lerp(2.0f, 1.85f, u);
-            cameraFocus = caster.position + Vector3.up * 1.35f;
-            cinematicFov = Mathf.Lerp(48f, 47f, u);
-            SetDistortion(.025f * u);
-            yield return null;
-        }
-
+        // Draw immediately on arrival: no extra unrelated overhead windup.
         SetStage("Launch");
         LaunchNearbyVictims();
         victimHeld = victimHome + Vector3.up * .08f;
@@ -462,7 +445,13 @@ public sealed partial class VoidRendSkillDemo
 
     void ApplyFinisherPose()
     {
-        if (Stage == "ApproachRun") return;
+        if (IsDrawDashStage())
+        {
+            foreach (var p in poseRest) if (p.Key) p.Key.localRotation = p.Value;
+            if (pelvis) pelvis.localPosition = pelvisRest;
+            ApplyDrawDashPose();
+            return;
+        }
         foreach(var p in poseRest) if(p.Key) p.Key.localRotation=p.Value;
         float t=Time.unscaledTime-stageTime;
         Vector3 rh=new Vector3(.35f,1.6f,.2f), lh=new Vector3(-.35f,1.55f,.12f);
@@ -536,9 +525,9 @@ public sealed partial class VoidRendSkillDemo
     void ApplyHumanoidFinisherPose()
     {
         if (caster == null) return;
-        if (Stage == "ApproachRun") return;
         RestoreHumanoidUprightPose();
         if (weapon == null) return;
+        if (IsDrawDashStage()) { ApplyDrawDashPose(); return; }
 
         float t = Time.unscaledTime - stageTime;
 
@@ -579,7 +568,8 @@ public sealed partial class VoidRendSkillDemo
             float u = Mathf.Clamp01(t / Mathf.Max(.1f, chargeOrbitSeconds));
             // 2.75 圈：看得出是刀在旋轉，但不會快成模糊螺旋槳。
             float spin = u * 360f * 2.75f;
-            bladeDirection = Quaternion.AngleAxis(spin, caster.up) * caster.forward;
+            bladeDirection = Vector3.Slerp((caster.forward * .35f + caster.up).normalized,
+                Quaternion.AngleAxis(spin, caster.up) * caster.forward, Mathf.SmoothStep(0, 1, t / .16f));
             grip = caster.TransformPoint(new Vector3(.04f, 2.12f + Mathf.Sin(u * Mathf.PI) * .08f, .08f));
             RotateBoneWorld(spine, caster.right, 8f);
         }
