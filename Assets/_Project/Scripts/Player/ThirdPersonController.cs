@@ -102,6 +102,9 @@ public class ThirdPersonController : MonoBehaviour
     int nextTemporarySpeedEffectId;
     int temporarySpeedEffectGeneration;
     float temporarySpeedMultiplier = 1f;
+    // 加速效果（能力植物：翻滾後加速、惡魔型態）：和減速分開算，同時有好幾個時取最快的
+    readonly Dictionary<int, float> temporarySpeedBoosts = new Dictionary<int, float>();
+    float temporarySpeedBoost = 1f;
 
     CharacterController controller;
     Vector3 horizontalVelocity;
@@ -200,8 +203,35 @@ public class ThirdPersonController : MonoBehaviour
         RecalculateTemporarySpeedMultiplier();
     }
 
+    /// <summary>
+    /// 暫時加速（multiplier > 1，例如 1.4 = 快 40%）。跟 ApplyTemporarySpeedMultiplier 的減速分開計算、互相相乘，
+    /// 好幾個加速重疊時取最快的。翻滾中也可以套用（翻滾結束後才會用到）。
+    /// </summary>
+    public void ApplyTemporarySpeedBoost(float multiplier, float duration)
+    {
+        if (duration <= 0f || multiplier <= 1f) return;
+        StartCoroutine(TemporarySpeedBoostRoutine(multiplier, duration));
+    }
+
+    IEnumerator TemporarySpeedBoostRoutine(float multiplier, float duration)
+    {
+        int id = ++nextTemporarySpeedEffectId;
+        int generation = temporarySpeedEffectGeneration;
+        temporarySpeedBoosts[id] = multiplier;
+        RecalculateTemporarySpeedMultiplier();
+
+        yield return new WaitForSeconds(duration);
+
+        if (generation != temporarySpeedEffectGeneration) yield break;
+        temporarySpeedBoosts.Remove(id);
+        RecalculateTemporarySpeedMultiplier();
+    }
+
     void RecalculateTemporarySpeedMultiplier()
     {
+        temporarySpeedBoost = 1f;
+        foreach (float boost in temporarySpeedBoosts.Values)
+            temporarySpeedBoost = Mathf.Max(temporarySpeedBoost, boost);
         temporarySpeedMultiplier = 1f;
         foreach (float multiplier in temporarySpeedMultipliers.Values)
             temporarySpeedMultiplier = Mathf.Min(temporarySpeedMultiplier, multiplier);
@@ -212,6 +242,8 @@ public class ThirdPersonController : MonoBehaviour
         temporarySpeedEffectGeneration++;
         temporarySpeedMultipliers.Clear();
         temporarySpeedMultiplier = 1f;
+        temporarySpeedBoosts.Clear();
+        temporarySpeedBoost = 1f;
     }
 
     void OnDisable()
@@ -354,7 +386,7 @@ public class ThirdPersonController : MonoBehaviour
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
-        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * temporarySpeedMultiplier
+        float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * temporarySpeedMultiplier * temporarySpeedBoost
                           * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
         float accel = controller.isGrounded ? acceleration : acceleration * airControl;

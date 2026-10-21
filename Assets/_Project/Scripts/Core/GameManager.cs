@@ -54,6 +54,9 @@ public class GameManager : MonoBehaviour
     public float fadeOutTime = 0.8f;
     public float fadeInTime = 0.8f;
     public Color fadeColor = Color.black;
+    [Tooltip("往下一關前進時（第一關 → 第二關、第二關 → 第三關）播放轉場動畫，最少播幾秒")]
+    public float transitionMinTime = 2.5f;
+    LevelTransition transition;
     public bool showLevelTitle = true;
 
     [Header("主選單")]
@@ -283,6 +286,10 @@ public class GameManager : MonoBehaviour
         if (carryPlayer && CurrentLevelIndex >= 0 && sceneName != SceneManager.GetActiveScene().name)
             levelEntryState = PlayerState.Capture(PlayerState.FindPlayer()) ?? levelEntryState;
 
+        // 往後面的關卡前進（帶著玩家狀態）：載入時播轉場動畫，不是一片黑
+        int targetIndex = IndexOf(sceneName);
+        bool travel = carryPlayer && CurrentLevelIndex >= 0 && targetIndex > CurrentLevelIndex;
+
         yield return Fade(1f, fadeOutTime);
 
         CloseOverlay(false);
@@ -290,6 +297,21 @@ public class GameManager : MonoBehaviour
         IsGameWon = false;
         Time.timeScale = 1f; // Boss 的慢動作之類的效果不要帶到下一關
         var op = SceneManager.LoadSceneAsync(sceneName);
+        if (travel)
+        {
+            if (transition == null) transition = gameObject.AddComponent<LevelTransition>();
+            op.allowSceneActivation = false; // 先在背景載入，動畫至少播 transitionMinTime 秒
+            transition.Begin(levels[targetIndex].title, targetIndex);
+            float shownAt = Time.unscaledTime;
+            while (op.progress < 0.9f || Time.unscaledTime - shownAt < transitionMinTime)
+            {
+                // 進度條跟著載入進度，但不會比最短播放時間跑得快
+                transition.Progress = Mathf.Min(op.progress / 0.9f, (Time.unscaledTime - shownAt) / transitionMinTime);
+                yield return null;
+            }
+            transition.Progress = 1f;
+            op.allowSceneActivation = true;
+        }
         while (!op.isDone) yield return null;
         yield return null; // 等新場景的 Start 都跑完
 
@@ -300,6 +322,8 @@ public class GameManager : MonoBehaviour
             else levelEntryState = PlayerState.Capture(player);
             if (autoSaveOnLevelStart) SaveGame();
         }
+
+        if (travel && transition != null) yield return transition.End();
 
         OnLevelLoaded?.Invoke(sceneName);
         ShowTitle();
