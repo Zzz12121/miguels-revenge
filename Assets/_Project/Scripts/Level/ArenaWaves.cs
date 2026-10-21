@@ -112,8 +112,6 @@ public class ArenaWaves : MonoBehaviour
     public Color bossTitleColor = new Color(1f, 0.25f, 0.15f);
 
     [Header("除錯")]
-    [Tooltip("數字鍵 7 = 跳過目前這一波")]
-    public bool debugKeys = true;
     public bool showStatus = true;
 
     public Phase CurrentPhase => phase;
@@ -213,9 +211,6 @@ public class ArenaWaves : MonoBehaviour
                 enemies.RemoveAt(i);
             }
         }
-
-        if (debugKeys && IsRunning && Keyboard.current != null && Keyboard.current.digit7Key.wasPressedThisFrame)
-            skipRequested = true;
     }
 
     // =====================================================================
@@ -557,11 +552,6 @@ public class ArenaWaves : MonoBehaviour
         var style = new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.UpperCenter, fontStyle = FontStyle.Bold };
         GUI.color = Color.white;
         GUI.Label(new Rect(0, 16, Screen.width, 30), text, style);
-        if (debugKeys)
-        {
-            var small = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.UpperCenter };
-            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：7 跳過這一波", small);
-        }
     }
 
     void DrawTitle()

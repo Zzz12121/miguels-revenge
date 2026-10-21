@@ -23,6 +23,8 @@ public class Checkpoint : MonoBehaviour
     public Renderer glow;
     public Color inactiveColor = new Color(0.3f, 0.25f, 0.15f);
     public Color activeColor = new Color(1f, 0.8f, 0.3f);
+    [Tooltip("沒有石碑時，第一次啟用也在地上擴散一圈光環、亮起一盞燈（例如維京村莊岸邊的老者）")]
+    public bool ringOnActivate = false;
 
     [Header("石碑")]
     [Tooltip("執行時自動蓋一塊石碑當檢查點的外觀")]
@@ -109,7 +111,25 @@ public class Checkpoint : MonoBehaviour
             GameAudio.Play("SFX/roar_rock_crumble", transform.position, 0.45f, 1.3f, 0f, 1f, 30f);
             CombatVFX.Ring(transform.position, runeColor, 2.5f);
         }
-        else SetGlow(activeColor);
+        else
+        {
+            SetGlow(activeColor);
+            if (ringOnActivate)
+            {
+                CombatVFX.Ring(transform.position, activeColor, 2.5f);
+                if (glowLight == null)
+                {
+                    glowLight = new GameObject("CheckpointLight").AddComponent<Light>();
+                    glowLight.transform.SetParent(transform, false);
+                    glowLight.transform.position = transform.position + Vector3.up * 1.8f;
+                    glowLight.type = LightType.Point;
+                    glowLight.color = activeColor;
+                    glowLight.range = 5f;
+                    glowLight.intensity = 2f;
+                    glowLight.shadows = LightShadows.None;
+                }
+            }
+        }
         if (glowLight != null) glowLight.enabled = true;
     }
 

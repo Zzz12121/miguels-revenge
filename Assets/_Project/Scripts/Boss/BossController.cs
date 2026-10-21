@@ -22,7 +22,6 @@ using UnityEngine.InputSystem;
 ///              場上的召喚小怪快滿了就不會再用；Boss 被打倒時小怪一起倒下。
 ///
 /// 玩家死亡重生時：Boss 回滿血、回到起始位置、地板壓平，回到「等待玩家進門」的狀態。
-/// 測試用：遊戲中按數字鍵可以直接叫 Boss 放招：1 拍地、2 怒吼、3 召喚（開啟光束時是光束）、4 跳躍砸地、8 召喚。
 /// </summary>
 public class BossController : MonoBehaviour
 {
@@ -246,9 +245,12 @@ public class BossController : MonoBehaviour
     public AudioClip impactSound;
     [Range(0f, 1f)] public float sfxVolume = 1f;
 
+    [Header("玩家倒下")]
+    [Tooltip("Boss 戰中玩家死掉後，先播倒下動畫，幾秒後才回到 Checkpoint（只影響 Boss 戰，其他地方照玩家自己的設定）")]
+    public float playerDeathDelay = 3f;
+
     [Header("除錯")]
-    [Tooltip("數字鍵 1~4 放大招、5 = Boss 血量直接變成二階段門檻、6 = Boss 直接死亡")]
-    public bool debugKeys = true;
+    [Tooltip("畫面上方顯示 Boss 目前在做什麼")]
     public bool showStatus = true;
 
     public string CurrentAction { get; private set; } = "沉睡";
@@ -346,7 +348,11 @@ public class BossController : MonoBehaviour
         startPosition = transform.position;
         startRotation = transform.rotation;
 
-        if (playerHealth != null) playerHealth.OnRespawned += ResetFight;
+        if (playerHealth != null)
+        {
+            playerHealth.OnRespawned += ResetFight;
+            playerHealth.OnDied += OnPlayerDied;
+        }
 
         // 光束從右手射出
         if (beamSource == null) beamSource = FindDeep(transform, "hand.R");
@@ -366,7 +372,12 @@ public class BossController : MonoBehaviour
 
     void OnDestroy()
     {
-        if (playerHealth != null) playerHealth.OnRespawned -= ResetFight;
+        if (playerHealth != null)
+        {
+            playerHealth.OnRespawned -= ResetFight;
+            playerHealth.OnDied -= OnPlayerDied;
+            RestorePlayerDelay();
+        }
         if (health != null) { health.OnDied -= OnBossDied; health.OnDamaged -= OnBossDamaged; }
         StopBeamSound(false); // 離開場景時，循環播放的光束聲不能留著
         if (summonContainer != null) Destroy(summonContainer.gameObject);
@@ -389,24 +400,13 @@ public class BossController : MonoBehaviour
             if (health) health.Invulnerable = false;
             if (bodyPivot) { bodyPivot.localRotation = Quaternion.identity; bodyPivot.localScale = Vector3.one; }
         }
-        else if (!dead && FightActive && isActiveAndEnabled) StartCoroutine(Brain());
+        else if (!dead && FightActive && isActiveAndEnabled && !(playerHealth != null && playerHealth.IsDead)) StartCoroutine(Brain());
     }
 
     void Update()
     {
         FollowGround();
         PruneSummons();
-
-        if (!debugKeys || !FightActive || Keyboard.current == null) return;
-        if (Keyboard.current.digit1Key.wasPressedThisFrame) forcedSpecial = Special.Slam;
-        if (Keyboard.current.digit2Key.wasPressedThisFrame) forcedSpecial = Special.Roar;
-        if (Keyboard.current.digit3Key.wasPressedThisFrame) forcedSpecial = enableBeam ? Special.Beam : Special.Summon;
-        if (Keyboard.current.digit4Key.wasPressedThisFrame) forcedSpecial = Special.Jump;
-        if (Keyboard.current.digit8Key.wasPressedThisFrame) forcedSpecial = Special.Summon;
-        if (Keyboard.current.digit5Key.wasPressedThisFrame && !phase2)
-            health.SetHealth(health.maxHealth * phase2HealthRatio);
-        if (Keyboard.current.digit6Key.wasPressedThisFrame)
-            health.SetHealth(0f);
     }
 
     // =====================================================================
@@ -514,9 +514,45 @@ public class BossController : MonoBehaviour
         EndAnim();
     }
 
+    float savedPlayerDelay = -1f;
+
+    /// <summary>
+    /// Boss 戰中玩家倒下：Boss 停手、玩家停在原地播倒下動畫，playerDeathDelay 秒後才回 Checkpoint。
+    /// PlayerHealth 是在呼叫 OnDied 之後才讀 respawnDelay，所以在這裡改它就來得及。
+    /// </summary>
+    void OnPlayerDied()
+    {
+        if (!FightActive || dead || playerHealth == null) return;
+
+        if (savedPlayerDelay < 0f) savedPlayerDelay = playerHealth.respawnDelay;
+        playerHealth.respawnDelay = Mathf.Max(0f, playerDeathDelay);
+
+        // 被最後一擊打飛的速度清掉，倒下時不會在地上滑或飛出去
+        var move = playerHealth.GetComponent<ThirdPersonController>();
+        if (move != null) move.ResetMotion();
+
+        // Boss 停手（不再追打倒下的玩家），重生時 ResetFight 會整個重置
+        StopAllCoroutines();
+        StopBeamSound(true);
+        HideBeam();
+        HideLandMark(false);
+        airborne = false;
+        if (bodyPivot != null) { bodyPivot.localRotation = Quaternion.identity; bodyPivot.localScale = Vector3.one; }
+        EndAnim();
+        CurrentAction = "勝利";
+    }
+
+    void RestorePlayerDelay()
+    {
+        if (savedPlayerDelay < 0f || playerHealth == null) return;
+        playerHealth.respawnDelay = savedPlayerDelay;
+        savedPlayerDelay = -1f;
+    }
+
     /// <summary>玩家重生時：Boss 回血、回原位、地板壓平，等玩家再次進門</summary>
     void ResetFight()
     {
+        RestorePlayerDelay();
         // Boss 已經被打倒：只把地板恢復，不重開戰鬥
         if (dead)
         {
@@ -655,7 +691,7 @@ public class BossController : MonoBehaviour
         if (health.Health <= health.maxHealth * phase2HealthRatio)
         {
             phase2Pending = true;
-            forcedSpecial = null; // 測試鍵預約的招式取消，先變身
+            forcedSpecial = null; // 預約的招式取消，先變身
         }
     }
 
@@ -1613,11 +1649,6 @@ public class BossController : MonoBehaviour
         var style = new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.UpperCenter, fontStyle = FontStyle.Bold };
         GUI.color = Color.white;
         GUI.Label(new Rect(0, 16, Screen.width, 30), phase2 ? $"BOSS（二階段）：{CurrentAction}" : $"BOSS：{CurrentAction}", style);
-        if (debugKeys)
-        {
-            var small = new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.UpperCenter };
-            GUI.Label(new Rect(0, 44, Screen.width, 20), "測試：1 拍地 / 2 怒吼塌陷 / 3 " + (enableBeam ? "光束" : "召喚") + " / 4 跳砸 / 5 打到二階段 / 6 直接擊敗 / 8 召喚", small);
-        }
     }
 
     void OnDrawGizmosSelected()
