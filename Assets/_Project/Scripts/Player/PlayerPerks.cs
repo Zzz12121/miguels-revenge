@@ -205,7 +205,7 @@ public class PlayerPerks : MonoBehaviour
         demonNextAt = Time.time + demonInterval;
         demonUntil = Time.time + demonDuration;
         health.SetSkillInvulnerability(this, true);
-        if (ctrl != null) ctrl.ApplyTemporarySpeedMultiplier(demonSpeedMultiplier, demonDuration);
+        if (ctrl != null) ctrl.ApplyTemporarySpeedBoost(demonSpeedMultiplier, demonDuration);
         if (demonGlow == null)
         {
             var go = new GameObject("DemonGlow");
@@ -231,7 +231,7 @@ public class PlayerPerks : MonoBehaviour
     void OnRollEnded()
     {
         if (Has(Perk.QuickRecovery) && ctrl != null)
-            ctrl.ApplyTemporarySpeedMultiplier(1f + quickRecoveryBonus, quickRecoveryTime);
+            ctrl.ApplyTemporarySpeedBoost(1f + quickRecoveryBonus, quickRecoveryTime);
     }
 
     float HealthRatio => health != null && health.maxHealth > 0f ? health.Health / health.maxHealth : 1f;
