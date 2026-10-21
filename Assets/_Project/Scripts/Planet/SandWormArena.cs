@@ -23,9 +23,11 @@ public class SandWormArena : MonoBehaviour
     public float leaveMargin = 20f;
 
     [Header("節奏")]
-    public int rounds = 3;
+    public int rounds = 4;
     [Tooltip("每輪提示幾格（= 幾波攻擊）")]
     public int stepsPerRound = 4;
+    [Tooltip("最後一輪提示幾格（= 幾次衝擊）")]
+    public int lastRoundSteps = 6;
     [Tooltip("每格提示亮多久：第一輪 → 最後一輪（越來越快）")]
     public Vector2 hintTime = new Vector2(0.9f, 0.55f);
     public float hintGap = 0.25f;
@@ -163,7 +165,7 @@ public class SandWormArena : MonoBehaviour
             float hint = Mathf.Lerp(hintTime.x, hintTime.y, t);
 
             // 1. 提示：隨機順序（相鄰兩步不會是同一格）
-            var order = new int[stepsPerRound];
+            var order = new int[round == rounds - 1 ? lastRoundSteps : stepsPerRound];
             for (int i = 0; i < order.Length; i++)
             {
                 int q;
