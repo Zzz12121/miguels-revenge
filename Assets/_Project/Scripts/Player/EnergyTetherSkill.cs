@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 雙極能量牽引：中鍵進入五秒緩速瞄準、左鍵鎖定，滾輪上拉自己、下拉目標。
-/// 固定地形永遠作為錨點；浮空地塊下拉後可再以左鍵指定投擲位置。
+/// 第一次左鍵鎖定；第二次可在畫面任意位置按住拖甩，放開投擲。
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class EnergyTetherSkill : MonoBehaviour
@@ -21,6 +21,19 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     [Min(1f)] public float objectPullSpeed = 19f;
     [Min(.1f)] public float objectHoverDistance = 2.4f;
     [Min(0f)] public float skillCooldown = .35f;
+    [Header("滑鼠拖甩")]
+    [Min(5f)] public float minimumThrowSpeed = 9f;
+    [Min(5f)] public float maximumThrowSpeed = 32f;
+    [Min(100f)] public float mouseSpeedForMaximumForce = 1800f;
+    Vector2 dragStart, dragLast, dragVelocity;
+    Vector2 dragDisplacement;
+    float dragPeakSpeed;
+    Vector3 dragCameraRight, dragCameraUp;
+    bool dragging;
+    string feedback;
+    float feedbackUntil;
+    TetherThrownMotion activeMotion;
+    bool pullingPlayerControls, playerInputBeforePull;
 
     [Header("視覺")]
     [Range(5, 32)] public int beamSegments = 18;
@@ -114,18 +127,19 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (heldChunk != null) UpdateHeldChunkPosition();
         if (!aiming) return;
 
-        if (orbitCamera != null)
+        if (orbitCamera != null && !dragging)
             orbitCamera.PanFromScreenEdge(mouse.position.ReadValue(), Time.unscaledDeltaTime);
 
         hovered = FindAimPoint(mouse.position.ReadValue());
-        UpdateReticle(selectionLocked ? locked : hovered, true);
+        if (selectionLocked && !ValidPoint(locked)) { selectionLocked=false; dragging=false; }
+        UpdateReticle(selectionLocked ? locked : hovered, selectionLocked || ValidPoint(hovered));
 
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
         {
             SkillAimCancellation.CancelForEscape();
             return;
         }
-        if (Time.unscaledTime - aimingStartedAt >= aimingDuration)
+        if (!dragging && Time.unscaledTime - aimingStartedAt >= aimingDuration)
         {
             CancelAiming();
             return;
@@ -133,22 +147,72 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
         if (mouse.leftButton.wasPressedThisFrame)
         {
-            locked = hovered;
-            selectionLocked = true;
+            if (!selectionLocked)
+            {
+                if (!ValidPoint(hovered)) { Notify("請瞄準實際物件，不能鎖定空氣"); return; }
+                locked = hovered;
+                selectionLocked = true;
+                aimingStartedAt = Time.unscaledTime;
+                // First click only selects. Its hold/release must never count as a throw.
+                dragging = false;
+                dragVelocity = Vector2.zero;
+                UpdateReticle(locked, true);
+                return;
+            }
             if (aimingThrowDestination)
             {
-                Vector3 destination = locked.Point;
+                if (!ValidPoint(hovered)) return;
+                Vector3 destination = hovered.Point;
                 EndAiming(false);
                 ThrowHeldChunk(destination);
                 return;
             }
+            if (IsStaticAnchor(locked)) { Notify("無法拖動此目標"); return; }
+            dragging=true; dragStart=dragLast=mouse.position.ReadValue(); dragVelocity=Vector2.zero;
+            dragDisplacement=Vector2.zero;
+            dragPeakSpeed=0f;
+            dragCameraRight=aimCamera.transform.right;
+            dragCameraUp=aimCamera.transform.up;
+        }
+
+        if (dragging && (mouse.leftButton.isPressed || mouse.leftButton.wasReleasedThisFrame))
+        {
+            Vector2 current=mouse.position.ReadValue();
+            Vector2 delta=mouse.delta.ReadValue();
+            // Raw motion still works at the screen edge; position is a fallback.
+            if (delta.sqrMagnitude<.001f) delta=current-dragLast;
+            dragDisplacement+=delta;
+            Vector2 speed=delta/Mathf.Max(.001f,Time.unscaledDeltaTime);
+            dragVelocity=Vector2.Lerp(dragVelocity,speed,1-Mathf.Exp(-18*Time.unscaledDeltaTime));
+            dragPeakSpeed=Mathf.Max(dragPeakSpeed,dragVelocity.magnitude);
+            dragLast=current;
+        }
+        if (dragging && mouse.leftButton.wasReleasedThisFrame)
+        {
+            dragging=false;
+            aimingStartedAt=Time.unscaledTime;
+            Vector2 gesture=dragDisplacement;
+            if (gesture.magnitude>=8f)
+            {
+                if (IsStaticAnchor(locked)) { Notify("無法拖動此目標"); return; }
+                AimPoint thrownPoint=locked;
+                float force=Mathf.Lerp(minimumThrowSpeed,maximumThrowSpeed,Mathf.Clamp01(dragPeakSpeed/mouseSpeedForMaximumForce));
+                // Screen-relative swipe only: never re-raycast a destination or require
+                // the pointer to remain over the locked target. Gravity handles landing.
+                Vector3 direction=(dragCameraRight*gesture.x + dragCameraUp*gesture.y).normalized;
+                EndAiming(false);
+                StartCoroutine(ThrowTarget(thrownPoint,direction*force));
+                return;
+            }
+            Notify("按住左鍵移動滑鼠，再放開甩出");
         }
 
         if (!selectionLocked) return;
         float scroll = mouse.scroll.ReadValue().y;
         if (Mathf.Abs(scroll) < .01f) return;
         AimPoint chosen = locked;
-        bool pullSelf = scroll > 0f || IsStaticAnchor(chosen);
+        if (scroll < 0 && IsStaticAnchor(chosen)) { Notify("無法拖動此目標"); return; }
+        bool pullSelf = scroll > 0f;
         EndAiming(false);
         StartCoroutine(pullSelf ? PullPlayer(chosen) : PullTarget(chosen));
     }
@@ -159,6 +223,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         aiming = true;
         aimingThrowDestination = throwDestination;
         selectionLocked = false;
+        dragging=false;
         aimingStartedAt = Time.unscaledTime;
         savedTimeScale = Time.timeScale;
         savedFixedDelta = Time.fixedDeltaTime;
@@ -184,6 +249,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         aimingThrowDestination = false;
         selectionLocked = false;
         Time.timeScale = savedTimeScale;
+        dragging=false;
         Time.fixedDeltaTime = savedFixedDelta;
         Cursor.lockState = savedCursorLock;
         Cursor.visible = savedCursorVisible;
@@ -207,6 +273,8 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         {
             if (hit.transform.IsChildOf(transform)) continue;
             if (heldChunk != null && hit.transform.IsChildOf(heldChunk)) continue;
+            // Ignore interaction volumes, VFX triggers and empty fallback aim zones.
+            if (hit.collider.isTrigger && !(hit.collider.name == "SkillAimZone" && hit.collider.GetComponentInParent<IDamageable>() != null)) continue;
             return new AimPoint
             {
                 collider = hit.collider,
@@ -222,6 +290,24 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             localNormal = -ray.direction,
             hitSomething = false
         };
+    }
+
+    bool ValidPoint(AimPoint p) => p.hitSomething && p.collider != null && p.collider.enabled &&
+        p.collider.gameObject.activeInHierarchy && Vector3.Distance(transform.position,p.Point)<=maximumRange;
+    void Notify(string message) { feedback=message; feedbackUntil=Time.unscaledTime+2f; }
+
+    IEnumerator ThrowTarget(AimPoint point, Vector3 velocity)
+    {
+        Transform root=ResolveTargetRoot(point);
+        if (!root || !ValidPoint(point)) yield break;
+        executing=true;
+        activeMotion=root.GetComponent<TetherThrownMotion>() ?? root.gameObject.AddComponent<TetherThrownMotion>();
+        activeMotion.Hold();
+        // Brief tension build; do not teleport the target to the destination.
+        for(float t=0;t<.1f;t+=Time.deltaTime) { if (!root) break; UpdateBeams(point.Point); yield return null; }
+        if (activeMotion) activeMotion.Release(velocity,true);
+        activeMotion=null; SetBeams(false); executing=false;
+        nextUseTime=Time.unscaledTime+skillCooldown;
     }
 
     bool IsStaticAnchor(AimPoint point)
@@ -240,9 +326,11 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     IEnumerator PullPlayer(AimPoint targetPoint)
     {
+        if (!ValidPoint(targetPoint)) yield break;
         executing = true;
         nextUseTime = Time.unscaledTime + skillCooldown;
         bool previousInput = movement == null || movement.inputEnabled;
+        playerInputBeforePull=previousInput; pullingPlayerControls=true;
         if (movement != null) { movement.inputEnabled = false; movement.ResetMotion(); }
         Vector3 start = transform.position;
         Vector3 normal = targetPoint.Normal.sqrMagnitude > .001f ? targetPoint.Normal : Vector3.up;
@@ -267,23 +355,20 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         }
         SetBeams(false);
         if (movement != null) movement.inputEnabled = previousInput;
+        pullingPlayerControls=false;
         executing = false;
     }
 
     IEnumerator PullTarget(AimPoint targetPoint)
     {
         Transform targetRoot = ResolveTargetRoot(targetPoint);
-        if (targetRoot == null) { yield return PullPlayer(targetPoint); yield break; }
+        if (targetRoot == null || !ValidPoint(targetPoint)) yield break;
         executing = true;
         nextUseTime = Time.unscaledTime + skillCooldown;
         Rigidbody rb = targetRoot.GetComponent<Rigidbody>();
-        CharacterController cc = targetRoot.GetComponent<CharacterController>();
         TetherInteractable marker = targetRoot.GetComponent<TetherInteractable>() ?? targetRoot.GetComponentInChildren<TetherInteractable>();
-        bool wasKinematic = rb != null && rb.isKinematic;
-        bool usedGravity = rb != null && rb.useGravity;
-        bool ccEnabled = cc != null && cc.enabled;
-        if (rb != null) { rb.isKinematic = true; rb.useGravity = false; rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
-        if (cc != null) cc.enabled = false;
+        activeMotion=targetRoot.GetComponent<TetherThrownMotion>() ?? targetRoot.gameObject.AddComponent<TetherThrownMotion>();
+        activeMotion.Hold();
 
         Vector3 start = targetRoot.position;
         Vector3 destination = transform.position + transform.forward * objectHoverDistance + Vector3.up * 1.15f;
@@ -291,6 +376,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         SetBeams(true);
         for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
         {
+            if (!targetRoot) { executing=false; SetBeams(false); yield break; }
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration));
             targetRoot.position = Vector3.Lerp(start, destination, u);
             UpdateBeams(targetRoot.position);
@@ -298,21 +384,10 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         }
         SetBeams(false);
 
-        if (marker != null && marker.IsFloatingChunk)
-        {
-            heldChunk = targetRoot;
-            heldChunkBody = rb != null ? rb : targetRoot.gameObject.AddComponent<Rigidbody>();
-            heldChunkMarker = marker;
-            heldChunkBody.isKinematic = true;
-            heldChunkBody.useGravity = false;
-            if (cc != null) cc.enabled = ccEnabled;
-            executing = false;
-            BeginAiming(true);
-            yield break;
-        }
-
-        if (rb != null) { rb.isKinematic = wasKinematic; rb.useGravity = usedGravity; }
-        if (cc != null) cc.enabled = ccEnabled;
+        // Pulling completes this cast, including floating chunks. Throwing is chosen
+        // with the second left-button drag while the initial target remains locked.
+        if (activeMotion) activeMotion.Release(Vector3.zero,false);
+        activeMotion=null;
         executing = false;
     }
 
@@ -341,6 +416,8 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void ReleaseHeldChunk(bool throwIt, Vector3 velocity)
     {
+        if (activeMotion) { activeMotion.Release(throwIt ? velocity : Vector3.zero,throwIt); activeMotion=null; }
+        else
         if (heldChunkBody != null)
         {
             heldChunkBody.isKinematic = !throwIt;
@@ -430,7 +507,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     {
         if (reticle == null) return;
         reticle.enabled = visible;
-        if (!visible) return;
+        if (!visible) { SetBeams(false); return; }
         Vector3 normal = point.Normal.sqrMagnitude > .001f ? point.Normal.normalized : Vector3.up;
         Vector3 tangent = Vector3.Cross(normal, Vector3.up);
         if (tangent.sqrMagnitude < .001f) tangent = Vector3.Cross(normal, Vector3.right);
@@ -493,6 +570,8 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void OnGUI()
     {
+        if (Time.unscaledTime<feedbackUntil)
+            GUI.Box(new Rect(Screen.width*.5f-180,Screen.height*.45f,360,40),feedback);
         if (!aiming) return;
         GUIStyle style = new GUIStyle(GUI.skin.box)
         {
@@ -503,14 +582,19 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         string text = aimingThrowDestination
             ? "浮空地塊：左鍵指定投擲位置　Esc 取消"
             : selectionLocked
-                ? "滾輪↑ 拉自己過去　滾輪↓ 拉目標過來　左鍵可重新鎖定"
-                : "左鍵鎖定任意物件／地形　游標移到左右邊緣可轉視角";
+                ? "已鎖定：任意位置按住左鍵甩動後放開　滾輪↑ 拉自己／↓ 拉目標"
+                : "第一次左鍵只鎖定目標　游標移到左右邊緣可轉視角";
         GUI.Box(new Rect(Screen.width * .5f - 270f, Screen.height - 92f, 540f, 42f), text, style);
     }
 
     void OnDisable()
     {
+        StopAllCoroutines();
         if (aiming) EndAiming(true);
+        if (activeMotion) activeMotion.Release(Vector3.zero,false);
+        activeMotion=null; executing=false; dragging=false;
+        if (pullingPlayerControls && movement) movement.inputEnabled=playerInputBeforePull;
+        pullingPlayerControls=false;
         SetBeams(false);
         UpdateReticle(default, false);
     }
