@@ -47,6 +47,10 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>接下來 seconds 秒內按空白鍵不會跳（關掉對話框的那一下不要順便跳起來）</summary>
     public void SuppressJump(float seconds) => suppressJumpUntil = Time.unscaledTime + seconds;
 
+    PlayerStamina stamina;
+    /// <summary>玩家的精力條（PlayerHealth 會自動加上；小怪沒有）</summary>
+    PlayerStamina Stamina => stamina != null ? stamina : stamina = GetComponent<PlayerStamina>();
+
     [Tooltip("二段跳（能力植物「一步登天」會打開）：在空中可以再跳一次")]
     public bool doubleJumpEnabled = false;
     [Tooltip("二段跳的高度 (m)")]
@@ -338,6 +342,15 @@ public class ThirdPersonController : MonoBehaviour
             UpdateRoll(dt);
             return;
         }
+
+        // 精力：用完就不能衝刺；衝刺中扣、在地上沒衝刺時（走路或站著）回復（小怪沒有精力）
+        var playerStamina = aiControlled ? null : Stamina;
+        if (playerStamina != null)
+        {
+            if (!playerStamina.CanSprint) sprint = false;
+            bool moving = moveDir.sqrMagnitude > 0.01f;
+            playerStamina.Tick(dt, !controller.isGrounded, sprint && moving);
+        }
         if (jumpPressed) lastJumpPressedTime = Time.time;
 
         // ---- 2. 水平速度（有加減速）----
@@ -371,6 +384,13 @@ public class ThirdPersonController : MonoBehaviour
 
         bool canJump = Time.time - lastGroundedTime <= coyoteTime;
         bool wantsJump = Time.time - lastJumpPressedTime <= jumpBufferTime;
+        // 精力不夠跳：這次按鍵作廢（也不會變成二段跳）
+        if (wantsJump && (canJump || doubleJumpEnabled && !aiControlled && !airJumpUsed && !ballistic && !controller.isGrounded)
+            && playerStamina != null && !playerStamina.TrySpendJump())
+        {
+            lastJumpPressedTime = float.NegativeInfinity;
+            wantsJump = false;
+        }
         if (canJump && wantsJump)
         {
             GetComponent<PlayerCombat>()?.CancelTransientActions();
@@ -454,6 +474,7 @@ public class ThirdPersonController : MonoBehaviour
     void TryStartRoll(Vector3 requestedDirection)
     {
         if (aiControlled || !inputEnabled || ActionsLocked || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
+        if (Stamina != null && !Stamina.TrySpendRoll()) return;
         requestedDirection.y = 0f;
         rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
         FaceDirection(rollDirection);

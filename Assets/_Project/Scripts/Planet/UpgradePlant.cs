@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 /// 可以用滑鼠點，也可以按 1 / 2 / 3。選完植物就消失。
 /// 第一株選的項目會記成玩家的「能力路線」（PlayerPerks.UpgradePath）。
 ///
-/// 勾選 Advanced（第二株，放在 Boss 房火堆旁）：改成依照第一株選的路線給三個進階能力，
+/// 勾選 Advanced（第二株，放在 Boss 房火堆旁）：從第一株選的路線的 6 個進階能力中隨機抽 3 個讓玩家選，
 /// 內容見 PlayerPerks.OptionsFor。還沒選過第一株的話不能撿。
 /// </summary>
 public class UpgradePlant : MonoBehaviour
@@ -44,6 +44,8 @@ public class UpgradePlant : MonoBehaviour
     [System.NonSerialized] GUIStyle optionStyle;
 
     PlayerPerks perks;
+    // 進階植物：打開選單時抽出來的 3 個選項
+    PlayerPerks.Option[] offered;
 
     void Start()
     {
@@ -120,6 +122,7 @@ public class UpgradePlant : MonoBehaviour
     void OpenMenu()
     {
         if (advanced && perks == null) return;
+        if (advanced) offered = perks.RollOptions(perks.UpgradePath, 3);
         VictoryBanner.HideCurrent(); // 剛撿草藥之類的標題還在的話先收掉
         menuOpen = true;
         prevTimeScale = Time.timeScale;
@@ -146,8 +149,8 @@ public class UpgradePlant : MonoBehaviour
 
         if (advanced)
         {
-            var opts = PlayerPerks.OptionsFor(perks.UpgradePath);
-            result = option < opts.Length ? perks.Grant(opts[option].perk) : "";
+            if (offered == null || option >= offered.Length) return;
+            result = perks.Grant(offered[option].perk);
         }
         else
         {
@@ -233,19 +236,25 @@ public class UpgradePlant : MonoBehaviour
         GUI.color = Color.white;
 
         // 標題 + 三個選項放在同一個面板裡
-        const float w = 220f, h = 170f, gap = 24f;
+        const float w = 240f, gap = 24f;
+        float h = advanced ? 220f : 170f;
         float panelW = w * 3f + gap * 2f + 60f, panelH = h + 150f;
         var panel = new Rect((Screen.width - panelW) * 0.5f, (Screen.height - panelH) * 0.5f, panelW, panelH);
         GameUI.Panel(panel);
         GUI.color = GameUI.Accent;
         GUI.Label(new Rect(panel.x, panel.y + 18f, panel.width, 44f), advanced ? "選擇一項進階能力" : "選擇一項能力升級", GameUI.Title);
+        if (advanced)
+        {
+            GUI.color = GameUI.MutedColor;
+            GUI.Label(new Rect(panel.x, panel.y + 58f, panel.width, 24f), "（從 6 種進階能力中隨機出現 3 種）", GameUI.Center);
+        }
         GUI.color = Color.white;
 
         // 每個選項：名稱（大字）+ 說明
         string[] titles, details;
         if (advanced)
         {
-            var opts = PlayerPerks.OptionsFor(perks.UpgradePath);
+            var opts = offered ?? new PlayerPerks.Option[0];
             titles = new string[opts.Length];
             details = new string[opts.Length];
             for (int i = 0; i < opts.Length; i++) { titles[i] = opts[i].title; details[i] = opts[i].detail; }
@@ -256,7 +265,7 @@ public class UpgradePlant : MonoBehaviour
             details = new[] { $"+{speedBonus * 100f:0}%", $"+{attackBonus * 100f:0}%", $"+{healthBonus:0}" };
         }
         var nameStyle = new GUIStyle(GameUI.Title) { fontSize = 24 };
-        float x0 = panel.x + 30f, y0 = panel.y + 80f;
+        float x0 = panel.x + 30f, y0 = panel.y + (advanced ? 92f : 80f);
         int chosen = -1;
         for (int i = 0; i < titles.Length; i++)
         {

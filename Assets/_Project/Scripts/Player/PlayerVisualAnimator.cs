@@ -665,7 +665,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     }
 
     /// <summary>
-    /// 播一個一次性的動作（喝藥水、丟火焰彈、二段跳…）。state = Animator 裡的狀態名稱，播完會自己回到 Idle；
+    /// 播一個一次性的動作（喝藥水、二段跳…）。state = Animator 裡的狀態名稱，播完會自己回到 Idle；
     /// 找不到這個狀態就不播。hold = 這段時間內不要被待機小動作打斷
     /// </summary>
     public void PlayGesture(string state, float hold = 1.2f)

@@ -108,7 +108,7 @@ public class PlayerOxygen : MonoBehaviour
         barAlpha = Mathf.MoveTowards(barAlpha, show ? 1f : 0f, dt * (show ? 6f : 1.5f));
     }
 
-    // ---------- 氧氣條（畫在血條下面，跟 PlayerHealth 的 HUD 同一個風格） ----------
+    // ---------- 氧氣條（畫在血條、精力條下面，跟 PlayerHealth 的 HUD 同一個風格） ----------
     void OnGUI()
     {
         if (IsUnderwater)
@@ -119,7 +119,7 @@ public class PlayerOxygen : MonoBehaviour
         }
         if (barAlpha <= 0.001f) { GUI.color = Color.white; return; }
 
-        const float w = 260f, h = 14f, x = 20f, y = 46f;
+        const float w = 260f, h = 14f, x = 20f, y = 62f;
         float a = barAlpha;
         // 快沒氧氣時閃爍
         bool low = Oxygen01 < 0.25f;
