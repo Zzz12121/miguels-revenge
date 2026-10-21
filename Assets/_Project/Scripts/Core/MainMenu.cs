@@ -22,26 +22,30 @@ public class MainMenu : MonoBehaviour
     public string rulesText =
         "<b><color=#FFD36B>遊戲規則</color></b>\n" +
         "消滅每一關的敵人，就會被傳送到下一關，共有三個關卡：\n" +
-        "　<b>第一關　沙漠星球</b>：打倒時鐘敵人，火堆旁的傳送門才會開啟\n" +
+        "　<b>第一關　沙漠星球</b>：採草藥向商人換道具、在蜘蛛巢穴選擇能力，\n" +
+        "　　　　　　　　　　　跟著流沙打倒時鐘 Boss，傳送門才會開啟\n" +
         "　<b>第二關　維京村莊</b>：擊敗村莊守衛，搭上長船駛向終點\n" +
         "　　　　　　　　　　　潛入水中會消耗<color=#7FD4FF>氧氣</color>，氧氣用完會開始扣血\n" +
         "　<b>第三關　地下城</b>：打倒最終 Boss 就通關！\n\n" +
         "玩家共有 <color=#FF8080>3 條命</color>，倒下後會在檢查點復活，命用完就 Game Over。\n" +
-        "受傷後可以撿<color=#FF6060>紅十字補血道具</color>，或靠檢查點和篝火回復血量。";
+        "受傷後可以靠<color=#FF6060>營火</color>、紅十字補血道具或治癒藥水回復血量。";
 
     [TextArea(6, 20)]
     public string controlsText =
         "<b><color=#FFD36B>操作方式</color></b>\n" +
         "W A S D　　移動\n" +
         "左 Shift　　衝刺\n" +
-        "空白鍵　　　跳躍\n" +
+        "空白鍵　　　跳躍（對話中：下一句）\n" +
+        "V　　　　　翻滾閃避\n" +
         "滑鼠　　　　轉動鏡頭\n" +
         "滾輪　　　　鏡頭遠近\n" +
         "滑鼠左鍵　　近戰連擊\n" +
         "右鍵按一下　舉盾衝撞\n" +
         "右鍵按住　　舉盾格擋（連續擋 3 下會破防扣血）\n" +
         "右鍵按住　　瞄準（在船上用弓箭時）\n" +
-        "E　　　　　互動 / 傳送門 / 上船\n" +
+        "滑鼠中鍵　　能量牽引\n" +
+        "E　　　　　互動 / 對話 / 傳送門 / 上船\n" +
+        "Q / G　　　喝治癒藥水 / 精力藥水\n" +
         "M　　　　　顯示 / 隱藏小地圖\n" +
         "Esc　　　　暫停選單（存檔 / 讀檔）";
 
@@ -64,6 +68,15 @@ public class MainMenu : MonoBehaviour
         string menuScene = GameManager.Instance != null ? GameManager.Instance.mainMenuScene : "MainMenu";
         if (scene.name != menuScene || FindAnyObjectByType<MainMenu>() != null) return;
         new GameObject("MainMenu").AddComponent<MainMenu>();
+    }
+
+    /// <summary>行距 1.15；內容太多放不下時自動縮小字體（最小 16），不會被框切掉</summary>
+    static void FitText(UnityEngine.UI.Text text)
+    {
+        text.lineSpacing = 1.15f;
+        text.resizeTextForBestFit = true;
+        text.resizeTextMinSize = 16;
+        text.resizeTextMaxSize = 28;
     }
 
     void Start()
@@ -103,12 +116,12 @@ public class MainMenu : MonoBehaviour
 
         // 規則（左）與操作（右）
         UIKit.Box("RulesBox", root, new Vector2(-260f, 20f), new Vector2(980f, 560f), new Color(0f, 0f, 0f, 0.35f));
-        UIKit.Label("Rules", root, rulesText, 28, Color.white, new Vector2(-260f, 20f), new Vector2(920f, 520f),
-                    TextAnchor.UpperLeft).lineSpacing = 1.15f;
+        FitText(UIKit.Label("Rules", root, rulesText, 28, Color.white, new Vector2(-260f, 20f), new Vector2(920f, 520f),
+                            TextAnchor.UpperLeft));
 
         UIKit.Box("ControlsBox", root, new Vector2(520f, 20f), new Vector2(500f, 560f), new Color(0f, 0f, 0f, 0.35f));
-        UIKit.Label("Controls", root, controlsText, 28, Color.white, new Vector2(520f, 20f), new Vector2(440f, 520f),
-                    TextAnchor.UpperLeft).lineSpacing = 1.15f;
+        FitText(UIKit.Label("Controls", root, controlsText, 28, Color.white, new Vector2(520f, 20f), new Vector2(440f, 520f),
+                            TextAnchor.UpperLeft));
 
         string save = GameManager.Instance != null ? GameManager.Instance.DescribeSave() : null;
         if (save != null)

@@ -69,8 +69,11 @@ public class PlayerHealth : MonoBehaviour
             Debug.Log("[Player] 沒有 PlayerCombat，已自動加上。想調整攻擊數值請在 Player 上手動 Add Component → PlayerCombat。");
         }
 
-        // 消耗品（治癒藥水 / 火焰彈）：Q 喝藥、F 丟火焰彈
+        // 消耗品：Q 喝治癒藥水、G 喝精力藥水
         if (GetComponent<PlayerItems>() == null) gameObject.AddComponent<PlayerItems>();
+
+        // 精力條：衝刺 / 翻滾 / 跳躍消耗，站著不動時回復
+        if (GetComponent<PlayerStamina>() == null) gameObject.AddComponent<PlayerStamina>();
 
         // 有水的關卡：潛到水裡要消耗氧氣
         if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
@@ -111,6 +114,7 @@ public class PlayerHealth : MonoBehaviour
         // 能力植物：閃避 / 護盾，整下傷害不算
         if (perks == null) perks = GetComponent<PlayerPerks>();
         if (perks != null && perks.TryNegateHit()) return false;
+        if (perks != null) amount *= perks.IncomingDamageScale;
         lastFlashTime = Time.time;
         Health = Mathf.Max(0f, Health - amount);
         controller.AddImpulse(knockback);

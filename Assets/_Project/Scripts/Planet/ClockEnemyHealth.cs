@@ -38,6 +38,8 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
         "「感受時間被剝奪的絕望吧！」"
     };
     public float dialogueInterval = 8.0f;
+    /// <summary>true = 死亡時不顯示頭上的台詞（第一關改由 PlanetStory 的劇情對話框說）</summary>
+    [System.NonSerialized] public bool suppressDeathBubble;
     public float dialogueShowDuration = 3.0f;
     
     private string currentDialogue = "";
@@ -173,6 +175,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
     IEnumerator PlayDeathDialogueRoutine()
     {
         isDeadDialoguePlaying = true;
+        if (suppressDeathBubble) yield break;
         currentDialogue = "「時間永不停息...」";
         showDialogue = true;
         yield return new WaitForSeconds(3.5f);

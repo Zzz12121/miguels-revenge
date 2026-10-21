@@ -6,7 +6,7 @@ using UnityEngine.InputSystem;
 /// 每按一次空白鍵繼續下一句（文字還沒跑完時先直接顯示整句）。
 /// 講完之後直接在對話框裡購買：
 ///   1. 治癒藥水：回復 30% 血量，草藥 ×4（之後按 Q 使用）
-///   2. 火焰彈　：投擲後爆炸並讓敵人燃燒，草藥 ×6（之後按 G 投擲）
+///   2. 精力藥水：喝下後精力全滿，草藥 ×3（之後按 G 使用）
 ///   3. 離開（或按 E）
 /// 用數字鍵或滑鼠點選。第一次對話是完整的新手引導，之後再來只講幾句招呼。
 /// 對話期間角色不能移動、跳躍、攻擊；關掉對話框的那一下空白鍵也不會跳起來。
@@ -19,11 +19,14 @@ public class MerchantNPC : MonoBehaviour
     [Tooltip("舊的商店 UI Panel（已改成在對話中購買，這裡只會在開始時把它關掉）")]
     public GameObject shopCanvasUI;
 
+    [Tooltip("對話框右邊半身像要拍的模型（留空 = 拍商人自己的模型）")]
+    public GameObject portraitPrefab;
+
     [Header("商品")]
     public string resourceName = "Herb";
     public string resourceDisplayName = "草藥";
     public int potionCost = 4;
-    public int fireBombCost = 6;
+    public int staminaPotionCost = 3;
 
     [Header("對話")]
     public string speakerName = "流浪商人";
@@ -66,6 +69,11 @@ public class MerchantNPC : MonoBehaviour
     int lineIndex;
     float lineStartTime;
     string shopLine;
+    // 開場劇情之後：商人頭上顯示指引標記，直到玩家第一次跟他說話
+    bool guiding;
+
+    /// <summary>開始在商人頭上顯示指引標記（第一次對話後消失）</summary>
+    public void StartGuide() => guiding = !hasTalked;
 
     void Start()
     {
@@ -81,6 +89,7 @@ public class MerchantNPC : MonoBehaviour
         }
 
         if (shopCanvasUI != null) shopCanvasUI.SetActive(false);
+        if (portraitPrefab != null) DialoguePortraits.UsePrefab(transform, portraitPrefab);
     }
 
     void Update()
@@ -110,7 +119,7 @@ public class MerchantNPC : MonoBehaviour
 
             case Mode.Shopping:
                 if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) Buy(PlayerItems.HealingPotion);
-                else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) Buy(PlayerItems.FireBombItem);
+                else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) Buy(PlayerItems.StaminaPotion);
                 else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame
                          || kb[InteractPrompt.InteractKey].wasPressedThisFrame) EndAll();
                 break;
@@ -123,6 +132,7 @@ public class MerchantNPC : MonoBehaviour
         items = player.GetComponent<PlayerItems>();
         lines = hasTalked || guideLines.Length == 0 ? repeatLines : guideLines;
         hasTalked = true;
+        guiding = false;
         lineIndex = 0;
         lineStartTime = Time.unscaledTime;
         mode = Mode.Talking;
@@ -165,8 +175,8 @@ public class MerchantNPC : MonoBehaviour
     void Buy(string item)
     {
         bool potion = item == PlayerItems.HealingPotion;
-        int cost = potion ? potionCost : fireBombCost;
-        string itemName = potion ? "治癒藥水" : "火焰彈";
+        int cost = potion ? potionCost : staminaPotionCost;
+        string itemName = potion ? "治癒藥水" : "精力藥水";
         if (inventory == null || items == null || !inventory.ConsumeResource(resourceName, cost))
         {
             shopLine = $"{resourceDisplayName}不夠喔，{itemName}要 {cost} 株{resourceDisplayName}。";
@@ -177,7 +187,7 @@ public class MerchantNPC : MonoBehaviour
             items.Add(item, 1);
             shopLine = potion
                 ? $"成交！治癒藥水一瓶。受傷時按 {items.potionKey} 喝下去，喝的時候會走得比較慢。倒下之後藥水會補回來。"
-                : $"成交！火焰彈一顆。按 {items.bombKey} 往前方丟出去，小心別炸到自己。";
+                : $"成交！精力藥水一瓶。跑不動的時候按 {items.staminaPotionKey} 喝下去，精力馬上全滿。";
             GameAudio.Play("SFX/RPG/handleCoins", transform.position, 0.9f, 1f, 0.05f, 0.3f);
         }
         lineStartTime = Time.unscaledTime;
@@ -231,6 +241,7 @@ public class MerchantNPC : MonoBehaviour
     void OnGUI()
     {
         if (GameUI.OverlayOpen) return;
+        if (guiding && mode == Mode.Idle && !StoryDialogue.Active) DrawGuideMarker();
         switch (mode)
         {
             case Mode.Talking:
@@ -256,6 +267,8 @@ public class MerchantNPC : MonoBehaviour
     {
         float w = Mathf.Min(900f, Screen.width - 80f);
         var box = new Rect((Screen.width - w) * 0.5f, Screen.height - h - 40f, w, h);
+        // 左邊玩家、右邊商人的半身像（商人在說話）
+        StoryDialogue.DrawPortraits(box, player, transform, false, true);
         GameUI.Panel(box);
         GUI.color = GameUI.Accent;
         GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), speakerName, new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold });
@@ -298,9 +311,9 @@ public class MerchantNPC : MonoBehaviour
                    potionCost, items != null ? items.Count(PlayerItems.HealingPotion) : 0))
             Buy(PlayerItems.HealingPotion);
         oy += oh + 8f;
-        if (Option(new Rect(ox, oy, ow, oh), "2", "火焰彈　　投擲後爆炸並燃燒敵人",
-                   fireBombCost, items != null ? items.Count(PlayerItems.FireBombItem) : 0))
-            Buy(PlayerItems.FireBombItem);
+        if (Option(new Rect(ox, oy, ow, oh), "2", "精力藥水　喝下後精力全滿",
+                   staminaPotionCost, items != null ? items.Count(PlayerItems.StaminaPotion) : 0))
+            Buy(PlayerItems.StaminaPotion);
         oy += oh + 8f;
         GUI.color = Color.white;
         var leave = new Rect(ox, oy, ow, oh);
@@ -313,6 +326,37 @@ public class MerchantNPC : MonoBehaviour
     }
 
     static GUIStyle OptionText => new GUIStyle(GameUI.Small) { fontSize = 18 };
+
+    [System.NonSerialized] GUIStyle markerStyle;
+
+    /// <summary>商人頭上跳動的「!」和距離；商人在畫面外時貼在畫面邊緣指出方向</summary>
+    void DrawGuideMarker()
+    {
+        var cam = Camera.main;
+        if (cam == null || player == null) return;
+        Vector3 head = transform.position + Vector3.up * 2.6f;
+        Vector3 sp = cam.WorldToScreenPoint(head);
+        bool behind = sp.z < 0f;
+        if (behind) { sp.x = Screen.width - sp.x; sp.y = Screen.height - sp.y; } // 在背後：上下左右顛倒
+        float x = sp.x, y = Screen.height - sp.y;
+        const float m = 48f;
+        bool offscreen = behind || x < m || x > Screen.width - m || y < m || y > Screen.height - m;
+        if (offscreen)
+        {
+            // 從畫面中央往商人的方向，貼到畫面邊緣
+            Vector2 c = new Vector2(Screen.width, Screen.height) * 0.5f;
+            Vector2 d = new Vector2(x, y) - c;
+            if (d.sqrMagnitude < 1f) d = Vector2.up;
+            float k = Mathf.Min((c.x - m) / Mathf.Max(0.01f, Mathf.Abs(d.x)), (c.y - m) / Mathf.Max(0.01f, Mathf.Abs(d.y)));
+            x = c.x + d.x * k;
+            y = c.y + d.y * k;
+        }
+        float bob = Mathf.Sin(Time.unscaledTime * 4f) * 6f;
+        markerStyle ??= new GUIStyle(GameUI.Title) { fontSize = 40, alignment = TextAnchor.MiddleCenter };
+        GameUI.Shadowed(new Rect(x - 30f, y - 40f + bob, 60f, 50f), "!", markerStyle, PlanetStory.MerchantColor);
+        float dist = Vector3.Distance(player.position, transform.position);
+        GameUI.Shadowed(new Rect(x - 60f, y + 10f + bob, 120f, 22f), $"{dist:0} m", GameUI.Center, PlanetStory.MerchantColor);
+    }
 
     bool Option(Rect r, string key, string text, int cost, int owned)
     {

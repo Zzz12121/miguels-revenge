@@ -5,9 +5,9 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 玩家的消耗品（在商人那裡用草藥買）：
 ///   - 治癒藥水：按 Q 喝，花 1.5 秒喝完（期間移動變慢、不能做其他動作），喝完回復 30% 最大生命
-///   - 火焰彈　：按 G 往鏡頭方向丟出，爆炸後讓範圍內的敵人燃燒
+///   - 精力藥水：按 G 喝，一樣花 1.5 秒喝完，喝完精力全滿
 /// 數量存在 PlayerInventory（跟草藥一樣），所以會跟著換關卡 / 存檔。
-/// 治癒藥水像原素瓶：死亡重生後補回「買過的總數」，喝掉的會回來；火焰彈用掉就沒了。
+/// 治癒藥水像原素瓶：死亡重生後補回「買過的總數」，喝掉的會回來；精力藥水用掉就沒了。
 /// 身上有消耗品時，畫面右下角顯示數量和按鍵。PlayerHealth 會自動加上這個元件。
 /// </summary>
 public class PlayerItems : MonoBehaviour
@@ -15,24 +15,24 @@ public class PlayerItems : MonoBehaviour
     public const string HealingPotion = "HealingPotion";
     /// <summary>買過幾瓶治癒藥水（重生時補到這個數量）</summary>
     public const string HealingPotionMax = "HealingPotionMax";
-    public const string FireBombItem = "FireBomb";
+    public const string StaminaPotion = "StaminaPotion";
+    public static readonly Color StaminaColor = new Color(0.96f, 0.92f, 0.82f);
 
     public Key potionKey = Key.Q;
-    public Key bombKey = Key.G;
+    public Key staminaPotionKey = Key.G;
     [Tooltip("治癒藥水回復最大生命的比例")]
     public float potionHealRatio = 0.3f;
     [Tooltip("喝藥水要花多久 (秒)")]
     public float drinkTime = 1.5f;
     [Tooltip("喝藥水時的移動速度倍率")]
     [Range(0f, 1f)] public float drinkMoveMultiplier = 0.35f;
-    [Tooltip("火焰彈往前丟的速度 / 往上的速度")]
-    public float throwSpeed = 16f, throwUp = 5f;
     [Tooltip("兩次使用之間的冷卻 (秒)")]
     public float useCooldown = 0.6f;
 
     /// <summary>正在喝藥水</summary>
     public bool IsDrinking { get; private set; }
     float drinkStart;
+    bool drinkingStamina;
     Coroutine drinkRoutine;
 
     PlayerHealth health;
@@ -42,11 +42,18 @@ public class PlayerItems : MonoBehaviour
     float messageTime = float.NegativeInfinity;
     string message;
 
+    [Header("動畫（Animator 裡的狀態名稱）")]
+    public string drinkAnimation = "agree";
+    public string doubleJumpAnimation = "Jump";
+
+    PlayerVisualAnimator visual;
+
     void Awake()
     {
         health = GetComponent<PlayerHealth>();
         controller = GetComponent<ThirdPersonController>();
         combat = GetComponent<PlayerCombat>();
+        visual = GetComponent<PlayerVisualAnimator>();
     }
 
     void OnEnable()
@@ -56,6 +63,7 @@ public class PlayerItems : MonoBehaviour
             health.OnRespawned += RefillPotions;
             health.OnDied += CancelDrink;
         }
+        if (controller != null) controller.OnDoubleJump += PlayDoubleJump;
     }
 
     void OnDisable()
@@ -65,7 +73,13 @@ public class PlayerItems : MonoBehaviour
             health.OnRespawned -= RefillPotions;
             health.OnDied -= CancelDrink;
         }
+        if (controller != null) controller.OnDoubleJump -= PlayDoubleJump;
         CancelDrink();
+    }
+
+    void PlayDoubleJump()
+    {
+        if (visual != null) visual.PlayGesture(doubleJumpAnimation, 0.6f);
     }
 
     /// <summary>重生時：治癒藥水補回買過的總數</summary>
@@ -108,7 +122,7 @@ public class PlayerItems : MonoBehaviour
         var kb = Keyboard.current;
         if (kb == null || Time.time < nextUseTime || !CanUse()) return;
         if (kb[potionKey].wasPressedThisFrame) DrinkPotion();
-        else if (kb[bombKey].wasPressedThisFrame) ThrowBomb();
+        else if (kb[staminaPotionKey].wasPressedThisFrame) DrinkStaminaPotion();
     }
 
     void DrinkPotion()
@@ -116,13 +130,23 @@ public class PlayerItems : MonoBehaviour
         if (Count(HealingPotion) <= 0) { Say("沒有治癒藥水"); return; }
         if (health.Health >= health.maxHealth) { Say("血量已滿"); return; }
         Inventory.ConsumeResource(HealingPotion, 1);
-        drinkRoutine = StartCoroutine(Drink());
+        drinkRoutine = StartCoroutine(Drink(false));
     }
 
-    /// <summary>喝藥水：drinkTime 秒內移動變慢、不能做其他動作，喝完才回血</summary>
-    IEnumerator Drink()
+    void DrinkStaminaPotion()
+    {
+        var stamina = GetComponent<PlayerStamina>();
+        if (Count(StaminaPotion) <= 0) { Say("沒有精力藥水"); return; }
+        if (stamina == null || stamina.Stamina01 >= 0.999f) { Say("精力已滿"); return; }
+        Inventory.ConsumeResource(StaminaPotion, 1);
+        drinkRoutine = StartCoroutine(Drink(true));
+    }
+
+    /// <summary>喝藥水：drinkTime 秒內移動變慢、不能做其他動作，喝完才生效（治癒：回血；精力：精力全滿）</summary>
+    IEnumerator Drink(bool staminaPotion)
     {
         IsDrinking = true;
+        drinkingStamina = staminaPotion;
         drinkStart = Time.time;
         if (controller != null)
         {
@@ -130,14 +154,24 @@ public class PlayerItems : MonoBehaviour
             controller.ApplyTemporarySpeedMultiplier(drinkMoveMultiplier, drinkTime);
         }
         GameAudio.Play("SFX/RPG/beltHandle1", transform.position, 0.7f, 1.2f, 0.05f, 0.3f);
+        if (visual != null) visual.PlayGesture(drinkAnimation, drinkTime);
 
         yield return new WaitForSeconds(drinkTime);
 
-        float amount = health.maxHealth * potionHealRatio;
-        health.Heal(amount);
-        CombatVFX.Heal(transform);
+        if (staminaPotion)
+        {
+            var stamina = GetComponent<PlayerStamina>();
+            if (stamina != null) stamina.Refill();
+            Say("精力全滿");
+        }
+        else
+        {
+            float amount = health.maxHealth * potionHealRatio;
+            health.Heal(amount);
+            CombatVFX.Heal(transform);
+            Say($"回復 {amount:0} 點生命");
+        }
         GameAudio.Play("SFX/RPG/bookPlace1", transform.position, 0.8f, 1.4f, 0.05f, 0.3f);
-        Say($"回復 {amount:0} 點生命");
         EndDrink();
     }
 
@@ -157,27 +191,6 @@ public class PlayerItems : MonoBehaviour
         EndDrink();
     }
 
-    void ThrowBomb()
-    {
-        if (Count(FireBombItem) <= 0) { Say("沒有火焰彈"); return; }
-        Inventory.ConsumeResource(FireBombItem, 1);
-        nextUseTime = Time.time + useCooldown;
-
-        // 往鏡頭看的方向丟（水平方向），帶一點往上的弧度
-        Vector3 dir = transform.forward;
-        var cam = Camera.main;
-        if (cam != null)
-        {
-            dir = cam.transform.forward;
-            dir.y = Mathf.Max(dir.y, -0.2f);
-        }
-        Vector3 flat = new Vector3(dir.x, 0f, dir.z).normalized;
-        if (controller != null) controller.FaceDirection(flat);
-        Vector3 origin = transform.position + Vector3.up * 1.2f + flat * 0.6f;
-        FireBomb.Throw(origin, dir.normalized * throwSpeed + Vector3.up * throwUp, transform);
-        GameAudio.Play("SFX/RPG/cloth2", origin, 0.9f, 1.2f, 0.08f, 0.5f);
-    }
-
     void Say(string text)
     {
         message = text;
@@ -192,10 +205,10 @@ public class PlayerItems : MonoBehaviour
         const float w = 220f, h = 40f, gap = 8f, margin = 24f;
         float x = Screen.width - w - margin;
         float y = Screen.height - margin - h;
-        int potions = Count(HealingPotion), potionMax = Count(HealingPotionMax), bombs = Count(FireBombItem);
-        if (bombs > 0)
+        int potions = Count(HealingPotion), potionMax = Count(HealingPotionMax), staminaPotions = Count(StaminaPotion);
+        if (staminaPotions > 0)
         {
-            Slot(new Rect(x, y, w, h), bombKey, "火焰彈", $"×{bombs}", FireBomb.FireColor, true);
+            Slot(new Rect(x, y, w, h), staminaPotionKey, "精力藥水", $"×{staminaPotions}", StaminaColor, true);
             y -= h + gap;
         }
         // 喝光了也繼續顯示（0 / 3），提醒重生後會補回來
@@ -215,8 +228,9 @@ public class PlayerItems : MonoBehaviour
         {
             float t = (Time.time - drinkStart) / drinkTime;
             var bar = new Rect((Screen.width - 260f) * 0.5f, Screen.height * 0.64f, 260f, 10f);
-            GameUI.Shadowed(new Rect(bar.x, bar.y - 28f, bar.width, 24f), "飲用治癒藥水中……", GameUI.Center, GameUI.Good);
-            GameUI.ProgressBar(bar, t, GameUI.Good);
+            Color c = drinkingStamina ? StaminaColor : GameUI.Good;
+            GameUI.Shadowed(new Rect(bar.x, bar.y - 28f, bar.width, 24f), drinkingStamina ? "飲用精力藥水中……" : "飲用治癒藥水中……", GameUI.Center, c);
+            GameUI.ProgressBar(bar, t, c);
         }
     }
 

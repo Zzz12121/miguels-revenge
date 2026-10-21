@@ -664,6 +664,19 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         forearm.rotation = Quaternion.FromToRotation(hand.position - forearm.position, goal - forearm.position) * forearm.rotation;
     }
 
+    /// <summary>
+    /// 播一個一次性的動作（喝藥水、二段跳…）。state = Animator 裡的狀態名稱，播完會自己回到 Idle；
+    /// 找不到這個狀態就不播。hold = 這段時間內不要被待機小動作打斷
+    /// </summary>
+    public void PlayGesture(string state, float hold = 1.2f)
+    {
+        if (animator == null || health != null && health.IsDead) return;
+        int hash = Animator.StringToHash(state);
+        if (!animator.HasState(0, hash)) return;
+        animator.CrossFadeInFixedTime(hash, 0.08f, 0, 0f);
+        ScheduleNextIdle(hold);
+    }
+
     public void PlayHitReaction()
     {
         if (animator == null) return;

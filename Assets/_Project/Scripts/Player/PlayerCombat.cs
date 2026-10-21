@@ -244,15 +244,15 @@ public class PlayerCombat : MeleeCombat
     float chargeStart;
 
     /// <summary>玩家造成傷害的總倍率：基本倍率 × 能力植物（低血量狂暴）</summary>
-    float DamageScale(bool heavy)
+    float DamageScale(bool heavy, IDamageable target)
     {
         if (perks == null) perks = GetComponent<PlayerPerks>();
-        return damageMultiplier * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScale : 1f);
+        return damageMultiplier * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScaleFor(target) : 1f);
     }
 
-    void AfterHit(float dealt)
+    void AfterHit(float dealt, IDamageable target)
     {
-        if (perks != null) perks.OnDealtDamage(dealt);
+        if (perks != null) perks.OnDealtDamage(dealt, target);
     }
 
     PlayerPerks perks;
@@ -360,9 +360,9 @@ public class PlayerCombat : MeleeCombat
             alreadyHit.Add(target);
 
             Vector3 point = c.ClosestPoint(center);
-            float dealt = shieldBashDamage * DamageScale(false);
+            float dealt = shieldBashDamage * DamageScale(false, target);
             target.TakeDamage(dealt, point);
-            AfterHit(dealt);
+            AfterHit(dealt, target);
 
             // 盾擊的重點是把敵人撞開：額外的大力擊退
             var enemyMove = (target as Component) != null ? ((Component)target).GetComponent<ThirdPersonController>() : null;
@@ -547,9 +547,9 @@ public class PlayerCombat : MeleeCombat
         if (target == null || target.IsDead || alreadyHit.Contains(target)) return false;
 
         alreadyHit.Add(target);
-        float dealt = damage * DamageScale(heavySwing);
+        float dealt = damage * DamageScale(heavySwing, target);
         target.TakeDamage(dealt, hitPoint);
-        AfterHit(dealt);
+        AfterHit(dealt, target);
         if (heavySwing) CombatVFX.Impact(hitPoint, new Color(1f, 0.6f, 0.2f));
         ThirdPersonCamera.ShakeMain(heavySwing ? 0.18f : 0.08f, 0.1f);
         return true;
