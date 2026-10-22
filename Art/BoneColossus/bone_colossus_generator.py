@@ -9,6 +9,8 @@ GeminiGrowUp — 骸骨巨像 Boss 產生器（Blender 4.x）
        - GolemRig      骨架（Generic，不是 Humanoid）
        - Golem_Body    由一塊塊骨頭組成的身體（每一塊 100% 綁在一根骨頭上，不需要調權重）
        - 動作：Idle / Walk / Swipe / Slam / Roar / Beam / Jump / JumpLand / Summon / SummonLoop / Death
+               Plant / PlantHold / PlantPull（把骨棒插進地板召喚小怪：插下去 → 插著不動（循環）→ 拔出來）
+       - 右手拿著一根大骨棒（weapon 骨頭，掛在 hand.R 底下）
          （名稱要維持 Golem_ 開頭，Unity 的安裝工具靠名稱對應到 Boss 的招式）
   4. 匯出到 Unity：選取 GolemRig 和 Golem_Body → File → Export → FBX
        Apply Scalings = FBX All、Forward = -Z、Up = Y、
@@ -31,7 +33,7 @@ import random
 
 import bpy
 import bmesh
-from mathutils import Vector, Quaternion, Euler
+from mathutils import Vector, Quaternion, Euler, Matrix
 
 RIG_NAME = "GolemRig"
 BODY_NAME = "Golem_Body"
@@ -302,6 +304,9 @@ def build_armature(col):
             parent = p if p in ("chest", "hips") else mirror_name(p, side)
             add(mirror_name(name, side), mirror_vec(h, side), mirror_vec(t, side), parent)
 
+    # 右手的大骨棒：從握把指向頂端
+    add(WEAPON_BONE, WEAPON_GRIP, tuple(weapon_tip()), "hand.R")
+
     bpy.ops.object.mode_set(mode="OBJECT")
     for pb in rig.pose.bones:
         pb.rotation_mode = "QUATERNION"
@@ -523,6 +528,9 @@ def build_body(col, rig, mats):
     for side in ("L", "R"):
         for part in PARTS_SIDE:
             add_part(bm, deform, groups, mat_order, part, geo, side)
+
+    for part in weapon_parts():
+        add_part(bm, deform, groups, mat_order, part, geo)
 
     for bone_name, pts, width, seed in CRACKS:
         add_crack(bm, deform, geo, groups[bone_name], mat_order.index("void"), pts, width, seed)
@@ -755,6 +763,315 @@ def pose_death_slump(rig):
     rig.pose.bones["hips"].location = Vector((0, -1.2, 0))
 
 
+
+
+# ---------------------------------------------------------------------------
+#  武器：右手的大骨棒（一根巨大的腿骨）
+#  掛在 weapon 骨頭上（weapon 是 hand.R 的子骨頭），所以手怎麼動、骨棒就跟著動。
+#  WEAPON_GRIP = 握把（在右手拳頭裡），WEAPON_TIP = 骨棒頂端（粗的那一頭）。
+#  平常（Idle / Walk）骨棒斜斜地拖在右前方的地上。
+#  想改長短 / 粗細：改下面的數字再重新執行腳本。
+# ---------------------------------------------------------------------------
+WEAPON_BONE = "weapon"
+WEAPON_GRIP = (-2.62, -0.62, 0.98)
+WEAPON_DIR = (-0.5, -0.86, -0.1)      # 骨棒平常指的方向（握把 → 頂端）
+WEAPON_LENGTH = 5.0                   # 握把到頂端的距離 (m)
+WEAPON_POMMEL = 0.55                  # 握把後面露出來的長度 (m)
+
+
+def weapon_axis():
+    return Vector(WEAPON_DIR).normalized()
+
+
+def weapon_tip():
+    return Vector(WEAPON_GRIP) + weapon_axis() * WEAPON_LENGTH
+
+
+def weapon_parts():
+    """骨棒的零件（跟身體一樣的零件格式，全部綁在 weapon 骨頭上）"""
+    g = Vector(WEAPON_GRIP)
+    u = weapon_axis()
+    side = u.cross(Vector((0, 0, 1)))
+    if side.length < 0.01:
+        side = Vector((1, 0, 0))
+    side.normalize()
+    up = side.cross(u).normalized()
+    tip = weapon_tip()
+
+    def P(v):
+        return tuple(v)
+
+    parts = [
+        # 握把後面的小關節球
+        ("sphere", WEAPON_BONE, P(g - u * WEAPON_POMMEL), (0.3, 0.3, 0.28), "bone", (0, 0, 0), 2),
+        # 握把（深色，像纏了皮）
+        ("tube", WEAPON_BONE, [P(g - u * 0.45), P(g + u * 0.7)], [0.19, 0.19], "bone_dark", 7),
+        # 骨幹：越往頂端越粗
+        ("tube", WEAPON_BONE, [P(g + u * 0.6), P(g + u * 1.8), P(g + u * 3.0), P(tip - u * 0.55)],
+                              [0.22, 0.26, 0.31, 0.38], "bone", 7),
+        # 頂端：一大塊坑坑疤疤的骨頭關節，旁邊黏著一顆小的，上面插滿骨刺
+        ("sphere", WEAPON_BONE, P(tip - u * 0.3), (0.66, 0.6, 0.58), "bone", (12, 0, 20), 2),
+        ("sphere", WEAPON_BONE, P(tip - u * 0.75 + side * 0.28 + up * 0.32), (0.36, 0.32, 0.34), "bone_dark", (0, 0, 0), 1),
+        ("sphere", WEAPON_BONE, P(tip + u * 0.12 - side * 0.12 - up * 0.1), (0.34, 0.34, 0.3), "bone", (0, 0, 0), 1),
+        # 插在頂端的骨刺（打人用）
+        ("tube", WEAPON_BONE, [P(tip - u * 0.3 + up * 0.5), P(tip - u * 0.45 + up * 1.15)], [0.15, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip - u * 0.35 + side * 0.55), P(tip - u * 0.6 + side * 1.15 + up * 0.25)], [0.14, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip - u * 0.35 - side * 0.55), P(tip - u * 0.6 - side * 1.15 + up * 0.25)], [0.14, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip - u * 0.25 - up * 0.5), P(tip - u * 0.4 - up * 1.05 + side * 0.2)], [0.13, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip + u * 0.2 + up * 0.25), P(tip + u * 0.75 + up * 0.45)], [0.12, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip - u * 1.3 + up * 0.3), P(tip - u * 1.45 + up * 0.8)], [0.1, 0.01], "bone_dark", 5),
+        ("tube", WEAPON_BONE, [P(tip - u * 1.6 - side * 0.3), P(tip - u * 1.75 - side * 0.75)], [0.09, 0.01], "bone_dark", 5),
+        # 骨幹上的一圈裂開的骨節
+        ("sphere", WEAPON_BONE, P(g + u * 2.2), (0.3, 0.3, 0.3), "bone_dark", (0, 0, 0), 1),
+    ]
+    return parts
+
+
+# ---------------------------------------------------------------------------
+#  拿骨棒的姿勢小工具
+# ---------------------------------------------------------------------------
+
+def _update():
+    bpy.context.view_layer.update()
+
+
+def aim_weapon(rig, direction):
+    """轉右手腕，讓骨棒指向 direction（骨架空間的方向，-Y = 正前方、+Z = 上）。要在擺好手臂之後才呼叫"""
+    _update()
+    pw = rig.pose.bones[WEAPON_BONE]
+    ph = rig.pose.bones["hand.R"]
+    cur = (pw.tail - pw.head).normalized()
+    q = cur.rotation_difference(Vector(direction).normalized())
+    head = ph.head.copy()
+    ph.matrix = Matrix.Translation(head) @ q.to_matrix().to_4x4() @ Matrix.Translation(-head) @ ph.matrix
+    _update()
+
+
+def _swing_bone(rig, name, direction):
+    """把骨頭（從它目前的方向）用最小的旋轉轉到 direction：只擺動、不扭轉，動畫補間時手臂才不會翻過去"""
+    _update()
+    pb = rig.pose.bones[name]
+    cur = (pb.tail - pb.head).normalized()
+    q = cur.rotation_difference(Vector(direction).normalized())
+    head = pb.head.copy()
+    pb.matrix = Matrix.Translation(head) @ q.to_matrix().to_4x4() @ Matrix.Translation(-head) @ pb.matrix
+    _update()
+
+
+def reach(rig, side, target, pole=None):
+    """
+    兩節手臂（upper_arm + forearm）伸到 target（= 手腕的位置）。
+    用餘弦定理算出手肘的位置（往 pole 的方向彎），再把兩根骨頭各自「擺」過去。
+    不用 Blender 的 IK：IK 算出來的手臂會帶著很大的扭轉，關鍵影格之間補間時手臂會怪異地外翻。
+    """
+    _update()
+    up = rig.pose.bones[f"upper_arm.{side}"]
+    fo = rig.pose.bones[f"forearm.{side}"]
+    l1 = up.bone.length
+    l2 = fo.bone.length
+    s = up.head.copy()
+    t = Vector(target)
+    d = t - s
+    dist = d.length
+    if dist < 1e-4:
+        return
+    dist_c = max(min(dist, (l1 + l2) * 0.999), abs(l1 - l2) + 1e-3)
+    dn = d.normalized()
+    if pole is None:
+        pole = s + Vector((0, 1, 0))
+    bend = Vector(pole) - s
+    bend = (bend - dn * bend.dot(dn))
+    if bend.length < 1e-4:
+        bend = Vector((0, 1, 0)) - dn * dn.y
+    bend.normalize()
+    a = (l1 * l1 - l2 * l2 + dist_c * dist_c) / (2 * dist_c)
+    h = math.sqrt(max(l1 * l1 - a * a, 0.0))
+    elbow = s + dn * a + bend * h
+    _swing_bone(rig, up.name, elbow - s)
+    _update()
+    _swing_bone(rig, fo.name, t - fo.head)
+
+
+def weapon_grip_now(rig):
+    _update()
+    return rig.pose.bones[WEAPON_BONE].head.copy()
+
+
+def weapon_dir_now(rig):
+    _update()
+    pw = rig.pose.bones[WEAPON_BONE]
+    return (pw.tail - pw.head).normalized()
+
+
+def left_hand_on_weapon(rig, along=-0.95, pole=(3.2, 1.0, 3.0)):
+    """左手也握住骨棒：伸到握把再往上（往握把後方）一點的地方"""
+    g = weapon_grip_now(rig)
+    u = weapon_dir_now(rig)
+    target = g + u * along + Vector((0.25, 0.1, 0.55))
+    reach(rig, "L", target, pole)
+
+
+# ---------------------------------------------------------------------------
+#  骨棒的方向：每個姿勢擺好手臂之後，再轉手腕讓骨棒指向下面的方向
+# ---------------------------------------------------------------------------
+CLUB_DIRS = {
+    "swipe_windup": (-0.3, 0.5, 0.8),      # 扛在右肩後面
+    "swipe_strike": (0.75, -0.55, -0.38),  # 往左前方低低地橫掃（玩家身高的位置）
+    "slam_windup":  (0.0, 0.75, 0.65),     # 雙手舉高，骨棒在頭後面
+    "slam_impact":  (0.0, -0.97, -0.15),   # 往前砸在地上
+    "roar":         (-0.45, 0.1, 0.9),     # 舉向天空
+    "jump_crouch":  (-0.3, 0.85, -0.4),    # 往後甩
+    "jump_air":     (0.0, 0.55, 0.85),     # 舉高準備砸
+    "land":         (-0.35, -0.93, -0.08), # 砸在右前方的地上
+    "death_stagger": (-0.6, 0.3, 0.6),
+    "death_slump":  (-0.9, -0.25, -0.35),  # 骨棒倒在地上
+}
+
+
+def club(pose_fn, key):
+    def f(rig):
+        pose_fn(rig)
+        aim_weapon(rig, CLUB_DIRS[key])
+    f.__name__ = pose_fn.__name__ + "_club"
+    return f
+
+
+def pose_swipe_windup_fast(rig):
+    """揮擊蓄力：身體往右扭，右手把骨棒扛到右肩後面"""
+    reset_pose(rig)
+    set_rot_multi(rig, "chest", [((0, 0, 1), -34), ((1, 0, 0), -8)])
+    set_rot(rig, "upper_arm.L", (1, 0, 0), -25)
+    set_rot(rig, "thigh.R", (1, 0, 0), 10)
+    set_rot(rig, "thigh.L", (1, 0, 0), -14)
+    set_rot(rig, "shin.L", (1, 0, 0), 16)
+    rig.pose.bones["hips"].location = Vector((0, -0.2, 0))
+    reach(rig, "R", (-3.0, 0.9, 6.1), pole=(-4.5, 2.0, 3.5))   # 右手舉到右肩後上方
+    aim_weapon(rig, CLUB_DIRS["swipe_windup"])
+
+
+def pose_swipe_mid(rig):
+    """揮擊的中間：身體轉回正面，骨棒從右側水平地掃過來（補間時骨棒才不會往地上掉）"""
+    reset_pose(rig)
+    set_rot_multi(rig, "chest", [((0, 0, 1), 0), ((1, 0, 0), 6)])
+    set_rot(rig, "upper_arm.L", (1, 0, 0), 5)
+    set_rot(rig, "thigh.R", (1, 0, 0), -5)
+    rig.pose.bones["hips"].location = Vector((0, -0.25, 0))
+    reach(rig, "R", (-3.3, -1.7, 4.3), pole=(-4.5, 1.0, 2.5))  # 右手伸到右前方、肩膀的高度
+    aim_weapon(rig, (-0.75, -0.6, -0.2))
+
+
+def pose_swipe_strike_fast(rig):
+    """揮擊：往左扭身，骨棒低低地橫掃過正前方"""
+    reset_pose(rig)
+    set_rot_multi(rig, "chest", [((0, 0, 1), 36), ((1, 0, 0), 16)])
+    set_rot(rig, "spine", (0, 0, 1), 10)
+    set_rot(rig, "upper_arm.L", (1, 0, 0), 28)
+    set_rot(rig, "thigh.R", (1, 0, 0), -20)
+    set_rot(rig, "shin.R", (1, 0, 0), 26)
+    set_rot(rig, "thigh.L", (1, 0, 0), 12)
+    rig.pose.bones["hips"].location = Vector((0, -0.3, 0))
+    reach(rig, "R", (1.2, -2.6, 3.5), pole=(-1.0, 0.5, 1.0))   # 右手掃到左前方
+    aim_weapon(rig, CLUB_DIRS["swipe_strike"])
+
+
+def pose_plant_raise(rig):
+    """插地前：雙手握住骨棒高高舉起（頂端朝上、往後）"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), -14)
+    set_rot(rig, "head", (1, 0, 0), -12)
+    for s in ("L", "R"):
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -10)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 16)
+    rig.pose.bones["hips"].location = Vector((0, -0.12, 0))
+    reach(rig, "R", (-0.55, -1.3, 7.7), pole=(-3.5, 1.5, 5.5))
+    aim_weapon(rig, (0.05, 0.45, 0.89))
+    left_hand_on_weapon(rig, along=0.9, pole=(3.5, 1.5, 5.5))
+
+
+def pose_plant_impact(rig):
+    """插進地板：整個人往前壓，雙手把骨棒直直地插進正前方的地面"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 26)
+    set_rot(rig, "spine", (1, 0, 0), 10)
+    set_rot(rig, "head", (1, 0, 0), 4)
+    for s in ("L", "R"):
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -32)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 48)
+        set_rot(rig, f"foot.{s}", (1, 0, 0), -14)
+    rig.pose.bones["hips"].location = Vector((0, -0.5, 0))
+    reach(rig, "R", (-0.45, -2.35, 3.55), pole=(-3.5, 0.5, 4.0))
+    aim_weapon(rig, (0.0, -0.22, -0.97))
+    left_hand_on_weapon(rig, along=-0.75, pole=(3.5, 0.5, 4.0))
+
+
+def pose_plant_brace(rig):
+    """插著不動（循環的另一端）：壓得更低、低頭用力，像在把力量灌進地底"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 32)
+    set_rot(rig, "spine", (1, 0, 0), 12)
+    set_rot(rig, "head", (1, 0, 0), 16)
+    for s in ("L", "R"):
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -38)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 56)
+        set_rot(rig, f"foot.{s}", (1, 0, 0), -16)
+    rig.pose.bones["hips"].location = Vector((0, -0.62, 0))
+    reach(rig, "R", (-0.45, -2.3, 3.4), pole=(-3.5, 0.5, 4.0))
+    aim_weapon(rig, (0.0, -0.2, -0.98))
+    left_hand_on_weapon(rig, along=-0.75, pole=(3.5, 0.5, 4.0))
+
+
+def pose_plant_pull(rig):
+    """拔出來：身體往後仰，把骨棒往上拔、頂端離開地面"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), -6)
+    set_rot(rig, "head", (1, 0, 0), -6)
+    for s in ("L", "R"):
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -14)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 22)
+    rig.pose.bones["hips"].location = Vector((0, -0.2, 0))
+    reach(rig, "R", (-0.5, -1.8, 5.0), pole=(-3.5, 0.5, 5.0))
+    aim_weapon(rig, (-0.1, -0.45, -0.89))
+    left_hand_on_weapon(rig, along=-0.75, pole=(3.5, 0.5, 5.0))
+
+
+def pose_plant_lift(rig):
+    """插地前的中間姿勢：雙手握著骨棒往前抬到胸口（從垂手到舉高之間，補間才順）"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), -4)
+    rig.pose.bones["hips"].location = Vector((0, -0.08, 0))
+    reach(rig, "R", (-0.6, -2.6, 5.0), pole=(-3.0, 0.5, 3.0))
+    aim_weapon(rig, (-0.1, -0.35, 0.93))
+    left_hand_on_weapon(rig, along=0.9, pole=(3.0, 0.5, 3.0))
+
+
+def pose_plant_swing(rig):
+    """插地的中間姿勢：骨棒從頭頂往前砸到一半（雙手在前上方、骨棒指向前方）"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 10)
+    for s in ("L", "R"):
+        set_rot(rig, f"thigh.{s}", (1, 0, 0), -20)
+        set_rot(rig, f"shin.{s}", (1, 0, 0), 30)
+    rig.pose.bones["hips"].location = Vector((0, -0.3, 0))
+    reach(rig, "R", (-0.5, -2.8, 5.4), pole=(-3.5, 0.5, 4.0))
+    aim_weapon(rig, (0.0, -0.9, 0.42))
+    left_hand_on_weapon(rig, along=-0.75, pole=(3.5, 0.5, 4.0))
+
+
+def pose_plant_lower(rig):
+    """拔出來之後的中間姿勢：骨棒往右下放、雙手慢慢放下"""
+    reset_pose(rig)
+    set_rot(rig, "chest", (1, 0, 0), 4)
+    rig.pose.bones["hips"].location = Vector((0, -0.1, 0))
+    reach(rig, "R", (-1.6, -1.6, 2.9), pole=(-3.5, 1.0, 3.5))
+    aim_weapon(rig, (-0.4, -0.85, -0.35))
+    reach(rig, "L", (1.4, -1.1, 2.6), pole=(3.5, 1.0, 3.5))
+
+
+def pose_idle_club(rig, k):
+    pose_idle_breath(rig, k)
+    aim_weapon(rig, (-0.5, -0.86, -0.1 - 0.03 * k))
+
+
 def key_pose(rig, frame):
     for pb in rig.pose.bones:
         pb.keyframe_insert("rotation_quaternion", frame=frame)
@@ -771,52 +1088,62 @@ def make_action(rig, name, keys):
     action = bpy.data.actions.new(name)
     action.use_fake_user = True  # 沒被使用也會存進 .blend
     rig.animation_data.action = action
+    prev = {}
     for frame, fn in keys:
         fn(rig)
+        # 四元數 q 和 -q 是同一個旋轉，但補間時會繞遠路（手臂整隻翻過去）：跟上一格保持同一側
+        for pb in rig.pose.bones:
+            q = pb.rotation_quaternion
+            if pb.name in prev and prev[pb.name].dot(q) < 0:
+                pb.rotation_quaternion = -q
+            prev[pb.name] = pb.rotation_quaternion.copy()
         key_pose(rig, frame)
     return action
 
 
 def build_actions(rig):
     # 24 fps：拍地的蓄力 ≈ 1.3 秒、怒吼 ≈ 1.5 秒，跟遊戲程式的時間差不多
+    # 遊戲裡會自動調整播放速度，讓「打中的那一格」對上程式判定傷害的時間（BossVisual）
     make_action(rig, "Golem_Idle", [
-        (1, lambda r: pose_idle_breath(r, 0)),
-        (24, lambda r: pose_idle_breath(r, 1)),
-        (48, lambda r: pose_idle_breath(r, 0)),
+        (1, lambda r: pose_idle_club(r, 0)),
+        (24, lambda r: pose_idle_club(r, 1)),
+        (48, lambda r: pose_idle_club(r, 0)),
     ])
     make_action(rig, "Golem_Slam", [
-        (1, reset_pose),
-        (32, pose_slam_windup),
-        (35, pose_slam_impact),     # 砸下去的瞬間（Unity 裡在這裡放 Animation Event 判定傷害）
-        (50, pose_slam_impact),
-        (72, reset_pose),
+        (1, lambda r: pose_idle_club(r, 0)),
+        (32, club(pose_slam_windup, "slam_windup")),
+        (35, club(pose_slam_impact, "slam_impact")),     # 砸下去的瞬間
+        (50, club(pose_slam_impact, "slam_impact")),
+        (72, lambda r: pose_idle_club(r, 0)),
     ])
     make_action(rig, "Golem_Roar", [
-        (1, reset_pose),
-        (10, pose_roar),
-        (36, pose_roar),
-        (48, reset_pose),
+        (1, lambda r: pose_idle_club(r, 0)),
+        (10, club(pose_roar, "roar")),
+        (36, club(pose_roar, "roar")),
+        (48, lambda r: pose_idle_club(r, 0)),
     ])
-    make_action(rig, "Golem_Walk", [        # 循環：32 格 = 1.33 秒走一個完整步伐
-        (1, lambda r: pose_walk(r, 1)),
-        (9, lambda r: pose_walk(r, 0)),
-        (17, lambda r: pose_walk(r, -1)),
-        (25, lambda r: pose_walk(r, 0)),
-        (33, lambda r: pose_walk(r, 1)),
+    make_action(rig, "Golem_Walk", [        # 循環：32 格 = 1.33 秒走一個完整步伐（骨棒拖在右前方）
+        (1, lambda r: (pose_walk(r, 1), aim_weapon(r, WEAPON_DIR))),
+        (9, lambda r: (pose_walk(r, 0), aim_weapon(r, WEAPON_DIR))),
+        (17, lambda r: (pose_walk(r, -1), aim_weapon(r, WEAPON_DIR))),
+        (25, lambda r: (pose_walk(r, 0), aim_weapon(r, WEAPON_DIR))),
+        (33, lambda r: (pose_walk(r, 1), aim_weapon(r, WEAPON_DIR))),
     ])
-    make_action(rig, "Golem_Swipe", [       # 第 18 格揮中
-        (1, reset_pose),
-        (15, pose_swipe_windup),
-        (18, pose_swipe_strike),
-        (26, pose_swipe_strike),
-        (36, reset_pose),
+    make_action(rig, "Golem_Swipe", [       # 第 18 格骨棒掃過正前方（遊戲裡會加速播放）
+        (1, lambda r: pose_idle_club(r, 0)),
+        (13, pose_swipe_windup_fast),
+        (15, pose_swipe_windup_fast),
+        (17, pose_swipe_mid),
+        (18, pose_swipe_strike_fast),
+        (24, pose_swipe_strike_fast),
+        (34, lambda r: pose_idle_club(r, 0)),
     ])
     make_action(rig, "Golem_Beam", [        # 第 12 格舉好右手，之後維持姿勢（遊戲裡會停在最後一格直到光束結束）
         (1, reset_pose),
         (12, pose_beam),
         (24, pose_beam),
     ])
-    make_action(rig, "Golem_Summon", [      # 第 30 格雙手舉到最高（小怪這時候鑽出來）
+    make_action(rig, "Golem_Summon", [      # 舊的召喚動作（現在改用 Plant），保留給舊的設定用
         (1, reset_pose),
         (14, pose_summon_gather),
         (20, pose_summon_gather),
@@ -824,28 +1151,48 @@ def build_actions(rig):
         (46, pose_summon_raise),
         (60, reset_pose),
     ])
-    make_action(rig, "Golem_SummonLoop", [  # 循環：32 格 = 1.33 秒一次「往下抓 → 往上拉」，接在 Summon 第 30 格之後
+    make_action(rig, "Golem_SummonLoop", [
         (1, pose_summon_raise),
-        (13, pose_summon_heave),            # 慢慢沉下去
-        (19, pose_summon_raise),            # 一口氣拉起來
-        (33, pose_summon_raise),            # 舉著停一下
+        (13, pose_summon_heave),
+        (19, pose_summon_raise),
+        (33, pose_summon_raise),
+    ])
+    make_action(rig, "Golem_Plant", [       # 第 21 格骨棒插進地板（地面衝擊、擊退），之後停在插著的姿勢
+        (1, lambda r: pose_idle_club(r, 0)),
+        (7, pose_plant_lift),
+        (12, pose_plant_raise),
+        (17, pose_plant_raise),
+        (19, pose_plant_swing),
+        (21, pose_plant_impact),
+        (30, pose_plant_impact),
+    ])
+    make_action(rig, "Golem_PlantHold", [   # 循環：48 格 = 2 秒，插著骨棒用力往下壓
+        (1, pose_plant_impact),
+        (24, pose_plant_brace),
+        (49, pose_plant_impact),
+    ])
+    make_action(rig, "Golem_PlantPull", [   # 拔出來：第 10 格骨棒離開地面，第 28 格回到平常的姿勢
+        (1, pose_plant_impact),
+        (10, pose_plant_pull),
+        (19, pose_plant_lower),
+        (28, lambda r: pose_idle_club(r, 0)),
     ])
     make_action(rig, "Golem_Jump", [        # 第 17 格起跳，之後維持空中姿勢
-        (1, reset_pose),
-        (17, pose_jump_crouch),
-        (21, pose_jump_air),
-        (30, pose_jump_air),
+        (1, lambda r: pose_idle_club(r, 0)),
+        (17, club(pose_jump_crouch, "jump_crouch")),
+        (21, club(pose_jump_air, "jump_air")),
+        (30, club(pose_jump_air, "jump_air")),
     ])
     make_action(rig, "Golem_JumpLand", [    # 第 1 格著地
-        (1, pose_land),
-        (12, pose_land),
-        (32, reset_pose),
+        (1, club(pose_land, "land")),
+        (12, club(pose_land, "land")),
+        (32, lambda r: pose_idle_club(r, 0)),
     ])
     make_action(rig, "Golem_Death", [
-        (1, reset_pose),
-        (10, pose_death_stagger),
-        (40, pose_death_slump),
-        (48, pose_death_slump),
+        (1, lambda r: pose_idle_club(r, 0)),
+        (10, club(pose_death_stagger, "death_stagger")),
+        (40, club(pose_death_slump, "death_slump")),
+        (48, club(pose_death_slump, "death_slump")),
     ])
     rig.animation_data.action = bpy.data.actions["Golem_Idle"]
     reset_pose(rig)
