@@ -8,7 +8,8 @@ using UnityEngine;
 /// - 出招結束：BossController 呼叫 EndAction，回到 Idle / Walk
 ///
 /// Animator 裡的狀態名稱要跟招式名稱一樣：
-///   Idle、Walk、Swipe、Slam、Roar、Beam、Jump、JumpLand、Summon、SummonLoop、Death
+///   Idle、Walk、Swipe、Slam、Roar、Beam、Jump、JumpLand、Summon、SummonLoop、Death、
+///   Plant（骨棒插進地板）、PlantHold（插著不動，循環）、PlantPull（拔出來）
 /// 沒有這個元件時，Boss 就照舊只用程式做前傾 / 後仰。
 /// </summary>
 public class BossVisual : MonoBehaviour
@@ -161,6 +162,7 @@ public class BossVisual : MonoBehaviour
             if (t.state == state) return t.hitTime;
         // 後來才加的招式：Prefab 裡存的清單沒有它，用這裡的預設值
         if (state == "Summon") return 30f / 24f; // 第 30 格雙手舉到最高
+        if (state == "Plant") return 20f / 24f;  // 第 21 格骨棒插進地板
         return 0f;
     }
 
