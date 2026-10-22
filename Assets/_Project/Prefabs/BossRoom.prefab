@@ -13192,6 +13192,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &606892289674932739
 GameObject:
   m_ObjectHideFlags: 0
@@ -15868,6 +15869,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &710116327365708197
 GameObject:
   m_ObjectHideFlags: 0
@@ -26115,6 +26117,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &1187534521123797008
 GameObject:
   m_ObjectHideFlags: 0
@@ -31723,6 +31726,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &1534585811162772581
 GameObject:
   m_ObjectHideFlags: 0
@@ -41163,6 +41167,7 @@ MonoBehaviour:
   shadeVariation: 0
   layoutSeed: 0
   generatedSlabSize: 2
+  spawnRocks: 0
   rockMaterial: {fileID: 2100000, guid: 418986dfc5485a444bb6440c7022a2b9, type: 2}
   bigRockPrefab: {fileID: 0}
   smallRockPrefab: {fileID: 0}
@@ -71161,6 +71166,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &3415100134436132066
 GameObject:
   m_ObjectHideFlags: 0
@@ -95305,11 +95311,16 @@ MonoBehaviour:
   maxStepHeight: 2
   groundFollowSpeed: 6
   chaseTimeRange: {x: 5, y: 8}
-  swipeRange: 4.8
-  swipeHalfAngle: 70
-  swipeWindup: 0.6
-  swipeCooldown: 1.6
-  swipeDamage: 15
+  clubRange: 6.5
+  clubHalfAngle: 75
+  clubWindup: 0.32
+  clubRecover: 0.35
+  clubCooldown: 0.85
+  clubDamage: 15
+  clubLaunchSpeed: 14
+  clubLaunchUp: 9
+  followUpJumpChance: {x: 0.4, y: 0.65}
+  followUpJumpWindup: 0.3
   slamRange: 48
   slamHalfAngle: 60
   slamApproachDistance: 18
@@ -95339,7 +95350,15 @@ MonoBehaviour:
   summonCount: {x: 7, y: 9}
   summonMaxAlive: 14
   summonDuration: 5
-  summonWindup: 1.25
+  plantWindup: 1.1
+  plantOffset: {x: 0.05, y: 0, z: 3.87}
+  plantRadius: 7
+  plantDamage: 20
+  plantLaunchSpeed: 12
+  plantLaunchUp: 8
+  plantCircleColor: {r: 1, g: 0.25, b: 0.08, a: 1}
+  plantPullDelay: 0.5
+  plantPullTime: 1.1
   summonMinPlayerDistance: 4
   summonSound: {fileID: 0}
   enableBeam: 0
@@ -95368,6 +95387,15 @@ MonoBehaviour:
   jumpWaveDamage: 15
   jumpRecoverTime: 1.5
   landCircleColor: {r: 1, g: 0.1, b: 0.08, a: 1}
+  showVictoryBanner: 1
+  victoryTitle: LEVEL COMPLETE
+  victorySubtitle: 
+  victoryColor: {r: 1, g: 0.82, b: 0.42, a: 1}
+  victorySound: {fileID: 0}
+  victoryVolume: 0.9
+  victoryDelay: 0.35
+  victorySlowMotion: 0.25
+  victorySlowMotionTime: 0.9
   enablePhase2: 1
   phase2HealthRatio: 0.5
   phase2MoveMultiplier: 1.5
@@ -95393,7 +95421,7 @@ MonoBehaviour:
   beamVolume: 0.6
   impactSound: {fileID: 0}
   sfxVolume: 1
-  debugKeys: 1
+  playerDeathDelay: 3
   showStatus: 1
 --- !u!114 &8682786735120819664
 MonoBehaviour:
@@ -95423,7 +95451,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 80b64f917b058504396c5de6c13d0aa7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossVisual
-  animator: {fileID: 4224754931569378370}
+  animator: {fileID: 3859919545251337583}
   proceduralLean: 0.3
   walkThreshold: 0.4
   walkAnimSpeed: 3.5
@@ -121652,6 +121680,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &6167595471751888101
 GameObject:
   m_ObjectHideFlags: 0
@@ -128118,6 +128147,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &6440749436298536864
 GameObject:
   m_ObjectHideFlags: 0
@@ -131420,7 +131450,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 9151596684474546575}
+  - {fileID: 3491101648514959344}
   m_Father: {fileID: 2194915174616288377}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6601154822768326600
@@ -141375,7 +141405,6 @@ MonoBehaviour:
   titleDuration: 2.8
   waveTitleColor: {r: 1, g: 0.86, b: 0.45, a: 1}
   bossTitleColor: {r: 1, g: 0.25, b: 0.15, a: 1}
-  debugKeys: 1
   showStatus: 1
 --- !u!1 &7082886053780373465
 GameObject:
@@ -167279,6 +167308,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &8420197044677037062
 GameObject:
   m_ObjectHideFlags: 0
@@ -171529,6 +171559,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &8614538128652337732
 GameObject:
   m_ObjectHideFlags: 0
@@ -178707,6 +178738,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TorchFlicker
   amount: 0.3
   speed: 6
+  dim: 1
 --- !u!1 &9028617695725297668
 GameObject:
   m_ObjectHideFlags: 0
@@ -183360,7 +183392,7 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!1001 &8686240609301831268
+--- !u!1001 &4033073584619298843
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -183418,21 +183450,26 @@ PrefabInstance:
     m_AddedComponents:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 11b690252a7379f458388b994892bd85, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 4224754931569378370}
+      addedObject: {fileID: 3859919545251337583}
   m_SourcePrefab: {fileID: 100100000, guid: 11b690252a7379f458388b994892bd85, type: 3}
---- !u!1 &8379738884397802293 stripped
+--- !u!4 &3491101648514959344 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 11b690252a7379f458388b994892bd85, type: 3}
+  m_PrefabInstance: {fileID: 4033073584619298843}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &4267498057285999946 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 11b690252a7379f458388b994892bd85, type: 3}
-  m_PrefabInstance: {fileID: 8686240609301831268}
+  m_PrefabInstance: {fileID: 4033073584619298843}
   m_PrefabAsset: {fileID: 0}
---- !u!95 &4224754931569378370
+--- !u!95 &3859919545251337583
 Animator:
   serializedVersion: 7
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8379738884397802293}
+  m_GameObject: {fileID: 4267498057285999946}
   m_Enabled: 1
   m_Avatar: {fileID: 0}
   m_Controller: {fileID: 9100000, guid: c0328936c021a604f916315bda55a419, type: 2}
@@ -183447,8 +183484,3 @@ Animator:
   m_AllowConstantClipSamplingOptimization: 1
   m_KeepAnimatorStateOnDisable: 0
   m_WriteDefaultValuesOnDisable: 0
---- !u!4 &9151596684474546575 stripped
-Transform:
-  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 11b690252a7379f458388b994892bd85, type: 3}
-  m_PrefabInstance: {fileID: 8686240609301831268}
-  m_PrefabAsset: {fileID: 0}

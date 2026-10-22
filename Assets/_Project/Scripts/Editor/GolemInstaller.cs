@@ -31,7 +31,7 @@ public static class GolemInstaller
     // Blender 匯出的模型在 Unity 裡會面向 -Z，轉 180 度讓臉朝向 Boss 的前方（+Z）
     const float ModelYaw = 180f;
 
-    static readonly string[] LoopingClips = { "Idle", "Walk", "SummonLoop" };
+    static readonly string[] LoopingClips = { "Idle", "Walk", "SummonLoop", "PlantHold" };
 
     [MenuItem("GeminiGrowUp/安裝 或 更新 Boss 模型（骸骨巨像）")]
     public static void Install()
@@ -74,7 +74,7 @@ public static class GolemInstaller
     }
 
     /// <summary>
-    /// Golem.fbx 裡已經有召喚動畫（Summon / SummonLoop）、但目前的 Animator 還沒有 → 需要重新安裝一次。
+    /// Golem.fbx 裡已經有召喚動畫（Summon / SummonLoop / Plant / PlantHold / PlantPull）、但目前的 Animator 還沒有 → 需要重新安裝一次。
     /// 還沒安裝過模型（沒有 Golem.controller）或 FBX 是舊的（沒有這些動畫）時回傳 false。
     /// </summary>
     internal static bool NeedsSummonUpdate()
@@ -82,7 +82,7 @@ public static class GolemInstaller
         if (AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath) == null) return false;
         var imp = AssetImporter.GetAtPath(FbxPath) as ModelImporter;
         if (imp == null) return false;
-        foreach (string need in new[] { "Summon", "SummonLoop" })
+        foreach (string need in new[] { "Summon", "SummonLoop", "Plant", "PlantHold", "PlantPull" })
         {
             if (ControllerHasState(need)) continue;
             foreach (var clip in imp.defaultClipAnimations)
@@ -184,7 +184,7 @@ public static class GolemInstaller
         }
 
         var missing = new List<string>();
-        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Summon", "SummonLoop", "Death" })
+        foreach (var need in new[] { "Idle", "Walk", "Swipe", "Slam", "Roar", "Beam", "Jump", "JumpLand", "Plant", "PlantHold", "PlantPull", "Death" })
             if (!clips.Any(c => c.name == need)) missing.Add(need);
         if (missing.Count > 0)
             Debug.LogWarning("[GeminiGrowUp] Golem.fbx 裡少了這些動畫（Boss 放這些招式時會沒有動作）：" + string.Join("、", missing));

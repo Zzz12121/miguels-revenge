@@ -7,7 +7,8 @@ using UnityEngine.InputSystem;
 /// Boss AI（用膠囊體代替模型）
 ///
 /// 戰鬥開始（由 BossGate 呼叫 BeginFight，或勾選 autoStart）：競技場的地面冒出隨機的岩石（大岩柱當掩體、小石塊可以推）。
-/// 平常：追著玩家（路上的岩石會被撞開 / 撞碎），靠近時普通攻擊（揮擊）。
+/// 平常：追著玩家（路上的岩石會被撞開 / 撞碎），靠近時用右手的大骨棒揮擊：
+///         出手很快，打中會把玩家擊飛一段距離；擊飛成功時有機率接著跳過去砸（追擊）。
 /// 每追擊一段時間，隨機使用一招特殊攻擊（不會連續重複同一招）：
 ///   1. 拍地  ：朝前方扇形拍一掌，衝擊波往外擴散、地板凹陷並出現不規則深坑。
 ///              衝擊波經過時腳還踩在地上就會受傷 → 要抓時機跳過去。
@@ -17,9 +18,9 @@ using UnityEngine.InputSystem;
 ///              站在光束裡每 0.3 秒受傷一次；照到的地板會碎掉，岩石能擋一下但會被打碎。
 ///   4. 跳躍砸地：跳到玩家位置砸下來。落點會先出現紅色圓形警戒區（GroundTelegraph），要趕快跑出圈外；
 ///              落地後還有一圈往外擴散的衝擊波，要跳過去。玩家離太遠時 Boss 也會用這招拉近距離。
-///   5. 召喚  ：彎腰抓向地面再舉起雙手，接著持續幾秒一直做召喚的動作，小怪一隻一隻從場上隨機的位置鑽出來
-///              （沒有預告位置，間隔有快有慢）。這段時間 Boss 站著不動，是打牠的機會。
-///              場上的召喚小怪快滿了就不會再用；Boss 被打倒時小怪一起倒下。
+///   5. 插地召喚：雙手舉起骨棒，前方地上先出現紅色警戒圈 → 骨棒插進地板，圈裡的玩家受傷並被往外擊飛 →
+///              骨棒插著不動的這段時間，小怪一隻一隻從場上隨機的位置鑽出來（間隔有快有慢）→ 全部出來後拔起骨棒。
+///              這段時間 Boss 站著不動，是打牠的機會。場上的召喚小怪快滿了就不會再用；Boss 被打倒時小怪一起倒下。
 ///
 /// 玩家死亡重生時：Boss 回滿血、回到起始位置、地板壓平，回到「等待玩家進門」的狀態。
 /// </summary>
@@ -56,12 +57,26 @@ public class BossController : MonoBehaviour
     [Tooltip("兩次特殊攻擊之間追擊多久 (秒，隨機範圍)")]
     public Vector2 chaseTimeRange = new Vector2(5f, 8f);
 
-    [Header("普通攻擊（揮擊）")]
-    public float swipeRange = 4.8f;
-    public float swipeHalfAngle = 70f;
-    public float swipeWindup = 0.6f;
-    public float swipeCooldown = 1.6f;
-    public float swipeDamage = 15f;
+    [Header("普通攻擊（骨棒揮擊）")]
+    [Tooltip("骨棒打得到的距離（從 Boss 中心算，m）")]
+    public float clubRange = 6.5f;
+    [Tooltip("揮擊扇形的半角（75 = 前方總共 150 度）")]
+    public float clubHalfAngle = 75f;
+    [Tooltip("抬手到打中的時間（秒），越短越難躲。以前是 0.6")]
+    public float clubWindup = 0.32f;
+    [Tooltip("打中之後收招的時間（秒）")]
+    public float clubRecover = 0.35f;
+    [Tooltip("兩次揮擊之間至少隔多久（秒）。以前是 1.6")]
+    public float clubCooldown = 0.85f;
+    public float clubDamage = 15f;
+    [Tooltip("把玩家擊飛的水平速度 (m/s)：越大飛越遠（14 ≈ 飛出 10 公尺）")]
+    public float clubLaunchSpeed = 14f;
+    [Tooltip("擊飛往上的速度 (m/s)：越大飛越高、在空中越久")]
+    public float clubLaunchUp = 9f;
+    [Tooltip("擊飛成功後，接著跳過去砸（追擊）的機率：x = 一階段、y = 二階段")]
+    public Vector2 followUpJumpChance = new Vector2(0.4f, 0.65f);
+    [Tooltip("追擊跳砸的蓄力時間（秒），比一般跳砸短")]
+    public float followUpJumpWindup = 0.3f;
 
     [Header("1. 拍地")]
     public float slamRange = 48f;
@@ -116,10 +131,25 @@ public class BossController : MonoBehaviour
     public Vector2Int summonCount = new Vector2Int(7, 9);
     [Tooltip("場上最多同時有幾隻召喚出來的小怪；快滿了就不會再用這招")]
     public int summonMaxAlive = 14;
-    [Tooltip("整招持續幾秒。這段時間 Boss 一直做著召喚的動作，小怪一隻一隻陸續冒出來（間隔有快有慢）")]
+    [Tooltip("骨棒插進地板之後，小怪陸續冒出來的這段時間有幾秒（間隔有快有慢）。全部出來之後才拔起骨棒")]
     public float summonDuration = 5f;
-    [Tooltip("開始召喚後多久第一隻小怪才冒出來 (秒)：Boss 彎腰抓向地面、再把雙手舉起來的時間")]
-    public float summonWindup = 1.25f;
+    [Tooltip("舉起骨棒到插下去的時間（秒），也就是地上紅色警戒圈長滿的時間")]
+    public float plantWindup = 1.1f;
+    [Tooltip("骨棒插進地板的位置（相對 Boss：x = 右、z = 前，m）。跟模型動畫裡骨棒插下去的位置一樣，換了動畫才需要改")]
+    public Vector3 plantOffset = new Vector3(0.05f, 0f, 3.87f);
+    [Tooltip("插地衝擊的範圍半徑 (m)，也就是警戒圈的大小")]
+    public float plantRadius = 7f;
+    public float plantDamage = 20f;
+    [Tooltip("插地衝擊把玩家往外擊飛的水平速度 (m/s)")]
+    public float plantLaunchSpeed = 12f;
+    [Tooltip("插地衝擊擊飛往上的速度 (m/s)")]
+    public float plantLaunchUp = 8f;
+    [Tooltip("插地警戒圈的顏色")]
+    public Color plantCircleColor = new Color(1f, 0.25f, 0.08f);
+    [Tooltip("最後一隻小怪冒出來之後，多久才開始拔骨棒（秒）")]
+    public float plantPullDelay = 0.5f;
+    [Tooltip("拔出骨棒、回到平常姿勢的時間（秒）")]
+    public float plantPullTime = 1.1f;
     [Tooltip("小怪冒出來的位置至少離玩家多遠 (m)")]
     public float summonMinPlayerDistance = 4f;
     [Tooltip("召喚時的聲音（不填 = 低沉的碎石怒吼）")]
@@ -311,6 +341,8 @@ public class BossController : MonoBehaviour
     {
         if (victoryTitle == "強敵已討伐") victoryTitle = "LEVEL COMPLETE";
         if (victorySubtitle == "VICTORY ACHIEVED") victorySubtitle = "";
+        // 插地動畫修正過手臂之後，骨棒插下去的位置稍微變了：還是舊的預設值就換成新的
+        if (plantOffset == new Vector3(0.63f, 0f, 3.96f)) plantOffset = new Vector3(0.05f, 0f, 3.87f);
     }
 
     // 編輯器裡：程式重新編譯、或在 Inspector 改數值時會呼叫 → Inspector 上看到的也會是新的文字
@@ -787,9 +819,9 @@ public class BossController : MonoBehaviour
                 continue;
             }
 
-            bool inRange = toPlayer.magnitude <= swipeRange;
-            bool facing = Vector3.Angle(transform.forward, toPlayer) < 35f;
-            if (inRange && facing && Time.time - lastSwipeTime >= swipeCooldown)
+            bool inRange = toPlayer.magnitude <= clubRange;
+            bool facing = Vector3.Angle(transform.forward, toPlayer) < 45f;
+            if (inRange && facing && Time.time - lastSwipeTime >= clubCooldown)
                 yield return Swipe();
 
             t += Time.deltaTime;
@@ -797,21 +829,89 @@ public class BossController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 骨棒揮擊：很快地揮出，打中就把玩家擊飛一段距離（被盾擋下就不會飛）。
+    /// 擊飛成功時有機率接著跳到玩家落地的位置砸下去（追擊）。
+    /// </summary>
     IEnumerator Swipe()
     {
         CurrentAction = "揮擊";
-        PlayAnim("Swipe", swipeWindup + 0.1f);
-        yield return Lean(-15f, swipeWindup);  // 後仰蓄力
-        GameAudio.Play("SFX/RPG/knifeSlice", transform.position + Vector3.up * 3f, 0.9f * sfxVolume, 0.45f, 0.05f, 0.6f, 60f);
-        yield return Lean(25f, 0.1f);          // 揮下去
-
-        if (PlayerInFan(swipeRange + 0.5f, swipeHalfAngle, out Vector3 dir))
-            playerHealth?.TakeDamage(swipeDamage, dir.normalized * 9f + Vector3.up * 4f);
-
-        yield return new WaitForSeconds(0.3f);
-        yield return Lean(0f, 0.4f);
-        EndAnim();
+        PlayAnim("Swipe", clubWindup + 0.04f);
+        yield return Lean(-10f, clubWindup);   // 蓄力
+        GameAudio.Play("SFX/RPG/knifeSlice", transform.position + Vector3.up * 3f, 0.9f * sfxVolume, 0.4f, 0.05f, 0.6f, 60f);
+        yield return Lean(18f, 0.05f);         // 揮下去
         lastSwipeTime = Time.time;
+
+        bool launched = false;
+        Vector3 landing = Vector3.zero;
+        if (PlayerInFan(clubRange + 0.5f, clubHalfAngle, out Vector3 dir))
+        {
+            // 骨棒從 Boss 的右邊往左掃：玩家被打向 Boss 的左前方
+            Vector3 away = dir.sqrMagnitude > 0.01f ? dir.normalized : transform.forward;
+            away = (away - transform.right * 0.35f).normalized;
+            launched = HitAndLaunch(clubDamage, away, clubLaunchSpeed, clubLaunchUp, out landing);
+            if (launched)
+            {
+                PlayImpact(1.2f, 0.8f);
+                ThirdPersonCamera.ShakeMain(0.25f, 0.3f);
+            }
+        }
+
+        // 追擊：跳到玩家落地的地方砸下去
+        float chance = phase2 ? followUpJumpChance.y : followUpJumpChance.x;
+        if (launched && !phase2Pending && Random.value < chance)
+        {
+            yield return new WaitForSeconds(0.12f);
+            StartCoroutine(Lean(0f, 0.15f));
+            yield return JumpSlam(landing, followUpJumpWindup);
+            yield break;
+        }
+
+        yield return new WaitForSeconds(clubRecover * 0.5f);
+        yield return Lean(0f, clubRecover * 0.5f);
+        EndAnim();
+    }
+
+    /// <summary>
+    /// 打中玩家並擊飛：damage 傷害，往 away 方向（水平）以 speed 的速度、往上 up 的速度飛出去。
+    /// 回傳有沒有真的飛出去（被盾擋下、被閃掉、翻滾無敵、打死了都算沒有）；landing = 預估的落地點。
+    /// 落地點超出競技場時會自動減速，不會被打出場外。
+    /// </summary>
+    bool HitAndLaunch(float damage, Vector3 away, float speed, float up, out Vector3 landing)
+    {
+        landing = player != null ? player.position : transform.position;
+        if (playerHealth == null || !PlayerAlive) return false;
+        away.y = 0f;
+        away = away.sqrMagnitude > 0.001f ? away.normalized : transform.forward;
+
+        float before = playerHealth.Health;
+        if (!playerHealth.TakeDamage(damage, away * 5f + Vector3.up * 3f)) return false;
+        // 被盾牌擋下（沒扣血）或這一下打死了：不擊飛
+        if (playerHealth.IsDead || playerHealth.Health >= before) return false;
+
+        var move = playerHealth.GetComponent<ThirdPersonController>();
+        if (move == null) return false;
+
+        float g = Mathf.Max(1f, Mathf.Abs(move.gravity));
+        float airTime = 2f * Mathf.Max(up, 0.1f) / g;
+        Vector3 start = player.position;
+        landing = start + away * speed * airTime;
+        if (arena != null)
+        {
+            // 落點不要超出競技場（留 2 公尺）：飛太遠就減速
+            float maxR = arena.radius - 2f;
+            Vector3 c = arena.Center;
+            for (int i = 0; i < 6 && ArenaFloor.FlatDistance(landing, c) > maxR; i++)
+            {
+                speed *= 0.75f;
+                landing = start + away * speed * airTime;
+            }
+        }
+
+        move.Launch(away * speed + Vector3.up * up);
+        if (!move.IsBallistic) return false;
+        landing = ClampInArena(landing);
+        return true;
     }
 
     // =====================================================================
@@ -939,43 +1039,67 @@ public class BossController : MonoBehaviour
     }
 
     // =====================================================================
-    //  召喚：舉起雙手，從地底叫出一批小怪
+    //  插地召喚：骨棒插進地板（範圍擊飛），插著的時候小怪從地底一隻一隻鑽出來，最後拔起骨棒
     // =====================================================================
+
+    /// <summary>骨棒插進地板的位置（地面上）</summary>
+    Vector3 PlantPoint()
+    {
+        Vector3 p = transform.TransformPoint(new Vector3(plantOffset.x, 0f, plantOffset.z));
+        p.y = arena != null && arena.TryGetGroundHeight(p, out float g) ? g : transform.position.y;
+        return p;
+    }
 
     IEnumerator Summon()
     {
-        CurrentAction = "召喚";
+        CurrentAction = "插地召喚（準備）";
 
-        // 這次叫幾隻、各自在第幾秒冒出來：第一隻在雙手舉起來的那一刻，其餘的間隔有長有短
+        // 這次叫幾隻、各自在插地後第幾秒冒出來（間隔有長有短）
         int want = Random.Range(Mathf.Min(summonCount.x, summonCount.y), Mathf.Max(summonCount.x, summonCount.y) + 1);
         int usual = Mathf.Max(1, Mathf.Min(summonCount.x, summonCount.y));
         want = Mathf.Min(want, summonMaxAlive - summoned.Count);
-        if (want <= 0) yield break; // 場上已經滿了（只有用測試鍵硬叫才會發生）
-        float duration = Mathf.Max(summonDuration, summonWindup + 0.5f);
-        // 名額快滿、這次只叫得出兩三隻的時候，不用在那邊舉手舉滿五秒
-        if (want < usual) duration = Mathf.Lerp(summonWindup + 1f, duration, want / (float)usual);
-        var times = SummonTimes(want, summonWindup, duration - 0.4f);
+        if (want <= 0) yield break; // 場上已經滿了
+        float duration = Mathf.Max(summonDuration, 1f);
+        // 名額快滿、這次只叫得出兩三隻的時候，不用插在那邊插滿五秒
+        if (want < usual) duration = Mathf.Lerp(1.5f, duration, want / (float)usual);
+        var times = SummonTimes(want, 0.35f, duration - 0.3f);
 
-        // 彎腰抓向地面 → 舉起雙手，之後一直重複「往下抓、往上拉」直到整招結束
-        PlayAnim("Summon", summonWindup);
-        GameAudio.PlayAt(GameAudio.Pick(summonSound, "SFX/roar_rock_crumble"), transform.position + Vector3.up * 4f,
-                         0.8f * sfxVolume, 0.6f, 0.5f, 90f);
-        ThirdPersonCamera.ShakeMain(0.08f, duration);
-        StartCoroutine(Lean(-12f, summonWindup));
-
-        Vector3 home = arena != null ? arena.Center + Vector3.up : transform.position;
+        // 先轉向玩家
         float t = 0f;
+        while (t < 0.25f && PlayerAlive)
+        {
+            FaceTowards(FlatTo(player.position), TurnSpeed * 2.5f);
+            t += Time.deltaTime;
+            yield return null;
+        }
+
+        // 舉起骨棒：前方地上出現紅色警戒圈，長滿的那一刻插下去
+        Vector3 point = PlantPoint();
+        HideLandMark(false);
+        landMark = GroundTelegraph.Show(point, plantRadius, plantCircleColor, plantWindup);
+        PlayAnim("Plant", plantWindup);
+        GameAudio.PlayAt(GameAudio.Pick(summonSound, "SFX/roar_rock_crumble"), transform.position + Vector3.up * 4f,
+                         0.7f * sfxVolume, 0.7f, 0.5f, 90f);
+        yield return new WaitForSeconds(plantWindup);
+
+        // 插下去！範圍內的玩家受傷並被往外擊飛
+        CurrentAction = "插地召喚";
+        HideLandMark(true);
+        PlantImpact(point, duration);
+
+        // 插著不動：小怪陸續從地底鑽出來
+        Vector3 home = arena != null ? arena.Center + Vector3.up : transform.position;
+        t = 0f;
         int next = 0;
-        bool looping = false;
-        // 召喚到一半血量掉到二階段門檻：不繼續站著挨打，直接中斷去變身
+        bool holding = false;
+        // 召喚到一半血量掉到二階段門檻：不繼續站著挨打，直接拔起來去變身
         while (t < duration && !phase2Pending)
         {
             t += Time.deltaTime;
-            if (PlayerAlive) FaceTowards(FlatTo(player.position), TurnSpeed * (t < 0.3f ? 2f : 0.4f)); // 一開始轉向玩家，之後慢慢跟著轉
-            if (!looping && t >= summonWindup)
+            if (!holding && t >= 0.35f)
             {
-                looping = true;
-                if (visual != null) visual.LoopAction("SummonLoop");
+                holding = true;
+                if (visual != null) visual.LoopAction("PlantHold", 0.25f);
             }
 
             while (next < times.Count && t >= times[next])
@@ -990,9 +1114,48 @@ public class BossController : MonoBehaviour
             }
             yield return null;
         }
+        if (!phase2Pending) yield return new WaitForSeconds(plantPullDelay);
 
-        yield return Lean(0f, 0.4f);
-        if (visual != null) visual.EndAction(0.4f); // 舉高的雙手慢一點放下來
+        // 拔起骨棒，回到平常的姿勢
+        CurrentAction = "拔出骨棒";
+        PlayAnim("PlantPull");
+        GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), point, 0.6f * sfxVolume, 0.7f, 0.5f, 60f);
+        CombatVFX.Ring(point, new Color(0.75f, 0.68f, 0.55f), 2.5f);
+        yield return new WaitForSeconds(plantPullTime);
+        if (visual != null) visual.EndAction(0.3f);
+    }
+
+    /// <summary>骨棒插進地板的衝擊：地面凹陷、岩石震碎、範圍內的玩家受傷並往外飛</summary>
+    void PlantImpact(Vector3 point, float holdTime)
+    {
+        ThirdPersonCamera.ShakeMain(0.5f, 0.5f);
+        PlayImpact(0.75f, 1f);
+        CombatVFX.Ring(point, plantCircleColor, plantRadius);
+        CombatVFX.Impact(point + Vector3.up * 0.3f, new Color(0.8f, 0.72f, 0.58f));
+
+        if (arena != null)
+        {
+            // 插的地方凹下去，骨棒插著的時候一直維持，拔出來之後才慢慢恢復
+            foreach (var tile in arena.GetTilesNear(point, plantRadius))
+            {
+                float d = ArenaFloor.FlatDistance(tile.RestPosition, point) / Mathf.Max(plantRadius, 0.1f);
+                tile.Dent(d * plantRadius / Mathf.Max(slamWaveSpeed, 1f), Mathf.Lerp(0.9f, 0.2f, d),
+                          holdTime + plantPullDelay, 1.2f);
+            }
+            arena.SmashRocksNear(point, plantRadius * 0.5f, plantRadius, slamWaveSpeed, transform);
+        }
+
+        if (PlayerAlive && playerHealth != null)
+        {
+            Vector3 to = player.position - point;
+            to.y = 0f;
+            if (to.magnitude <= plantRadius && playerHealth.FeetY < point.y + 3f)
+            {
+                Vector3 away = to.sqrMagnitude > 0.04f ? to : FlatTo(player.position);
+                if (away.sqrMagnitude < 0.01f) away = transform.forward;
+                HitAndLaunch(plantDamage, away, plantLaunchSpeed, plantLaunchUp, out _);
+            }
+        }
     }
 
     /// <summary>
@@ -1361,25 +1524,32 @@ public class BossController : MonoBehaviour
     //  4. 跳躍砸地
     // =====================================================================
 
-    IEnumerator JumpSlam()
+    /// <summary>
+    /// 跳躍砸地。fixedTarget = 指定落點（擊飛後的追擊：玩家預估落地的位置）；沒指定就砸玩家起跳當下的位置。
+    /// windup = 蓄力時間（小於 0 = 用 jumpWindup）
+    /// </summary>
+    IEnumerator JumpSlam(Vector3? fixedTarget = null, float windup = -1f)
     {
         lastJumpTime = Time.time;
-        CurrentAction = "跳躍砸地（蓄力）";
-        PlayAnim("Jump", jumpWindup);
+        if (windup < 0f) windup = jumpWindup;
+        windup = Mathf.Max(windup, 0.05f);
+        CurrentAction = fixedTarget.HasValue ? "追擊跳砸（蓄力）" : "跳躍砸地（蓄力）";
+        PlayAnim("Jump", windup);
 
         // 蹲下蓄力，同時轉向玩家
         float t = 0f;
-        while (t < jumpWindup)
+        while (t < windup)
         {
-            FaceTowards(FlatTo(player.position), TurnSpeed * 2f);
-            float k = t / jumpWindup;
+            Vector3 aimAt = fixedTarget ?? player.position;
+            FaceTowards(FlatTo(aimAt), TurnSpeed * 2f);
+            float k = t / windup;
             SetBodyScale(new Vector3(1f + 0.15f * k, 1f - 0.25f * k, 1f + 0.15f * k));
             t += Time.deltaTime;
             yield return null;
         }
 
-        // 起跳瞬間鎖定落點（玩家當下的位置）
-        Vector3 target = ClampInArena(player.position);
+        // 起跳瞬間鎖定落點（玩家當下的位置；追擊時 = 玩家預估落地的位置）
+        Vector3 target = ClampInArena(fixedTarget ?? player.position);
         target.y = arena != null && arena.TryGetGroundHeight(target, out float g) ? g : transform.position.y;
 
         // 落點出現紅色圓圈：圈裡面會被直接砸中，裡面的顏色長滿的那一刻落地
@@ -1661,6 +1831,6 @@ public class BossController : MonoBehaviour
         Gizmos.DrawLine(p, p + left * slamRange);
         Gizmos.DrawLine(p, p + right * slamRange);
         Gizmos.color = Color.red;
-        Gizmos.DrawWireSphere(transform.position, swipeRange);
+        Gizmos.DrawWireSphere(transform.position, clubRange);
     }
 }

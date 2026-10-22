@@ -92,8 +92,8 @@ public static class ArenaResizer
             // ---------- Boss ----------
             bc.transform.SetPositionAndRotation(center + new Vector3(0f, 0f, 12f), Quaternion.Euler(0f, 180f, 0f));
             bc.autoStart = false;
-            // 普攻維持原本距離
-            bc.swipeRange = 4.8f;
+            // 普攻（骨棒）的距離
+            bc.clubRange = 6.5f;
             // 拍地：範圍 ×3，衝擊波速度 / 厚度 ×2（不然要等很久才擴散完）
             bc.slamRange = 48f;
             bc.slamApproachDistance = 18f;
