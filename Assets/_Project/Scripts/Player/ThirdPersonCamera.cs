@@ -300,6 +300,8 @@ public class ThirdPersonCamera : MonoBehaviour
 
     void HandleInput()
     {
+        pointerUiOwners.RemoveWhere(owner=>!owner);
+        if(pointerUiOwners.Count>0)return;
         var mouse = Mouse.current;
         var kb = Keyboard.current;
 
@@ -363,5 +365,13 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
         Cursor.visible = !locked;
+    }
+
+    readonly System.Collections.Generic.HashSet<UnityEngine.Object> pointerUiOwners=new();
+    /// <summary>Temporary UI ownership prevents click-to-relock from swallowing a visible menu button.</summary>
+    public void SetPointerUiOwner(UnityEngine.Object owner,bool active)
+    {
+        if(active && owner)pointerUiOwners.Add(owner);
+        else pointerUiOwners.Remove(owner);
     }
 }

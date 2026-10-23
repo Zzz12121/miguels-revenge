@@ -1297,6 +1297,54 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5953010253551587698, guid: 13ae4c00d59853e4383490e169363338, type: 3}
   m_PrefabInstance: {fileID: 4140651594729504029}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &776214607
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 776214609}
+  - component: {fileID: 776214608}
+  m_Layer: 0
+  m_Name: CalligraphyBoss_TestControls
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &776214608
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 776214607}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a5c47781908e5fc49ab1fe282bd71ffb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CalligraphyBossRangeTest
+  bossPrefab: {fileID: 5225619624740378294, guid: 983f2c832b743c4439bc73234904e588, type: 3}
+  existingDisplay: {fileID: 1348384912}
+  spawnPosition: {x: -7, y: 0, z: 2.5}
+  healAfterSeconds: 5
+--- !u!4 &776214609
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 776214607}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &787702399
 GameObject:
   m_ObjectHideFlags: 0
@@ -3744,3 +3792,4 @@ SceneRoots:
   - {fileID: 406194438}
   - {fileID: 1327458989}
   - {fileID: 4140651594729504029}
+  - {fileID: 776214609}
