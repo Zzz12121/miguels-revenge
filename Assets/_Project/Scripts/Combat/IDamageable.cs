@@ -10,3 +10,9 @@ public interface IDamageable
     void TakeDamage(float amount, Vector3 hitPoint);
     bool IsDead { get; }
 }
+
+/// <summary>可以受到「無視受擊無敵時間」的傷害（深淵復仇的延遲傷害用）</summary>
+public interface IUnblockableDamageable
+{
+    void TakeUnblockableDamage(float amount, Vector3 hitPoint);
+}

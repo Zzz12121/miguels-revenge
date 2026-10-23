@@ -27,7 +27,7 @@ public class MainMenu : MonoBehaviour
         "　<b>第二關　維京村莊</b>：擊敗村莊守衛，搭上長船駛向終點\n" +
         "　　　　　　　　　　　潛入水中會消耗<color=#7FD4FF>氧氣</color>，氧氣用完會開始扣血\n" +
         "　<b>第三關　地下城</b>：打倒最終 Boss 就通關！\n\n" +
-        "玩家共有 <color=#FF8080>3 條命</color>，倒下後會在檢查點復活，命用完就 Game Over。\n" +
+        "玩家共有 <color=#FF8080>3 條命</color>，倒下後會在檢查點復活，命用完就 Game Over，從第一關的出生點重來。\n" +
         "受傷後可以靠<color=#FF6060>營火</color>、紅十字補血道具或治癒藥水回復血量。";
 
     [TextArea(6, 20)]

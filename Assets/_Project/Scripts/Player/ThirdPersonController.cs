@@ -37,6 +37,8 @@ public class ThirdPersonController : MonoBehaviour
     public float coyoteTime = 0.12f;
     [Tooltip("落地前提早按跳躍仍會生效的時間 (秒)")]
     public float jumpBufferTime = 0.12f;
+    [Tooltip("連續斜坡 / 下坡：腳下離地這個距離內就直接貼回地面，不會一直變成騰空、一頓一頓的 (m)")]
+    public float groundSnapDistance = 0.6f;
     // 動作鎖定：對話、喝藥水時不能跳、翻滾、攻擊、用技能（可以多個來源同時鎖，全部解開才恢復）
     int actionLocks;
     float suppressJumpUntil = float.NegativeInfinity;
@@ -54,7 +56,7 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("二段跳（能力植物「一步登天」會打開）：在空中可以再跳一次")]
     public bool doubleJumpEnabled = false;
     [Tooltip("二段跳的高度 (m)")]
-    public float doubleJumpHeight = 1.4f;
+    public float doubleJumpHeight = 1.8f;
     bool airJumpUsed;
     /// <summary>二段跳的瞬間通知外面（特效 / 動畫用）</summary>
     public event System.Action OnDoubleJump;
@@ -445,6 +447,7 @@ public class ThirdPersonController : MonoBehaviour
         verticalVelocity += gravity * dt;
 
         // ---- 5. 實際移動 ----
+        bool wasGrounded = controller.isGrounded;
         // Step-up is a grounded walking aid, not an airborne landing. At sprint speed it can
         // snap a rising capsule onto an obstacle and prematurely replace Jump with Run.
         float savedStepOffset = controller.stepOffset;
@@ -460,7 +463,36 @@ public class ThirdPersonController : MonoBehaviour
         if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f)
             verticalVelocity = 0f;
 
+        // 下坡 / 坡度起伏時腳下突然離地：沒有在跳、也不是被打飛的話，直接貼回地面
+        if (wasGrounded && !controller.isGrounded && verticalVelocity <= 0f && !ballistic)
+            SnapToGround();
+
         UpdateFootsteps(dt);
+    }
+
+    readonly RaycastHit[] snapHits = new RaycastHit[8];
+
+    /// <summary>往下找地面（groundSnapDistance 以內、坡度不超過 slopeLimit），找到就把角色往下貼過去</summary>
+    void SnapToGround()
+    {
+        float scale = transform.lossyScale.y;
+        float radius = controller.radius * scale * 0.9f;
+        Vector3 origin = transform.TransformPoint(controller.center);
+        // 投射球的底部碰到「角色腳底那一層」時走過的距離
+        float toBottom = controller.height * 0.5f * scale - radius;
+        int n = Physics.SphereCastNonAlloc(origin, radius, Vector3.down, snapHits, toBottom + groundSnapDistance,
+                                           ~0, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        Vector3 normal = Vector3.up;
+        for (int i = 0; i < n; i++)
+        {
+            var h = snapHits[i];
+            if (h.collider == null || h.distance <= 0f || h.collider.transform.IsChildOf(transform)) continue;
+            if (h.distance < best) { best = h.distance; normal = h.normal; }
+        }
+        if (best == float.MaxValue || Vector3.Angle(normal, Vector3.up) > controller.slopeLimit + 5f) return;
+        float drop = best - toBottom;
+        if (drop > 0f) controller.Move(Vector3.down * (drop + controller.skinWidth));
     }
 
     /// <summary>

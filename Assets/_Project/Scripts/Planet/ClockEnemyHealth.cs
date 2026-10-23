@@ -6,7 +6,7 @@ using UnityEngine;
 /// 時鐘敵人血量：底部 Boss 血條、說話系統（二階段變紅字）、受擊無敵幀、二階段觸發、死亡台詞，打倒後打開火堆旁的傳送門（傳送門一直都在，打倒 Boss 前進不去）
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
-public class ClockEnemyHealth : MonoBehaviour, IDamageable
+public class ClockEnemyHealth : MonoBehaviour, IDamageable, IUnblockableDamageable
 {
     public string enemyName = "時間吞噬者";
     public float maxHealth = 100f;
@@ -53,6 +53,9 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
     public float LastHitTime { get; private set; } = float.NegativeInfinity;
     public bool ShowBar { get; set; } = false;
     public bool IsPhaseTwo => isPhaseTwo; // 讓 Controller 讀取二階段狀態
+    /// <summary>正在受擊後的無敵時間內（身上會冒黑光）</summary>
+    public bool IsInvincible => !IsDead && Time.time - lastHitTime < invincibleTime;
+    DarkAuraEffect invincibleAura;
 
     public event System.Action<float> OnDamaged;
     public event System.Action OnDied;
@@ -83,6 +86,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
     void Start()
     {
         StartCoroutine(DialogueRoutine());
+        invincibleAura = gameObject.AddComponent<DarkAuraEffect>();
     }
 
     IEnumerator DialogueRoutine()
@@ -113,7 +117,18 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
         // **無敵幀機制檢查**
         if (Time.time - lastHitTime < invincibleTime) return;
         lastHitTime = Time.time;
+        ApplyDamage(amount, hitPoint);
+    }
 
+    /// <summary>無視受擊無敵時間的傷害（深淵復仇），也不會重新開始無敵時間</summary>
+    public void TakeUnblockableDamage(float amount, Vector3 hitPoint)
+    {
+        if (IsDead || amount <= 0f) return;
+        ApplyDamage(amount, hitPoint);
+    }
+
+    void ApplyDamage(float amount, Vector3 hitPoint)
+    {
         Health = Mathf.Max(0f, Health - amount);
         LastHitTime = Time.time;
 
@@ -253,6 +268,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable
         if (trailingHealth < Health) trailingHealth = Health;
 
         if (!IsDead) SetFlash(Time.time - LastHitTime < flashTime);
+        if (invincibleAura != null) invincibleAura.Active = IsInvincible;
     }
 
     void SetFlash(bool on)

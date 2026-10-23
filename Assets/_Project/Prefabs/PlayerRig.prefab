@@ -264,7 +264,7 @@ MonoBehaviour:
   acceleration: 40
   airControl: 0.5
   rotationSmoothTime: 0.08
-  jumpHeight: 1.6
+  jumpHeight: 2.2
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
