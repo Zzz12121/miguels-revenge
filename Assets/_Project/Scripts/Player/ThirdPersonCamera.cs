@@ -249,7 +249,17 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // Cinemachine 的 Third Person Follow 會把鏡頭放在注視點正後方 distance 公尺（有牆就往前拉）
         cameraTarget.SetPositionAndRotation(lookPoint, rotation);
-        if (follow != null) follow.CameraDistance = dist;
+        if (follow != null)
+        {
+            var avoid=follow.AvoidObstacles;
+            bool painting=CalligraphyPaintingWorld.BlocksTether;
+            avoid.Enabled=!painting;follow.AvoidObstacles=avoid;
+            if(painting)
+                foreach(var hit in Physics.SphereCastAll(lookPoint,collisionRadius,-(rotation*Vector3.forward),dist,collisionMask,QueryTriggerInteraction.Ignore))
+                    if(!hit.transform.IsChildOf(target) && CalligraphyWorldIsolation.Allows(hit.transform) && hit.distance>0)
+                        dist=Mathf.Min(dist,Mathf.Max(.3f,hit.distance-.1f));
+            follow.CameraDistance = dist;
+        }
     }
 
     /// <summary>
@@ -277,6 +287,7 @@ public class ThirdPersonCamera : MonoBehaviour
                                                collisionMask, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < count; i++)
         {
+            if(!CalligraphyWorldIsolation.Allows(hits[i].transform))continue;
             if (hits[i].transform.IsChildOf(target)) continue;
             if (hits[i].collider is CharacterController) continue;
             if (hits[i].distance <= 0f) continue;

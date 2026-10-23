@@ -112,6 +112,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable, IUnblockableDamageab
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || amount <= 0f) return;
 
         // **無敵幀機制檢查**
@@ -123,6 +124,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable, IUnblockableDamageab
     /// <summary>無視受擊無敵時間的傷害（深淵復仇），也不會重新開始無敵時間</summary>
     public void TakeUnblockableDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || amount <= 0f) return;
         ApplyDamage(amount, hitPoint);
     }
@@ -290,6 +292,7 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable, IUnblockableDamageab
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (!ShowBar && !showDialogue) return;
 
         float w = Screen.width * 0.55f, h = 14f;

@@ -15,6 +15,17 @@ This file stores durable context from the initial projectless Codex conversation
 
 Git is not the current priority. Do not commit or push merely because a task is finished; wait for an explicit request.
 
+## Calligraphy boss update (2026-10-24)
+
+- Fourth-round results supersede earlier timing/targeting defaults: see `Docs/CALLIGRAPHY_FOURTH_SKILL_REPORT.md` and executable checks in `Docs/Validation/CalligraphyFourthChecks.cs`. Rune/Fall and Big Explotion now rebase native particle delays rather than simulating past visible bursts; Rune leaves a removable 0.6× / 2.5s speed lease. Slam locks its initial horizontal direction, emits from actual brush-ground contact and launches on direct hit. General projectiles home through 90% cumulative travel; level-ground Beam is horizontal and bounded to its visible range. Painting streams/scenery are spread through the existing bounds, with interior wetlands and surface-attached eye detail. Do not revert these to the third-round 70% homing or head-targeted Slam behavior.
+- The current connected Editor is 6000.6.3f1. Calligraphy testing uses `Assets/_Project/Scenes/VFX_VoidRend_Bocchi.unity`, F8 → 遊墨行者 Boss 測試.
+- Durable settings belong to `Assets/_Project/Prefabs/Boss/PF_CalligraphyElder_Battle.prefab`, component `CalligraphyBossCombat`, with grouped custom Inspector. Runtime clone edits are temporary.
+- See `Docs/CALLIGRAPHY_THIRD_SKILL_REPORT.md` for actual fields, validation results and remaining limitations; reusable checks are in `Docs/Validation/CalligraphyThirdChecks.cs` (outside Assets).
+- Native VFX axes matter: Frontal Pulses +X, Stab +Y. Wave damage follows particle mesh geometry. Rune Fall is triggered by warning completion, damage by the real impact burst.
+- Painting world isolates outside rendering/UI, targeting, damage and player collision pairs. New external UI should check `CalligraphyWorldIsolation.Allows(ownerTransform)`; preserve player HUD. Cancellation must restore owned state.
+- World size: previous base radius96 ×1.7 =163.2; do not multiply the previous vertical1.5 twice. Ground Pulse explicitly emits its first ring before stopping emission.
+- This update did not authorize commit/push or package changes. Preserve pre-existing vendor material, ProjectSettings and earlier animation edits.
+
 ## Division of responsibility
 
 The user is responsible for:

@@ -957,6 +957,7 @@ public class EnemyAI : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (state != State.Alerted) return;
         var cam = Camera.main;
         if (cam == null) return;

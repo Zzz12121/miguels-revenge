@@ -33,6 +33,8 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
             if(existingDisplay){displayWasActive=existingDisplay.activeSelf;existingDisplay.SetActive(false);}
         }
         Running=true;lastDamage=Time.time;player.HealFull();
+        if(!player.GetComponent<CalligraphyPlayerBladeTrail>())player.gameObject.AddComponent<CalligraphyPlayerBladeTrail>();
+        if(Boss && Boss.IsDead){Destroy(Boss.gameObject);Boss=null;}
         if(!Boss)
         {
             var go=Instantiate(bossPrefab,spawnPosition,Quaternion.identity);Boss=go.GetComponent<CalligraphyBossCombat>();
@@ -58,6 +60,10 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     }
     void Update()
     {
+        if(Running && Boss && Boss.Vanished && Time.time-Boss.VanishedAt>=5)
+        {
+            Destroy(Boss.gameObject);Boss=null;StartTest();
+        }
         if(Keyboard.current==null)return;
         if(Keyboard.current.f8Key.wasPressedThisFrame)
         {

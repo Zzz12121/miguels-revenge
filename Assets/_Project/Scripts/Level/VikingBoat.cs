@@ -585,6 +585,7 @@ public class VikingBoat : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         var cam = Camera.main;
 
         // 增援敵艦出現的提示

@@ -4,10 +4,12 @@ using UnityEngine;
 /// <summary>Local six-panel landscape transformation. No camera cuts, teleport or global render-setting mutation.</summary>
 public sealed class CalligraphyPaintingWorld : MonoBehaviour
 {
+    public enum WorldPhase { Entering,Contained,Exiting,Finished }
+    public WorldPhase Phase=>Finished?WorldPhase.Finished:age<entrySeconds?WorldPhase.Entering:age<entrySeconds+containedSeconds?WorldPhase.Contained:WorldPhase.Exiting;
     static readonly HashSet<CalligraphyPaintingWorld> owners=new();
     public static bool BlocksTether {get{owners.RemoveWhere(o=>!o || !o.isActiveAndEnabled);return owners.Count>0;}}
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]static void ResetStatics()=>owners.Clear();
-    public float entrySeconds=4,containedSeconds=20,exitSeconds=2.5f,radius=64;
+    public float entrySeconds=4,containedSeconds=20,exitSeconds=2.5f,radius=96;
     public float disturbanceRadius=5,disturbanceStrength=.8f;
     public bool Finished {get;private set;}
     CalligraphyBossCombat boss;
@@ -29,7 +31,11 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     readonly List<HangingStroke> curtains=new();
     float footprintClock;
     Vector3 previousPlayer;
+    Vector3 lastFootprintPosition;
     Quaternion previousRotation;
+    float sizeMultiplier=1;
+    Camera worldCamera;
+    float originalFarClip;
     public void Begin(CalligraphyBossCombat owner,PlayerHealth target,CalligraphyInkField field)
     {
         boss=owner;player=target;transform.position=CalligraphyGeometry.Ground(player.transform.position,player.transform);
@@ -41,11 +47,38 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         ink.originalInkMaterial=field.originalInkMaterial;ink.originalEchoMaterial=field.originalEchoMaterial;pool.SetActive(true);
         ink.suspendedWashMaterial=field.suspendedWashMaterial;
         ink.skyVisageMaterial=field.skyVisageMaterial;
-        radius=boss.paintingRadius;disturbanceRadius=boss.disturbanceRadius;disturbanceStrength=boss.disturbanceStrength;
-        previousPlayer=player.transform.position;previousRotation=player.transform.rotation;
+        sizeMultiplier=Mathf.Max(.1f,boss.paintingWorld.sizeMultiplier);
+        radius=boss.paintingRadius*sizeMultiplier;disturbanceRadius=boss.disturbanceRadius;disturbanceStrength=boss.disturbanceStrength;
+        entrySeconds=boss.paintingWorld.entrySeconds;containedSeconds=boss.paintingWorld.containedSeconds;exitSeconds=boss.paintingWorld.exitSeconds;
+        worldCamera=Camera.main;if(worldCamera){originalFarClip=worldCamera.farClipPlane;worldCamera.farClipPlane=Mathf.Max(originalFarClip,radius*4);}
+        previousPlayer=lastFootprintPosition=player.transform.position;previousRotation=player.transform.rotation;
         SkillAimCancellation.Cancel();owners.Add(this);
         BuildLowerGround();BuildSheets();BuildMountains();BuildTrees();BuildRiver();BuildScenery();BuildSkyFace();BuildHangingInk();
+        // Stretch enclosure/backdrop only. Interior scenery retains natural proportions.
+        foreach(Transform child in transform)
+        {
+            if(child==face || !(child.name.StartsWith("Unfolding paper") || child.name.StartsWith("Mountain wash") || child.name.StartsWith("Suspended branching")))continue;
+            var p=child.localPosition;p.y*=1.5f*sizeMultiplier;child.localPosition=p;
+            var s=child.localScale;s.y*=1.5f*sizeMultiplier;child.localScale=s;
+        }
+        for(int i=0;i<panelTargets.Count;i++){var p=panelTargets[i];p.y*=1.5f*sizeMultiplier;panelTargets[i]=p;}
+        BuildSupport();
         isolation=gameObject.AddComponent<CalligraphyWorldIsolation>();isolation.Initialize(player);
+    }
+    void BuildSupport()
+    {
+        // No renderer: feet stay on the invisible plane, with the original landscape below.
+        void Box(string name,Vector3 position,Vector3 size)
+        {
+            var go=new GameObject(name);go.transform.SetParent(transform,false);go.transform.localPosition=position;
+            go.AddComponent<BoxCollider>().size=size;
+        }
+        Box("Player-only transparent support",new Vector3(0,-.15f,0),new Vector3(radius*2,.3f,radius*2));
+        for(int side=-1;side<=1;side+=2)
+        {
+            Box("Painting X boundary",new Vector3(side*radius,40*sizeMultiplier,0),new Vector3(1,108*sizeMultiplier,radius*2));
+            Box("Painting Z boundary",new Vector3(0,40*sizeMultiplier,side*radius),new Vector3(radius*2,108*sizeMultiplier,1));
+        }
     }
     void BuildLowerGround()
     {
@@ -69,7 +102,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     {
         for(int i=0;i<20;i++)
         {
-            float a=i*2.39996f,r=9+(i%5)*3.3f;
+            float a=i*2.39996f,r=Mathf.Lerp(18,radius*boss.paintingWorld.streamSpread,Mathf.Sqrt((i+.5f)/20));
             var basis=new Vector3[48];
             for(int k=0;k<basis.Length;k++)
             {
@@ -88,7 +121,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         if(ink.originalInkMaterial)for(int i=0;i<24;i++)
         {
             var patch=CalligraphyGeometry.MeshObject("Reactive ink on invisible support",transform,CalligraphyGeometry.Quad(),ink.originalInkMaterial);
-            float a=i*2.39996f,r=2.5f+(i%6)*2.8f;
+            float a=i*2.39996f,r=Mathf.Lerp(5,radius*.8f,Mathf.Sqrt((i+.5f)/24));
             patch.transform.localPosition=new Vector3(Mathf.Sin(a)*r,.025f,Mathf.Cos(a)*r);patch.transform.localRotation=Quaternion.Euler(90,i*57,0);
             patch.transform.localScale=Vector3.one*2.8f;inkPatches.Add(patch);
         }
@@ -101,6 +134,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         for(int i=0;i<6;i++)
         {
             var r=CalligraphyGeometry.MeshObject("Unfolding paper face "+i,transform,CalligraphyGeometry.Quad(),ink.paperMaterial);
+            r.sortingOrder=-30;
             r.transform.localScale=i<2?new Vector3(radius*2,radius*2,1):new Vector3(radius*2,72,1);
             panels.Add(r.transform);panelTargets.Add(positions[i]);panelRotations.Add(rotations[i]);Register(r,new Color(.87f,.9f,.92f));
         }
@@ -122,6 +156,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
             }
             var mesh=new Mesh{name="Layered ink mountain ridge"};mesh.vertices=vertices;mesh.uv=uv;mesh.colors=colors;mesh.triangles=indices.ToArray();mesh.RecalculateNormals();
             var r=CalligraphyGeometry.MeshObject("Mountain wash "+layer+" "+side,transform,mesh,ink.landscapeMaterial?ink.landscapeMaterial:ink.paperMaterial);
+            r.sortingOrder=-20;
             float angle=side*90;r.transform.localRotation=Quaternion.Euler(0,angle,0);r.transform.localPosition=r.transform.localRotation*new Vector3(0,-9,radius-3-layer*2.5f);
             float grey=.57f-layer*.18f;Register(r,new Color(grey,grey+.01f,grey));
             // Jagged internal brush veins break up the silhouette without a photographic texture.
@@ -137,7 +172,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     {
         for(int i=0;i<12;i++)
         {
-            float a=i*Mathf.PI*2/12;Vector3 origin=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a))*(radius-9)-Vector3.up*9;
+            float a=i*2.39996f;Vector3 origin=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a))*Mathf.Lerp(22,radius*boss.paintingWorld.scenerySpread,(i%4)/3f)-Vector3.up*9;
             float h=Random.Range(4,7);Vector3 bend=new Vector3(Mathf.Sin(i)*1.1f,0,Mathf.Cos(i)*.7f);
             var trunk=CalligraphyGeometry.Line("Ink pine trunk",transform,ink.sculptureMaterial,new[]{origin,origin+Vector3.up*h*.35f+bend*.2f,origin+Vector3.up*h*.7f+bend,origin+Vector3.up*h+bend*.7f},.25f);
             Register(trunk,new Color(.04f,.05f,.05f));
@@ -167,11 +202,12 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     void BuildScenery()
     {
         // Sparse silhouettes below the invisible walking plane; intentionally no colliders.
-        for(int group=0;group<3;group++)
+        for(int group=0;group<boss.paintingWorld.sceneryGroups;group++)
         {
             var root=new GameObject("Decorative bamboo grove "+group).transform;root.SetParent(transform,false);
-            root.localPosition=new Vector3(group==1?24:-22,-9,group==2?26:-12);root.localRotation=Quaternion.Euler(0,group*67,0);
-            for(int stalk=0;stalk<5;stalk++)
+            float angle=group*2.39996f,reach=Mathf.Lerp(20,radius*boss.paintingWorld.scenerySpread,(group%3)/2f);
+            root.localPosition=new Vector3(Mathf.Cos(angle)*reach,-9,Mathf.Sin(angle)*reach);root.localRotation=Quaternion.Euler(0,group*67,0);
+            for(int stalk=0;stalk<3;stalk++)
             {
                 float h=6+(stalk%3)*1.6f;Vector3 start=new Vector3((stalk-2)*.7f,0,Mathf.Sin(stalk)*.6f);
                 Vector3 bend=new Vector3((stalk-2)*.3f,0,.25f);
@@ -181,7 +217,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
                     Vector3 p=start+Vector3.up*h*(joint/6f)+bend*(joint/6f);
                     var node=CalligraphyGeometry.Line("Bamboo node",root,ink.ribbonMaterial,new[]{p-Vector3.right*.13f,p+Vector3.right*.13f},.09f);Register(node,new Color(.2f,.23f,.2f));
                     if(joint<3)continue;
-                    for(int leaf=0;leaf<4;leaf++)
+                    for(int leaf=0;leaf<3;leaf++)
                     {
                         float sign=(joint%2==0?1:-1);Vector3 tip=p+new Vector3(sign*(.9f+leaf*.28f),.8f-leaf*.35f,(leaf-1.5f)*.3f);
                         var stroke=CalligraphyGeometry.Line("Bamboo lance leaf",root,ink.ribbonMaterial,new[]{p,Vector3.Lerp(p,tip,.65f)+Vector3.up*.15f,tip},.28f);
@@ -193,7 +229,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         for(int boat=0;boat<2;boat++)
         {
             var root=new GameObject("Decorative bamboo raft "+boat).transform;root.SetParent(transform,false);
-            root.localPosition=new Vector3(boat==0?-12:18,-8.7f,boat==0?-8:-10);root.localRotation=Quaternion.Euler(0,boat==0?22:-30,0);
+            root.localPosition=new Vector3(boat==0?-26:radius*.6f,-8.7f,boat==0?-8:-radius*.36f);root.localRotation=Quaternion.Euler(0,boat==0?22:-30,0);
             for(int log=0;log<7;log++)
             {
                 float x=(log-3)*.34f;
@@ -204,6 +240,41 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
                 var beam=CalligraphyGeometry.Line("Raft binding",root,ink.sculptureMaterial,new[]{new Vector3(-1.2f,.2f,(tie-1)*1.6f),new Vector3(1.2f,.2f,(tie-1)*1.6f)},.12f);Register(beam,new Color(.025f,.03f,.025f));
             }
             var pole=CalligraphyGeometry.Line("Resting bamboo pole",root,ink.sculptureMaterial,new[]{new Vector3(-.8f,.3f,-3.2f),new Vector3(.8f,.3f,3.3f)},.09f);Register(pole,new Color(.04f,.05f,.04f));
+        }
+        BuildWetlands();
+    }
+    void BuildWetlands()
+    {
+        for(int group=0;group<boss.paintingWorld.sceneryGroups;group++)
+        {
+            float angle=group*2.39996f+.8f,reach=Mathf.Lerp(26,radius*boss.paintingWorld.scenerySpread,(group%3)/2f);
+            var root=new GameObject("Interior ink wetland "+group).transform;root.SetParent(transform,false);
+            root.localPosition=new Vector3(Mathf.Cos(angle)*reach,-8.9f,Mathf.Sin(angle)*reach);
+            for(int ring=0;ring<4;ring++)
+            {
+                var points=new Vector3[33];for(int k=0;k<33;k++){float a=k*Mathf.PI/16;points[k]=new Vector3(Mathf.Cos(a)*(4+ring*.7f),.02f,Mathf.Sin(a)*(2+ring*.4f));}
+                Register(CalligraphyGeometry.Line("Wetland rippled water",root,ink.ribbonMaterial,points,.12f),new Color(.12f,.16f,.17f,.6f));
+            }
+            for(int reed=0;reed<7;reed++)
+            {
+                Vector3 p=new((reed-3)*.45f,0,2.8f+Mathf.Sin(reed));float h=1.4f+(reed%3)*.4f;
+                Register(CalligraphyGeometry.Line("Reed stem",root,ink.sculptureMaterial,new[]{p,p+new Vector3(.12f,h*.6f,0),p+new Vector3(.35f,h,0)},.045f),new Color(.07f,.09f,.08f));
+                Register(CalligraphyGeometry.Line("Reed plume",root,ink.ribbonMaterial,new[]{p+new Vector3(.35f,h,0),p+new Vector3(.55f,h+.6f,0)},.22f),new Color(.2f,.21f,.18f,.8f));
+            }
+            // Small sculptural islands; actual meshes, no gameplay components or colliders.
+            var mesh=new Mesh{name="Ink shoreline rock"};mesh.vertices=new[]{new Vector3(-2,0,-1),new Vector3(2,0,-1),new Vector3(1,0,2),new Vector3(-1,0,2),new Vector3(-.6f,2.2f,.2f),new Vector3(.8f,1.4f,.5f)};
+            mesh.uv=new[]{new Vector2(0,.2f),new Vector2(1,.2f),new Vector2(.8f,.2f),new Vector2(.2f,.2f),new Vector2(.35f,1),new Vector2(.7f,.7f)};
+            mesh.colors=new[]{Color.white,Color.white,Color.white,Color.white,Color.white,Color.white};
+            mesh.triangles=new[]{0,4,1,1,4,5,1,5,2,2,5,3,3,5,4,3,4,0};mesh.RecalculateNormals();
+            var rock=CalligraphyGeometry.MeshObject("Wetland angular scholar stone",root,mesh,ink.landscapeMaterial);rock.transform.localPosition=new Vector3(-4,0,2);Register(rock,new Color(.25f,.28f,.29f));
+            if(group%3==0)
+            {
+                var bird=new GameObject("Decorative white egret").transform;bird.SetParent(root,false);bird.localPosition=new Vector3(1,.1f,1);
+                Register(CalligraphyGeometry.Line("Egret legs",bird,ink.sculptureMaterial,new[]{new Vector3(-.1f,0,0),new Vector3(0,.8f,0),new Vector3(.15f,0,.1f)},.035f),new Color(.04f,.05f,.06f));
+                Register(CalligraphyGeometry.Line("Egret ink silhouette",bird,ink.ribbonMaterial,new[]{new Vector3(-.4f,.9f,.025f),new Vector3(0,1,.025f),new Vector3(.25f,1.25f,.025f),new Vector3(.1f,1.65f,.025f),new Vector3(.38f,1.85f,.025f)},.36f),new Color(.06f,.08f,.09f));
+                Register(CalligraphyGeometry.Line("Egret body and curved neck",bird,ink.ribbonMaterial,new[]{new Vector3(-.4f,.9f,0),new Vector3(0,1,0),new Vector3(.25f,1.25f,0),new Vector3(.1f,1.65f,0),new Vector3(.38f,1.85f,0)},.28f),new Color(.83f,.85f,.84f));
+                Register(CalligraphyGeometry.Line("Egret beak",bird,ink.sculptureMaterial,new[]{new Vector3(.38f,1.85f,0),new Vector3(.85f,1.8f,0)},.045f),new Color(.04f,.05f,.06f));
+            }
         }
     }
     void BuildSkyFace()
@@ -218,27 +289,43 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         {
             // This rig's baked vertices already contain the bone hierarchy's 2.25 scale.
             // Rotation+translation matches its renderer world bounds; TransformPoint doubles that scale.
-            var baked=new Mesh();skin.BakeMesh(baked,false);var vertices=baked.vertices;var triangles=baked.triangles;var kept=new List<int>();
+            var baked=new Mesh();skin.BakeMesh(baked,false);var vertices=baked.vertices;
             for(int i=0;i<vertices.Length;i++)vertices[i]=boss.transform.InverseTransformDirection(skin.transform.position+skin.transform.rotation*vertices[i]-headBone.position);
             bool InHead(Vector3 p)=>p.y>-.32f && p.y<.65f && Mathf.Abs(p.x)<.38f && Mathf.Abs(p.z)<.42f;
-            for(int i=0;i<triangles.Length;i+=3)
-                if(InHead(vertices[triangles[i]]) && InHead(vertices[triangles[i+1]]) && InHead(vertices[triangles[i+2]]))
-                    kept.AddRange(new[]{triangles[i],triangles[i+1],triangles[i+2]});
             var wash=new Color[vertices.Length];
             for(int i=0;i<wash.Length;i++)wash[i]=new Color(1,1,1,Mathf.SmoothStep(0,1,(vertices[i].y+.32f)/.22f));
-            baked.vertices=vertices;baked.colors=wash;baked.triangles=kept.ToArray();baked.RecalculateNormals();baked.RecalculateBounds();
-            var r=CalligraphyGeometry.MeshObject("Translucent elder head",face,baked,ink.skyVisageMaterial?ink.skyVisageMaterial:ink.sculptureMaterial);faceRenderers.Add(r);
-            if(skin.sharedMaterial && skin.sharedMaterial.HasProperty("_BaseMap"))
+            // Eyes, face, hair and beard have different source materials. Do not flatten submeshes.
+            for(int sub=0;sub<baked.subMeshCount;sub++)
             {
-                var block=new MaterialPropertyBlock();block.SetTexture("_FaceTex",skin.sharedMaterial.GetTexture("_BaseMap")??Texture2D.whiteTexture);r.SetPropertyBlock(block);
+                var triangles=baked.GetTriangles(sub);var kept=new List<int>();
+                for(int i=0;i<triangles.Length;i+=3)
+                    if(InHead(vertices[triangles[i]]) && InHead(vertices[triangles[i+1]]) && InHead(vertices[triangles[i+2]]))kept.AddRange(new[]{triangles[i],triangles[i+1],triangles[i+2]});
+                if(kept.Count==0)continue;
+                // Remove unused body vertices too: bounds otherwise include the entire giant body,
+                // which breaks transparent sorting/culling even though only head triangles remain.
+                var map=new Dictionary<int,int>();var positions=new List<Vector3>();var uv=new List<Vector2>();var colors=new List<Color>();var indices=new List<int>();var sourceUv=baked.uv;
+                foreach(int old in kept)
+                {
+                    if(!map.TryGetValue(old,out int index)){index=positions.Count;map.Add(old,index);positions.Add(vertices[old]);uv.Add(sourceUv[old]);colors.Add(wash[old]);}
+                    indices.Add(index);
+                }
+                var mesh=new Mesh{name="Elder sky head submesh "+sub};mesh.SetVertices(positions);mesh.SetUVs(0,uv);mesh.SetColors(colors);mesh.SetTriangles(indices,0);mesh.RecalculateNormals();mesh.RecalculateBounds();
+                var r=CalligraphyGeometry.MeshObject("Translucent elder head "+sub,face,mesh,ink.skyVisageMaterial?ink.skyVisageMaterial:ink.sculptureMaterial);faceRenderers.Add(r);
+                r.sortingOrder=-10;
+                var source=sub<skin.sharedMaterials.Length?skin.sharedMaterials[sub]:skin.sharedMaterial;
+                var block=new MaterialPropertyBlock();
+                block.SetFloat("_EyeVisibility",boss.paintingWorld.eyeVisibility);
+                block.SetVector("_EyeCenter",boss.paintingWorld.eyeCenter);
+                block.SetTexture("_FaceTex",source && source.HasProperty("_BaseMap")?source.GetTexture("_BaseMap")??Texture2D.whiteTexture:source && source.mainTexture?source.mainTexture:Texture2D.whiteTexture);r.SetPropertyBlock(block);
             }
+            Destroy(baked);
         }
-        face.localPosition=new Vector3(0,32,radius*.58f);face.localScale=Vector3.one*42;
+        face.localPosition=new Vector3(0,32*sizeMultiplier,radius*.42f)+boss.paintingWorld.faceOffset;face.localScale=Vector3.one*boss.paintingWorld.faceScale;
         face.rotation=Quaternion.LookRotation(player.transform.position-face.position);
     }
     void Update()
     {
-        if(!player || !ink || !boss){Destroy(gameObject);return;}
+        if(!player || player.IsDead || !ink || !boss || boss.IsDead){Destroy(gameObject);return;}
         age+=Time.deltaTime;
         float enter=Mathf.SmoothStep(0,1,age/entrySeconds);
         float exit=Mathf.Clamp01((age-entrySeconds-containedSeconds)/exitSeconds);
@@ -252,15 +339,15 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
             panels[i].localPosition=Vector3.Lerp(open,panelTargets[i],fold);
             panels[i].localRotation=Quaternion.Slerp(Quaternion.Euler(90,0,0),panelRotations[i],fold);
             // Sheets unroll first, then pivot upward into the enclosure.
-            Vector3 full=i<2?new Vector3(radius*2,radius*2,1):new Vector3(radius*2,72,1);
+            Vector3 full=i<2?new Vector3(radius*2,radius*2,1):new Vector3(radius*2,108*sizeMultiplier,1);
             full.x*=Mathf.SmoothStep(.02f,1,age/1.2f);panels[i].localScale=full;
         }
         if(face)
         {
             Vector3 look=player.transform.position+Vector3.up-face.position;
             face.rotation=Quaternion.Slerp(face.rotation,Quaternion.LookRotation(look),Time.deltaTime*.3f);
-            face.localPosition=new Vector3(Mathf.Sin(age*.3f)*.35f,32+Mathf.Sin(age*.5f)*.3f,radius*.58f);
-            foreach(var r in faceRenderers)CalligraphyGeometry.Tint(r,Color.white,alpha*(.35f+.27f*(.5f+.5f*Mathf.Sin(age*.7f))),exit*.8f);
+            face.localPosition=new Vector3(Mathf.Sin(age*.3f)*.35f,32*sizeMultiplier+Mathf.Sin(age*.5f)*.3f,radius*.42f)+boss.paintingWorld.faceOffset;
+            foreach(var r in faceRenderers)CalligraphyGeometry.Tint(r,Color.white,alpha*boss.paintingWorld.faceOpacity*(.88f+.12f*Mathf.Sin(age*.7f)),exit*.8f);
         }
         Vector3 velocity=(player.transform.position-previousPlayer)/Mathf.Max(.001f,Time.deltaTime);
         float turn=Quaternion.Angle(previousRotation,player.transform.rotation)/Mathf.Max(.001f,Time.deltaTime);
@@ -289,28 +376,46 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
             s.line.SetPositions(s.points);
         }
         footprintClock-=Time.deltaTime;
-        if(footprintClock<=0 && velocity.magnitude>.6f && nearest<disturbanceRadius)
+        var controller=player.GetComponent<ThirdPersonController>();
+        // Capsule depenetration can jitter a few millimetres while idle. Require genuine net
+        // travel as well as speed, rather than amplifying a tiny correction on a short frame.
+        if(footprintClock<=0 && Vector3.ProjectOnPlane(player.transform.position-lastFootprintPosition,Vector3.up).sqrMagnitude>=.06f*.06f && Vector3.ProjectOnPlane(velocity,Vector3.up).magnitude>.2f && controller && controller.IsGrounded && exit<=0)
         {
-            footprintClock=.18f;ink.Mist(player.transform.position+Vector3.up*.1f,velocity*.12f,2.1f,3.6f);
-            ink.Burst(player.transform.position+Vector3.up*.2f,.85f,4);
+            lastFootprintPosition=player.transform.position;
+            footprintClock=boss.paintingWorld.pulseInterval;
+            var library=CalligraphyVfxLibrary.Current;
+            if(library)
+            {
+                var pulse=CalligraphyVfxLibrary.Play(library.pulse,new Vector3(player.transform.position.x,player.FeetY+.08f,player.transform.position.z),Quaternion.identity,boss.paintingWorld.pulseScale,1.5f,0,transform);
+                if(pulse)
+                {
+                    // Keep the original ground-ring systems, not the package's billowing cloud.
+                    foreach(var ps in pulse.Systems)
+                    {
+                        if(ps.name.StartsWith("yy_Shockwave"))ps.Emit(1);
+                        else if(!ps.name.Contains("Liquid_smudge"))ps.Stop(false,ParticleSystemStopBehavior.StopEmittingAndClear);
+                    }
+                    // Vendor rings are rate=2/s with a zero-count initial burst. Waiting .12/.3s
+                    // then stopping emission used to cancel them before their first particle.
+                    pulse.StopAfter(.1f,boss.paintingWorld.pulseFade);
+                }
+            }
         }
         previousPlayer=player.transform.position;previousRotation=player.transform.rotation;
         spawnClock-=Time.deltaTime;
         if(spawnClock<=0 && exit<=0)
         {
-            spawnClock=.15f;
-            Vector3 p=player.transform.position+Random.insideUnitSphere*3+Vector3.up;
-            ink.Emit(p,impulse*.15f+Vector3.up*.2f,.6f,3.5f,Random.value<.2f);
+            spawnClock=1.2f;
             ink.Mist(transform.position+new Vector3(Random.Range(-radius,radius),Random.Range(-7,22),Random.Range(-radius,radius)),Vector3.up*.1f,3.5f,5);
         }
         if(age>=entrySeconds && !sixReleased)
         {
             sixReleased=true;
-            for(int i=0;i<6;i++)
+            for(int i=0;i<boss.paintingWorld.dragonCount;i++)
             {
-                float a=i*Mathf.PI*2/6;
+                float a=i*Mathf.PI*2/Mathf.Max(1,boss.paintingWorld.dragonCount);
                 Vector3 target=CalligraphyGeometry.Ground(player.transform.position,player.transform);
-                Vector3 from=target+new Vector3(Mathf.Cos(a)*23,5+i%3*2,Mathf.Sin(a)*23);
+                Vector3 from=target+new Vector3(Mathf.Cos(a)*34.5f,7.5f+i%3*3,Mathf.Sin(a)*34.5f)*sizeMultiplier;
                 var go=new GameObject("Painting dragon "+(i+1));go.transform.SetParent(transform,false);
                 var dragon=go.AddComponent<CalligraphyInkDragon>();dragon.Initialize(ink,player,from,target,boss.paintingDragonScale,1+i*2.5f,false,boss.paintingDragonDamage);dragons.Add(dragon);
             }
@@ -320,6 +425,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     }
     void OnDisable()
     {
+        if(worldCamera)worldCamera.farClipPlane=originalFarClip;
         owners.Remove(this);
     }
 }

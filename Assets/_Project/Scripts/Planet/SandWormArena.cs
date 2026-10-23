@@ -936,6 +936,7 @@ public class SandWormTail : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || arena == null) return;
         IsDead = true;
         arena.OnTailHit(this, hitPoint);

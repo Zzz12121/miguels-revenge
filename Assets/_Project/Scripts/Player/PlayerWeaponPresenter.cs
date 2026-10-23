@@ -68,6 +68,8 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     }
 
     public bool IsDrawn => drawn;
+    public Transform BladeTip => weaponTip;
+    public Transform BladePivot => weaponPivot;
 
     void Awake()
     {

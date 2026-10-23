@@ -71,6 +71,7 @@ public class AbyssMark : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (GameUI.OverlayOpen) return;
         var cam = Camera.main;
         if (cam == null) return;

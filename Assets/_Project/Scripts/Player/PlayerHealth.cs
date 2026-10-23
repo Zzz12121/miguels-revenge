@@ -97,6 +97,8 @@ public class PlayerHealth : MonoBehaviour
     public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false,
                            string deathReason = "被打倒了", bool applyHitStun = true)
     {
+        // Painting attacks use the explicit scoped hit gate; outside enemies cannot hit through it.
+        if(CalligraphyPaintingWorld.BlocksTether && !CalligraphyPlayerHitGate.DeliveringPaintingDamage)return false;
         if (IsDead) return false;
         skillInvulnerability.RemoveWhere(owner => !owner);
         if (skillInvulnerability.Count > 0) return false;

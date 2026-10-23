@@ -1810,7 +1810,7 @@ MonoBehaviour:
   cycleDemonstration: 0
   paintingCooldown: 32
   dragonCooldown: 22
-  paintingRadius: 64
+  paintingRadius: 96
   disturbanceRadius: 5
   disturbanceStrength: 0.8
   giantDragonScale: 2.2
@@ -1821,6 +1821,146 @@ MonoBehaviour:
   onDragonImpact:
     m_PersistentCalls:
       m_Calls: []
+  inkProjectile:
+    singleCount: 1
+    comboCount: 4
+    strokeSeconds: 1.15
+    maximumDistance: 28
+    homingEndPercentage: 0.9
+    homingStrength: 0.9
+    turnRate: 65
+    collisionRadius: 0.32
+    vfxScale: 0.65
+  inkMelee:
+    cloneCount: 2
+    comboCount: 5
+    cloneSideDistance: 5.75
+    cloneClearance: 0.75
+    strokeSeconds: 1.2
+    damage: 15
+    hitRadius: 0.8
+    vfxScale: 1
+    cloneDamage: 8
+    cloneMoveSpeed: 4
+    cloneStrokeSeconds: 2.2
+    cloneLifetime: 10
+    cloneFadeSeconds: 1.3
+    cloneHits: 5
+  frontalPulses:
+    waveCount: 6
+    waveInterval: 1
+    vfxScale: 3
+    damage: 10
+    hitInterval: 0.8
+    controlSeconds: 0.5
+    knockbackSpeed: 3
+    launchSpeed: 3
+    releaseSeconds: 0.8
+    castSeconds: 4.5
+  leapSlam:
+    forwardYawOffset: 0
+    castSeconds: 1.5
+    jumpHeight: 3.8
+    jumpDistance: 12
+    directHitRadius: 2
+    wave:
+      waveCount: 1
+      waveInterval: 1
+      vfxScale: 1.25
+      damage: 22
+      hitInterval: 0.8
+      controlSeconds: 1.15
+      knockbackSpeed: 9
+      launchSpeed: 7
+  runeAttack:
+    count: 12
+    spawnRadius: 20
+    minimumSpacing: 4
+    strokeSeconds: 0.5
+    warningSpeed: 4
+    fallSpeed: 1
+    scale: 0.45
+    hitRadius: 1.5
+    centerRadius: 0.85
+    stunSeconds: 1
+    warningTimelineEnd: -1
+    fallTimelineStart: 0.75
+    residueRadius: 2.2
+    residueLifetime: 6
+    slowSeconds: 2.5
+    slowMultiplier: 0.6
+  inkDragon:
+    spawnHeight: 25
+    diveSpeed: 26
+    impactRadius: 7
+    releaseSeconds: 3.25
+    castSeconds: 7
+    smokeScale: 0.7
+    explosionScale: 1.1
+    buffScale: 0.65
+    flashScale: 0.8
+    smokeSpinMultiplier: 0.25
+    smokeOffset: {x: 0, y: 0.04, z: 0}
+    smokeFollowPosition: 1
+    smokeWorldSpace: 1
+    smokeYawOffset: 0
+    explosionOffset: {x: 0, y: 0.35, z: 0}
+    buffOffset: {x: 0, y: 0.12, z: 0}
+    flashOffset: {x: 0, y: 0.18, z: 0}
+    explosionEuler: {x: 0, y: 0, z: 0}
+    buffEuler: {x: 0, y: 0, z: 0}
+    flashEuler: {x: 0, y: 37, z: 0}
+    explosionTimelineStart: 5
+    tailStartSeconds: 3.6
+    debrisCount: 12
+    debrisScale: 0.6
+    debrisLift: 3
+    debrisDelay: 0.15
+  paintingWorld:
+    sizeMultiplier: 1.7
+    entrySeconds: 4
+    containedSeconds: 20
+    exitSeconds: 2.5
+    dragonCount: 6
+    pulseScale: 0.35
+    pulseInterval: 0.3
+    pulseFade: 1.5
+    faceScale: 125
+    faceOpacity: 0.72
+    streamSpread: 0.85
+    scenerySpread: 0.85
+    sceneryGroups: 9
+    faceOffset: {x: 0, y: 0, z: 0}
+    eyeVisibility: 1
+    eyeCenter: {x: 0.035, y: 0.07}
+  inkBeam:
+    windupSeconds: 1.8
+    hitInterval: 0.55
+    hitRadius: 1.2
+    vfxScale: 1.5
+    horizontalOnLevelGround: 1
+    heightTolerance: 2
+    maximumRange: 35
+    emitterOffset: {x: 0, y: 0, z: 0}
+    vfxEuler: {x: 0, y: 0, z: 0}
+  deathPresentation:
+    vfxScale: 0.65
+    playbackSpeed: 1.5
+    fadeSeconds: 1.5
+  skillRecovery:
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  - 0
+  slamStunSeconds: 1.6
+  slamDamage: 24
+  beamDamage: 10
+  runeDamage: 18
 --- !u!114 &2839318064285303986
 MonoBehaviour:
   m_ObjectHideFlags: 0

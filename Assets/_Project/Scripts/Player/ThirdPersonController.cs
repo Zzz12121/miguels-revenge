@@ -191,6 +191,17 @@ public class ThirdPersonController : MonoBehaviour
         StartCoroutine(TemporarySpeedEffectRoutine(Mathf.Clamp01(multiplier), duration));
     }
 
+    // A source-owned lease can be cancelled without clearing teammates' other buffs.
+    public int AddSpeedMultiplierLease(float multiplier)
+    {
+        if(IsControlImmune)return 0;
+        int id=++nextTemporarySpeedEffectId;
+        temporarySpeedMultipliers[id]=Mathf.Clamp01(multiplier);
+        RecalculateTemporarySpeedMultiplier();return id;
+    }
+    public void RemoveSpeedMultiplierLease(int id)
+    {temporarySpeedMultipliers.Remove(id);RecalculateTemporarySpeedMultiplier();}
+
     IEnumerator TemporarySpeedEffectRoutine(float multiplier, float duration)
     {
         int id = ++nextTemporarySpeedEffectId;

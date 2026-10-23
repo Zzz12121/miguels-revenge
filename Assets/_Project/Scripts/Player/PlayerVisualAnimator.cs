@@ -75,6 +75,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void Awake()
     {
         ResolveReferences();
+        if (combat != null && GetComponent<CalligraphyPlayerBladeTrail>() == null)
+            gameObject.AddComponent<CalligraphyPlayerBladeTrail>();
         shieldBow = GetComponent<PlayerShieldBowAnimator>();
         if (shieldBow == null) shieldBow = gameObject.AddComponent<PlayerShieldBowAnimator>();
         paladinShield = GetComponent<PlayerPaladinShield>();
@@ -123,7 +125,18 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void Update()
     {
-        if (animator == null) return;
+        // Wheel skills deliberately disable the Animator while owning the complete pose.
+        // Do not crossfade or add locomotion offsets on top of that frozen procedural pose.
+        if (animator == null || !animator.enabled) return;
+        var bossControl = GetComponent<CalligraphyPlayerControl>();
+        if (bossControl != null && bossControl.Active)
+        {
+            if (health != null) previousHealth = health.Health;
+            animator.SetFloat(SpeedHash, 0);
+            animator.SetBool(GroundedHash, true);
+            animator.SetFloat(VerticalSpeedHash, 0);
+            return;
+        }
 
         // 倒下的期間什麼都不要切：被打飛時的移動 / 落下 / 翻滾畫面都會把「倒下」動畫蓋掉
         if (health != null && health.IsDead)
@@ -260,7 +273,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void LateUpdate()
     {
-        if (animator == null || !animator.isHuman) return;
+        if (animator == null || !animator.enabled || !animator.isHuman) return;
+        if (GetComponent<CalligraphyPlayerControl>()?.Active ?? false) return;
         if (hips == null || chest == null) CacheHumanoidBones();
 
         if (controller != null && controller.IsRolling)

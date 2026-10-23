@@ -9,13 +9,17 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     CalligraphyInkField ink;
     PlayerHealth player;
     Mesh mesh;
-    MeshRenderer body,telegraph;
+    MeshRenderer body;
+    LineRenderer warning;
+    float impactRadius=6;
     Transform head,jaw;
     readonly Transform[] legs=new Transform[4];
     readonly LineRenderer[] feet=new LineRenderer[4];
     readonly Renderer[][] limbRenderers=new Renderer[4][];
     readonly LineRenderer[] whiskers=new LineRenderer[2];
-    readonly LineRenderer[] mane=new LineRenderer[12];
+    readonly LineRenderer[] mane=new LineRenderer[3];
+    readonly LineRenderer[,] claws=new LineRenderer[4,3];
+    readonly Vector3[] manePoints=new Vector3[Rings-3];
     readonly Vector3[] whiskerPoints=new Vector3[12];
     readonly Vector3[] centers=new Vector3[Rings];
     readonly Vector3[] verts=new Vector3[Rings*Sides];
@@ -27,18 +31,16 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     float damage;
     Vector3 pursuitPosition,pursuitDirection;
     float nextContact,passUntil;
-    GameObject packageSeal;
-    bool sealReleased;
     public bool IsHoming=>!giant;
     public Vector3 TrackedPosition=>target;
     public float BodyScale=>scale;
     public float ThicknessMultiplier=>giant?2:1;
-    public bool TelegraphVisible=>(telegraph && telegraph.enabled) || packageSeal;
+    public bool TelegraphVisible=>warning && warning.enabled;
     public bool IsDiving=>diving;
-    public void Initialize(CalligraphyInkField field,PlayerHealth victim,Vector3 from,Vector3 to,float size,float wait,bool large,float damageAmount=0)
+    public void Initialize(CalligraphyInkField field,PlayerHealth victim,Vector3 from,Vector3 to,float size,float wait,bool large,float damageAmount=0,float diveSpeed=26,float blastRadius=6)
     {
         ink=field;player=victim;start=from;target=to;scale=size;delay=wait;giant=large;
-        damage=damageAmount>0?damageAmount:large?35:15;speed=large?26:18;
+        damage=damageAmount>0?damageAmount:large?35:15;speed=large?Mathf.Max(.1f,diveSpeed):18;impactRadius=blastRadius;
         axis=(target-start).normalized;side=Vector3.Cross(axis,Vector3.up).normalized;if(side.sqrMagnitude<.01f)side=Vector3.right;
         flightDuration=Vector3.Distance(start,target)/speed;previous=from;
         pursuitPosition=from;pursuitDirection=axis;
@@ -48,21 +50,24 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         var h=new GameObject("Horned dragon head");h.transform.SetParent(transform,false);head=h.transform;
         HeadShape();
         for(int i=0;i<mane.Length;i++)
-            mane[i]=CalligraphyGeometry.Line("Dorsal ink mane",transform,ink.ribbonMaterial,new Vector3[4],.28f*scale,true);
+            mane[i]=CalligraphyGeometry.Line("Continuous dorsal ink ribbon",transform,ink.ribbonMaterial,new Vector3[Rings-3],.24f*scale,true);
         for(int i=0;i<4;i++)
         {
             var limb=new GameObject("Articulated claw "+i);limb.transform.SetParent(transform,false);legs[i]=limb.transform;
-            feet[i]=CalligraphyGeometry.Line("Forearm",limb.transform,ink.sculptureMaterial,new Vector3[4],.19f*scale);
+            feet[i]=CalligraphyGeometry.Line("Jointed shoulder elbow and palm",limb.transform,ink.sculptureMaterial,new Vector3[4],.19f);
             for(int k=0;k<3;k++)
             {
                 float f=k-1;
-                CalligraphyGeometry.Line("Curved talon",limb.transform,ink.sculptureMaterial,new[]{new Vector3(.7f,-.55f,.2f),new Vector3(1.0f,-.65f,.2f+f*.16f),new Vector3(1.15f,-.72f,.3f+f*.22f)},.075f);
+                claws[i,k]=CalligraphyGeometry.Line("Articulated talon",limb.transform,ink.sculptureMaterial,new Vector3[3],.075f);
             }
             limbRenderers[i]=limb.GetComponentsInChildren<Renderer>();
         }
-        telegraph=CalligraphyGeometry.MeshObject("Ink landing telegraph",transform,CalligraphyGeometry.Quad(),ink.yinYangMaterial);
-        telegraph.transform.SetPositionAndRotation(target+Vector3.up*.06f,Quaternion.Euler(90,0,0));telegraph.transform.localScale=Vector3.one*(large?12:3.5f);
-        telegraph.enabled=false;
+        if(large)
+        {
+            var points=new Vector3[65];
+            for(int i=0;i<points.Length;i++){float a=i*Mathf.PI*2/64;points[i]=target+new Vector3(Mathf.Cos(a)*impactRadius,.06f,Mathf.Sin(a)*impactRadius);}
+            warning=CalligraphyGeometry.Line("Landing warning perimeter (no Taiji)",transform,ink.ribbonMaterial,points,.09f,true);
+        }
         details=head.GetComponentsInChildren<Renderer>();
     }
     Vector2[] MakeRadii(){var a=new Vector2[Rings];for(int i=0;i<Rings;i++)a[i]=Vector2.one*.1f;return a;}
@@ -100,7 +105,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
             Vector3 locked=CalligraphyGeometry.Ground(player.transform.position,player.transform);
             Vector3 shift=locked-target;target=locked;start+=shift;previous+=shift;
             for(int i=0;i<Rings;i++)centers[i]+=shift;
-            if(telegraph)telegraph.transform.position=target+Vector3.up*.06f;
+            if(warning)for(int i=0;i<warning.positionCount;i++)warning.SetPosition(i,warning.GetPosition(i)+shift);
         }
         diving=true;travel=0;
     }
@@ -139,11 +144,11 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
                 Vector3 delta=centers[i]-centers[i-1];
                 if(delta.sqrMagnitude<.0001f)delta=-pursuitDirection;
                 // Thickness is independent of spine length, so a wider dragon does not become a 40m pipe.
-                centers[i]=centers[i-1]+delta.normalized*.44f;
+                Vector3 wave=side*Mathf.Sin(age*3-i*.32f)*.18f*Time.deltaTime;
+                centers[i]=centers[i-1]+(delta+wave).normalized*.44f;
             }
             axis=pursuitDirection;side=Vector3.Cross(axis,Vector3.up).normalized;
             if(side.sqrMagnitude<.01f)side=Vector3.right;
-            telegraph.enabled=false;
             if(Time.time>=nextContact)damaged=false;
         }
         else for(int i=0;i<Rings;i++)
@@ -175,19 +180,31 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         foreach(var r in details)CalligraphyGeometry.Tint(r,r.name=="Pearl eye" || r.name=="Fang"?new Color(.94f,.94f,.84f):new Color(.015f,.023f,.025f),Mathf.Clamp01(age),headFade);
         for(int i=0;i<mane.Length;i++)
         {
-            int ring=3+i*3;Vector3 tangent=(centers[ring-1]-centers[ring]).normalized;
-            Vector3 dorsal=Vector3.Cross(tangent,side).normalized;
-            Vector3 p=centers[ring]+dorsal*.28f*scale;
-            mane[i].SetPositions(new[]{p,p+dorsal*.6f*scale-side*.15f*scale,p+dorsal*.8f*scale-tangent*.55f*scale,p-tangent*scale});
-            float fade=Impacted?Mathf.Clamp01((travel-flightDuration-ring*bodyDelay*scale)/.4f):0;
+            for(int k=0;k<manePoints.Length;k++)
+            {
+                int ring=k+3;Vector3 tangent=(centers[ring-1]-centers[ring]).normalized;
+                Vector3 dorsal=Vector3.Cross(tangent,side).normalized;
+                float taper=1-ring/(float)Rings;
+                manePoints[k]=centers[ring]+dorsal*(.32f+.10f*Mathf.Sin(age*3-k*.4f+i))*scale*taper+side*(i-1)*.16f*scale*taper;
+            }
+            mane[i].SetPositions(manePoints);
+            float fade=Impacted?Mathf.Clamp01((travel-flightDuration)/1.5f):0;
             CalligraphyGeometry.Tint(mane[i],new Color(.025f,.03f,.03f),Mathf.Clamp01(age),fade);
         }
         for(int i=0;i<4;i++)
         {
             int ring=i<2?8:23;float sign=i%2==0?-1:1;
-            legs[i].position=centers[ring];legs[i].rotation=head.rotation;legs[i].localScale=new Vector3(sign*ThicknessMultiplier,ThicknessMultiplier,1)*scale;
-            float swing=Mathf.Sin(age*4+i*1.5f)*.22f;
-            feet[i].SetPositions(new[]{Vector3.zero,new Vector3(.4f,-.15f,swing),new Vector3(.55f,-.5f,.25f+swing),new Vector3(.8f,-.55f,.2f)});
+            Vector3 limbDirection=(centers[ring-1]-centers[ring]).normalized;
+            legs[i].position=centers[ring];legs[i].rotation=Quaternion.LookRotation(limbDirection,head.up);legs[i].localScale=new Vector3(sign*ThicknessMultiplier,ThicknessMultiplier,1)*scale;
+            float swing=Mathf.Sin(age*3+i*1.5f)*.38f;
+            Vector3 palm=new Vector3(1.25f,-.78f,.35f+swing);
+            feet[i].SetPositions(new[]{Vector3.zero,new Vector3(.55f,-.18f,-.3f+swing),new Vector3(.85f,-.65f,.15f+swing),palm});
+            float spread=.12f+.18f*(.5f+.5f*Mathf.Sin(age*2.7f+i));
+            for(int k=0;k<3;k++)
+            {
+                Vector3 end=palm+new Vector3(.6f,-.28f,(k-1)*spread);
+                claws[i,k].SetPositions(new[]{palm,palm+new Vector3(.38f,-.04f,(k-1)*spread),end});
+            }
             float fade=Impacted?Mathf.Clamp01((travel-flightDuration-ring*bodyDelay*scale)/.4f):0;
             foreach(var r in limbRenderers[i])CalligraphyGeometry.Tint(r,new Color(.01f,.018f,.02f),1,fade);
         }
@@ -197,24 +214,12 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
             for(int k=0;k<12;k++){float u=k/11f;whiskerPoints[k]=new Vector3(sign*(.24f+u*1.5f),-.02f+Mathf.Sin(u*6+age*3)*u*.16f,.95f-u*u*1.9f);}
             whiskers[i].SetPositions(whiskerPoints);
         }
-        // Final brush stroke ends at 4s. Descent remains at 3.25s; only the seal is delayed.
-        if(giant && age>=4 && !sealReleased)
-        {
-            sealReleased=true;
-            if(ink.yinYangPrefab)
-            {
-                packageSeal=Instantiate(ink.yinYangPrefab,target+Vector3.up*.06f,Quaternion.identity,transform);
-                packageSeal.name="Piloto Ying Yang landing seal";
-                packageSeal.SetActive(true);
-                foreach(var ps in packageSeal.GetComponentsInChildren<ParticleSystem>())ps.Play(false);
-            }
-        }
-        if(telegraph){telegraph.enabled=giant && age>=4 && !packageSeal;CalligraphyGeometry.Tint(telegraph,Color.white,Mathf.Clamp01((age-4)*8)*(Impacted?1-headFade:.65f));}
+        // Impact now uses the original package explosion sequence, not the old Taiji seal.
+        if(warning)warning.enabled=!Impacted;
         emitClock-=Time.deltaTime;
         if(emitClock<=0)
         {
-            emitClock=.10f;ink.Emit(centers[18],-axis*2,1.1f*scale,2.2f);
-            for(int i=0;i<3;i++)ink.Mist(centers[3+i*13],-axis*.45f,scale*.8f,2.7f);
+            emitClock=.28f;ink.Emit(centers[18],-axis*2,.6f*scale,1.8f);
         }
         if(diving && !damaged && player)
         {
@@ -222,14 +227,14 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
             Vector3 segment=centers[0]-previous;
             float t=segment.sqrMagnitude>.0001f?Mathf.Clamp01(Vector3.Dot(p-previous,segment)/segment.sqrMagnitude):0;
             if(Vector3.Distance(p,previous+segment*t)<(giant?1.8f:.6f)*scale)
-            {damaged=true;nextContact=Time.time+2;passUntil=Time.time+.7f;CalligraphyPlayerHitGate.Hit(player,damage,axis*2,"被水墨龍擊倒");ink.Burst(p,1.2f);}
+            {damaged=true;nextContact=Time.time+2;passUntil=Time.time+.7f;CalligraphyPlayerHitGate.Hit(player,damage,axis*2,"被水墨龍擊倒",previous+segment*t,source:transform);ink.Burst(p,1.2f);}
         }
         previous=centers[0];
         if(giant && diving && travel>=flightDuration && !Impacted)
         {
             Impacted=true;impactAge=age;ink.Burst(target,giant?2.8f:1.1f,26);
-            if(!damaged && player && Vector3.Distance(player.transform.position,target)<(giant?6:2))
-            {damaged=true;CalligraphyPlayerHitGate.Hit(player,damage,(player.transform.position-target).normalized*2,"被墨龍撞擊波擊倒");}
+            if(!damaged && player && Vector3.Distance(player.transform.position,target)<(giant?impactRadius:2))
+            {damaged=true;CalligraphyPlayerHitGate.Hit(player,damage,(player.transform.position-target).normalized*2,"被墨龍撞擊波擊倒",target,source:transform);}
         }
         if(Impacted && age-impactAge>Rings*bodyDelay*scale+.8f)Destroy(gameObject);
     }

@@ -540,6 +540,7 @@ public sealed partial class VoidRendSkillDemo
 
     void DamageCurrentTarget(float amount)
     {
+        if(target && !CalligraphyWorldIsolation.Allows(target))return;
         if (target == null || amount <= 0f) return;
         IDamageable damageable = target.GetComponentInParent<IDamageable>();
         if (damageable == null || damageable.IsDead) return;

@@ -16,6 +16,9 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
     float born,fadeStarted,attackClock,emissionClock;
     bool dissolving,hitInSwing;
     Vector3 previousTip;
+    CalligraphyBossCombat.MeleeSettings settings=new();
+    public void Configure(CalligraphyBossCombat.MeleeSettings value)
+    {settings=value;hitsRemaining=value.cloneHits;lifetime=value.cloneLifetime;}
     public static CalligraphyClone Spawn(GameObject template,CalligraphyInkField field,PlayerHealth victim,Vector3 position,Quaternion rotation,bool combat,Transform parent,CalligraphyBrushPresentation snapshot=null)
     {
         var root=Instantiate(template,position,rotation,parent);root.name=combat?"Ink combat double":"Ink dodge decoy";
@@ -41,7 +44,9 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
             var mats=r.sharedMaterials;for(int i=0;i<mats.Length;i++)mats[i]=field.originalEchoMaterial?field.originalEchoMaterial:field.sculptureMaterial;r.sharedMaterials=mats;
         }
         var oldInk=root.GetComponent<CalligraphyInkPresentation>();
-        if(oldInk){oldInk.echoInterval=combat?.9f:0;oldInk.ambientRate=12;oldInk.inkSize=.7f;oldInk.enabled=true;}
+        // The clone itself is the flowing silhouette. Do not spawn extra humanoid snapshots
+        // and the presentation prefab's 28/s smoke on top of the two combat doubles.
+        if(oldInk)oldInk.enabled=false;
         root.AddComponent<CalligraphyBrushWake>().Initialize(clone.brush,field);
         root.tag="Enemy";
         if(!root.GetComponent<VoidRendTargetable>())root.AddComponent<VoidRendTargetable>();
@@ -50,6 +55,7 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
     }
     public void TakeDamage(float amount,Vector3 at)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if(amount<=0 || dissolving)return;
         var context=CalligraphyAttackContext.Current;
         long key=context.cast!=0?((long)context.cast<<32)|(uint)context.hit:-(long)Time.frameCount-1;
@@ -69,24 +75,35 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
     {
         if(!ink){Destroy(gameObject);return;}
         if(Time.time-born>=lifetime)Dissolve();
-        float dissolve=dissolving?Mathf.Clamp01((Time.time-fadeStarted)/1.3f):0;
+        float dissolve=dissolving?Mathf.Clamp01((Time.time-fadeStarted)/Mathf.Max(.1f,settings.cloneFadeSeconds)):0;
         float appear=Mathf.Clamp01((Time.time-born)/.65f);
-        foreach(var r in renderers)if(r)CalligraphyGeometry.Tint(r,new Color(.003f,.006f,.009f),appear*.82f,Mathf.Max(dissolve,(1-appear)*.8f));
+        foreach(var r in renderers)if(r)CalligraphyGeometry.Tint(r,new Color(.003f,.006f,.009f),appear*.58f,Mathf.Max(dissolve,(1-appear)*.8f));
         if(dissolve>=1){Destroy(gameObject);return;}
         if(dissolving || !combatClone || !player || player.IsDead || CalligraphyPaintingWorld.BlocksTether)return;
         Vector3 direction=player.transform.position-transform.position;direction.y=0;
         if(direction.sqrMagnitude>.01f)transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),220*Time.deltaTime);
         float distance=direction.magnitude;
-        if(distance>2.8f && !Physics.SphereCast(transform.position+Vector3.up,.35f,direction.normalized,out _,Time.deltaTime*2.6f+.1f,~0,QueryTriggerInteraction.Ignore))
-            transform.position+=direction.normalized*2.6f*Time.deltaTime;
+        if(distance>2.8f)
+        {
+            bool blocked=false;float travel=Time.deltaTime*settings.cloneMoveSpeed;
+            foreach(var h in Physics.SphereCastAll(transform.position+Vector3.up,.5f,direction.normalized,travel+.15f,~0,QueryTriggerInteraction.Ignore))
+                if(!h.transform.IsChildOf(transform)){blocked=true;break;}
+            if(!blocked)
+            {
+                Vector3 at=CalligraphyGeometry.Ground(transform.position+direction.normalized*travel,transform);
+                if(Mathf.Abs(at.y-transform.position.y)<.4f)transform.position=at;
+            }
+        }
         attackClock+=Time.deltaTime;
-        float phase=(attackClock%2.2f)/2.2f;
+        float segment=Mathf.Max(.1f,settings.cloneStrokeSeconds),phase=(attackClock%segment)/segment;
         if(phase<.1f)hitInSwing=false;
-        if(brush)brush.SetCombatPose(((int)(attackClock/2.2f))%2,phase);
+        int style=((int)(attackClock/segment))%5;
+        if(brush)brush.SetCombatPose(4+style,phase);
+        if(phase>=.38f && phase-Time.deltaTime/segment<.38f)CalligraphyMeleeEffects.Play(brush,style,settings.vfxScale);
         if(phase>.38f && phase<.72f && !hitInSwing && brush &&
             CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,.7f))
         {
-            hitInSwing=true;CalligraphyPlayerHitGate.Hit(player,8,direction.normalized,"被水墨分身擊倒");ink.Burst(player.transform.position+Vector3.up,.6f,7);
+            hitInSwing=true;CalligraphyPlayerHitGate.Hit(player,settings.cloneDamage,direction.normalized,"被水墨分身擊倒",brush.brushTip.position);
         }
         emissionClock-=Time.deltaTime;
         if(emissionClock<=0 && brush){emissionClock=.12f;ink.Emit(brush.brushTip.position,-transform.forward,.35f,1.3f);}

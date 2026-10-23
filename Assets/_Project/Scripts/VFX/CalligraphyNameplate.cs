@@ -9,6 +9,7 @@ public sealed class CalligraphyNameplate : MonoBehaviour
     GUIStyle style;
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         var camera = Camera.main;
         if (!camera || Vector3.Distance(camera.transform.position, transform.position) > visibleDistance) return;
         Vector3 p = camera.WorldToScreenPoint(transform.position + Vector3.up * height);

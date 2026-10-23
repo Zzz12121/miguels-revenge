@@ -70,7 +70,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         Release();
     }
 
-    bool CanAnimate => animator != null && animator.runtimeAnimatorController != null && (health == null || !health.IsDead);
+    bool CanAnimate => animator != null && animator.enabled && animator.runtimeAnimatorController != null && (health == null || !health.IsDead) && !(GetComponent<CalligraphyPlayerControl>()?.Active ?? false);
 
     void Play(string state, float fade, float speed = 1f)
     {

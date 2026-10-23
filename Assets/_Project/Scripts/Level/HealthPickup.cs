@@ -89,6 +89,7 @@ public class HealthPickup : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         var cam = Camera.main;
         if (cam == null) return;
 

@@ -9,6 +9,8 @@ Shader "Project/VFX/CalligraphyFluid"
         _Flow("Flow speed",Float)=0.6
         _Seed("Seed",Float)=0
         _FaceTex("Elder visage albedo",2D)="white" {}
+        _EyeVisibility("Sky eye ink definition",Range(0,1))=1
+        _EyeCenter("Eye half-spacing / height",Vector)=(.035,.07,0,0)
     }
     SubShader
     {
@@ -26,10 +28,12 @@ Shader "Project/VFX/CalligraphyFluid"
             CBUFFER_START(UnityPerMaterial)
             half4 _BaseColor;
             float _Fade,_Opacity,_Mode,_Flow,_Seed;
+            float _EyeVisibility;
+            float4 _EyeCenter;
             CBUFFER_END
             TEXTURE2D(_FaceTex); SAMPLER(sampler_FaceTex);
             struct A {float4 p:POSITION; float3 n:NORMAL; float2 uv:TEXCOORD0; half4 color:COLOR;};
-            struct V {float4 p:SV_POSITION; float3 world:TEXCOORD0; float2 uv:TEXCOORD1; float3 n:TEXCOORD2; half4 color:COLOR;};
+            struct V {float4 p:SV_POSITION; float3 world:TEXCOORD0; float2 uv:TEXCOORD1; float3 n:TEXCOORD2; float3 local:TEXCOORD3; half4 color:COLOR;};
             float hash(float2 p) {return frac(sin(dot(p,float2(127.1,311.7)))*43758.5453);}
             float noise(float2 p)
             {
@@ -41,7 +45,7 @@ Shader "Project/VFX/CalligraphyFluid"
             {
                 V o; o.world=TransformObjectToWorld(i.p.xyz);
                 o.p=TransformWorldToHClip(o.world); o.n=TransformObjectToWorldNormal(i.n);
-                o.uv=i.uv; o.color=i.color; return o;
+                o.uv=i.uv; o.color=i.color;o.local=i.p.xyz; return o;
             }
             half4 frag(V i,bool frontFace:SV_IsFrontFace):SV_Target
             {
@@ -73,7 +77,8 @@ Shader "Project/VFX/CalligraphyFluid"
                 {
                     float2 cloudUV=(i.world.xz+i.world.y*.73)*.12;
                     float cloud=fbm(cloudUV+float2(_Time.y*.012,0)+fbm(cloudUV*1.8)*2.5);
-                    color*=.58+smoothstep(.22,.72,cloud)*.4+noise(i.uv*500)*.025;
+                    // Quiet paper/cloud values leave the giant face and dark foot ripples readable.
+                    color*=.88+smoothstep(.22,.72,cloud)*.10+noise(i.uv*500)*.012;
                     alpha=_Opacity*_BaseColor.a*smoothstep(_Fade*.98,_Fade*.98+.08,n);
                 }
                 else if(_Mode<3.5)
@@ -119,9 +124,21 @@ Shader "Project/VFX/CalligraphyFluid"
                     float facing=abs(dot(normalize(i.n),normalize(_WorldSpaceCameraPos-i.world)));
                     half3 albedo=SAMPLE_TEXTURE2D(_FaceTex,sampler_FaceTex,i.uv).rgb;
                     float pigment=dot(albedo,half3(.3,.59,.11));
-                    color=lerp(half3(.025,.03,.035),half3(.68,.7,.72),pigment)*(.65+light*.35);
-                    color*=.8+n*.3;
-                    alpha*=smoothstep(.02,.3,facing)*lerp(.45,1,smoothstep(.16,.5,n));
+                    float broadWash=fbm(i.world.xy*.035+float2(_Time.y*.015,0));
+                    color=lerp(half3(.012,.018,.022),half3(.49,.51,.53),pigment)*(.65+light*.35);
+                    color*=.9+broadWash*.15;
+                    // Ink-defined lids/iris on the existing facial surface, not floating spheres.
+                    // Soften the original model's circular dark eye patches into narrow sockets.
+                    float2 eye=float2(abs(i.local.x)-_EyeCenter.x,i.local.y-_EyeCenter.y);
+                    float socket=(1-smoothstep(.8,1.25,length(eye/float2(.023,.022))))*smoothstep(.055,.08,i.local.z);
+                    float opening=1-smoothstep(.85,1.05,length(eye/float2(.016,.005)));
+                    float pupil=1-smoothstep(.8,1.15,length((eye-float2(-.001,-.0007))/float2(.0035,.0035)));
+                    float lid=(1-smoothstep(.0008,.0025,abs(eye.y-(.0055-pow(eye.x/.018,2)*.004))))*(1-smoothstep(.015,.021,abs(eye.x)));
+                    half3 skinWash=half3(.49,.51,.53)*.8*(.65+light*.35)*(.9+broadWash*.15);
+                    half3 eyeInk=lerp(skinWash,skinWash+.065,opening);
+                    eyeInk=lerp(eyeInk,half3(.045,.055,.062),saturate(pupil*opening+lid*.75));
+                    color=lerp(color,eyeInk,socket*_EyeVisibility);
+                    alpha*=smoothstep(.02,.3,facing)*lerp(.65,1,broadWash);
                 }
                 return half4(color,alpha*i.color.a);
             }

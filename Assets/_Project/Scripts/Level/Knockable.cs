@@ -35,6 +35,7 @@ public abstract class Knockable : MonoBehaviour, IDamageable
     /// <summary>玩家的攻擊會走這裡（IDamageable 不會告訴我們是誰打的，所以直接當成玩家）</summary>
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (player == null)
         {
             var go = GameObject.FindWithTag("Player");

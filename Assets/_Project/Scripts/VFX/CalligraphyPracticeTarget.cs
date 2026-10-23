@@ -22,6 +22,7 @@ public sealed class CalligraphyPracticeTarget : MonoBehaviour, IDamageable
     }
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         var camera = Camera.main;
         if (!camera) return;
         Vector3 p = camera.WorldToScreenPoint(transform.position + Vector3.up * barHeight);
@@ -37,6 +38,7 @@ public sealed class CalligraphyPracticeTarget : MonoBehaviour, IDamageable
     public bool IsDead => false; // Reusable practice dummy: survives a full skill and repeated tests.
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (amount <= 0) return;
         DamageTaken += amount;
         Health = Mathf.Max(0, Health - amount);

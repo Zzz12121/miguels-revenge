@@ -4,7 +4,8 @@ using UnityEngine.Events;
 
 /// <summary>Opt-in combat adapter for the existing elder presentation. Never auto-starts in production scenes.</summary>
 [DisallowMultipleComponent]
-public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
+[DefaultExecutionOrder(200)]
+public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
 {
     public CalligraphyBrushPresentation brush;
     public CalligraphyInkField ink;
@@ -15,18 +16,18 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
     public bool cycleDemonstration=true;
     public float paintingCooldown=32,dragonCooldown=22;
     [Header("Painting world / ink dragons")]
-    public float paintingRadius=64,disturbanceRadius=5,disturbanceStrength=.8f;
+    public float paintingRadius=96,disturbanceRadius=5,disturbanceStrength=.8f;
     public float giantDragonScale=2.2f,giantDragonDamage=35,paintingDragonDamage=15;
     public float paintingDragonScale=2.6f;
     [Range(0,1)] public float dodgeChance=1f/3f;
     [Tooltip("Invoked on dragon impact; terrain systems can subscribe without depending on VFX internals.")]
     public UnityEvent<Vector3> onDragonImpact=new();
     public bool Active {get;private set;}
-    public bool IsDead=>Health<=0 && !practiceImmortal;
+    public bool IsDead=>Health<=0;
     public float Health {get;private set;}
     public int SelectedSkill {get;private set;}
-    public string SkillName=>SkillNames[Mathf.Clamp(SelectedSkill,0,4)];
-    public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍"};
+    public string SkillName=>SkillNames[Mathf.Clamp(SelectedSkill,0,SkillNames.Length-1)];
+    public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍","交叉運筆・墨光","躍筆重砸","連環墨浪","點墨落印"};
     public bool IsCasting=>casting;
     public Transform EffectsRoot=>effectsRoot;
     readonly Dictionary<int,bool> dodgeResults=new();
@@ -53,7 +54,7 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     public void StartBattle(PlayerHealth target,bool practice=false)
     {
-        enabled=true;CancelCast();player=target;Active=true;Health=maxHealth;practiceImmortal=practice;SelectedSkill=0;cooldown=.8f;
+        enabled=true;CancelCast();player=target;Active=true;Health=maxHealth;practiceImmortal=practice;SelectedSkill=0;cooldown=.8f;Vanished=false;
         dodgeResults.Clear();dodgeOrder.Clear();brush.showcase=false;
         previousTip=brush.brushTip.position;
         nextPainting=Time.time+8;nextDragon=Time.time+14;
@@ -67,20 +68,19 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
         if(brush)brush.showcase=true;
     }
     public void NextSkill()
-    { if(!Active)return;CancelCast();SelectedSkill=(SelectedSkill+1)%5;cooldown=.35f; }
+    { if(!Active)return;CancelCast();SelectedSkill=(SelectedSkill+1)%SkillNames.Length;cooldown=.35f; }
     public void SelectSkill(int index)
-    { CancelCast();SelectedSkill=Mathf.Clamp(index,0,4);cooldown=.35f; }
+    { if(IsDead)return;CancelCast();SelectedSkill=Mathf.Clamp(index,0,SkillNames.Length-1);cooldown=.35f; }
     public void TakeDamage(float amount,Vector3 point)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if(amount<=0 || IsDead)return;
         var attack=CalligraphyAttackContext.Current;
         if(attack.cast!=0 && TryEvade(attack.cast,attack.skill))return;
         Health=Mathf.Max(0,Health-amount);lastDamage=Time.time;
         if(IsDead)
         {
-            Active=false;CancelCast();
-            int death=System.Array.FindIndex(brush.animationStates,s=>s.Contains("death") || s.Contains("die"));
-            if(death>=0)brush.PlayAnimation(death);
+            BeginDeath();
             return;
         }
         if(ink && Active)ink.Burst(point,.45f,4);
@@ -103,7 +103,7 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     void Update()
     {
-        if(practiceImmortal && Time.time-lastDamage>5)Health=maxHealth;
+        if(dying){UpdateDeath();return;}
         if(!Active || !player || player.IsDead || Time.deltaTime<=0)return;
         if(evadeClock>=0)
         {
@@ -113,26 +113,30 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
             return;
         }
         Vector3 direction=player.transform.position-transform.position;direction.y=0;
-        if(direction.sqrMagnitude>.001f && (!casting || elapsed<.4f))
+        if(direction.sqrMagnitude>.001f && (!casting || (SelectedSkill!=6 && elapsed<.4f)))
             transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),240*Time.deltaTime);
         if(!casting)
         {
             cooldown-=Time.deltaTime;
-            float wanted=SelectedSkill==2?meleeDistance*.7f:7;
+            float wanted=SelectedSkill==2 || SelectedSkill==7?meleeDistance*.7f:7;
             bool shouldWalk=direction.magnitude>wanted+.3f;
             SetWalking(shouldWalk);
             if(shouldWalk)Move(direction.normalized*moveSpeed*Time.deltaTime);
-            if(cooldown<=0){SetWalking(false);casting=true;elapsed=0;released=0;impactDone=false;aim=player.transform.position;}
+            if(cooldown<=0){SetWalking(false);casting=true;elapsed=0;released=0;impactDone=false;aim=player.transform.position;slashVfx=-1;skillEffect=null;}
             return;
         }
         elapsed+=Time.deltaTime;
         switch(SelectedSkill)
         {
-            case 0: Ranged(1);break;
-            case 1: Ranged(4);break;
+            case 0: Ranged(Mathf.Max(1,inkProjectile.singleCount));break;
+            case 1: Ranged(Mathf.Max(1,inkProjectile.comboCount));break;
             case 2: Melee();break;
             case 3: Painting();break;
             case 4: Dragon();break;
+            case 5: Beam();break;
+            case 6: LeapSlam();break;
+            case 7: FrontalPulses();break;
+            case 8: Runes();break;
         }
         inkClock-=Time.deltaTime;
         if(inkClock<=0 && brush && brush.brushTip)
@@ -157,16 +161,16 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     void Ranged(int count)
     {
-        const float segment=1.15f;
+        float segment=Mathf.Max(.1f,inkProjectile.strokeSeconds);
         int index=Mathf.Min(count-1,(int)(elapsed/segment));
         float phase=(elapsed-index*segment)/segment;
         brush.SetCombatPose(index%2,phase);
-        if(phase<.38f)aim=player.transform.position+Vector3.up;
+        if(phase<.57f)aim=Abdomen(player);
         if(phase>=.57f && released<=index)
         {
             released=index+1;
             var shot=new GameObject("Flying brushstroke");shot.transform.SetParent(effectsRoot,false);
-            shot.AddComponent<CalligraphyInkProjectile>().Launch(ink,transform,brush.brushTip.position,aim-brush.brushTip.position,projectileSpeed,projectileDamage);
+            shot.AddComponent<CalligraphyInkProjectile>().Launch(ink,transform,brush.brushTip.position,aim-brush.brushTip.position,projectileSpeed,projectileDamage,player,inkProjectile);
             ink.Burst(brush.brushTip.position,.55f,6);
         }
         if(elapsed>=count*segment+.35f)FinishCast();
@@ -180,26 +184,31 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
             {
                 released=1;
                 clones.RemoveAll(c=>!c);
-                for(int i=0;i<2 && clones.Count<3;i++)
+                int live=clones.FindAll(c=>c && c.combatClone && !c.IsDead).Count;
+                for(int i=0;i<2 && live<Mathf.Clamp(inkMelee.cloneCount,0,2);i++)
                 {
-                    Vector3 p=transform.position+transform.right*(i==0?-2.3f:2.3f);
-                    clones.Add(CalligraphyClone.Spawn(cloneTemplate,ink,player,p,transform.rotation,true,effectsRoot));
+                    if(!ClonePosition(i==0?-1:1,out var p))continue;
+                    var clone=CalligraphyClone.Spawn(cloneTemplate,ink,player,p,transform.rotation,true,effectsRoot);
+                    clone.Configure(inkMelee);
+                    clones.Add(clone);live++;
                 }
             }
             return;
         }
-        float t=elapsed-1.2f;int index=(int)(t/1.2f);float phase=(t%1.2f)/1.2f;
-        brush.SetCombatPose(index==1?3:index,phase);
+        float t=elapsed-1.2f,segment=Mathf.Max(.1f,inkMelee.strokeSeconds);int index=(int)(t/segment);float phase=(t%segment)/segment;
+        int style=index%5;
+        brush.SetCombatPose(4+style,phase);
+        if(phase>=.38f && slashVfx<index){slashVfx=index;CalligraphyMeleeEffects.Play(brush,style,inkMelee.vfxScale);}
         Vector3 d=player.transform.position-transform.position;d.y=0;
         if(phase<.3f && d.magnitude>meleeDistance*.8f)Move(d.normalized*moveSpeed*1.5f*Time.deltaTime);
         if(phase>.38f && phase<.72f && released<index+2 &&
-            CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,.8f))
+            CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,inkMelee.hitRadius))
         {
             released=index+2;
-            CalligraphyPlayerHitGate.Hit(player,projectileDamage*1.25f,d.normalized*2,"被遊墨行者的巨筆擊倒");
+            CalligraphyPlayerHitGate.Hit(player,inkMelee.damage,d.normalized*2,"被遊墨行者的巨筆擊倒",brush.brushTip.position);
             ink.Burst(brush.brushTip.position,1,12);
         }
-        if(t>=3.6f)FinishCast();
+        if(t>=Mathf.Max(1,inkMelee.comboCount)*segment)FinishCast();
     }
     void Painting()
     {
@@ -221,37 +230,49 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
         else brush.SetCombatPose(3,(elapsed-2.4f)/1.6f);
         if(released==0)
         {
+            var library=CalligraphyVfxLibrary.Current;
+            if(library)
+            {
+                var smoke=CalligraphyVfxLibrary.Play(library.smoke,transform.position+inkDragon.smokeOffset,Quaternion.identity,inkDragon.smokeScale,1,0,effectsRoot);
+                if(smoke){smoke.FollowGround(transform,inkDragon.smokeOffset,inkDragon.smokeSpinMultiplier,inkDragon.smokeFollowPosition,inkDragon.smokeWorldSpace,inkDragon.smokeYawOffset);smoke.StopAfter(inkDragon.releaseSeconds+.55f,1.5f);}
+            }
             aim=CalligraphyGeometry.Ground(player.transform.position,player.transform);released=1;
             var go=new GameObject("Descending Chinese ink dragon");go.transform.SetParent(effectsRoot,false);
             descendingDragon=go.AddComponent<CalligraphyInkDragon>();
-            descendingDragon.Initialize(ink,player,aim+Vector3.up*25,aim,giantDragonScale,3.25f,true,giantDragonDamage);
+            descendingDragon.Initialize(ink,player,aim+Vector3.up*inkDragon.spawnHeight,aim,giantDragonScale,inkDragon.releaseSeconds,true,giantDragonDamage,inkDragon.diveSpeed,inkDragon.impactRadius);
         }
-        if(elapsed>=3.25f && released==1)
+        if(elapsed>=inkDragon.releaseSeconds && released==1)
         {
             released=2;
             if(descendingDragon){descendingDragon.Dive();aim=descendingDragon.TrackedPosition;}
         }
         if(descendingDragon && descendingDragon.Impacted && !impactDone)
         {
-            impactDone=true;onDragonImpact.Invoke(aim);
-            CalligraphyGroundImpact.Create(effectsRoot,ink,aim,7);
+            impactDone=true;aim=descendingDragon.TrackedPosition;onDragonImpact.Invoke(aim);
+            CalligraphyGroundImpact.Create(effectsRoot,ink,aim,inkDragon.impactRadius,inkDragon);
+            CalligraphySkillSequence.DragonImpact(aim,effectsRoot,inkDragon);
         }
-        if(elapsed>=7)FinishCast();
+        if(elapsed>=inkDragon.castSeconds)FinishCast();
     }
     void FinishCast()
     {
+        float recovery=skillRecovery!=null && SelectedSkill<skillRecovery.Length && skillRecovery[SelectedSkill]>0?skillRecovery[SelectedSkill]:recoverySeconds;
         casting=false;elapsed=0;brush.ClearCombatPose();
         if(SelectedSkill==3)nextPainting=Time.time+paintingCooldown;
         if(SelectedSkill==4)nextDragon=Time.time+dragonCooldown;
-        if(cycleDemonstration)SelectedSkill=(SelectedSkill+1)%5;
+        if(cycleDemonstration)SelectedSkill=(SelectedSkill+1)%SkillNames.Length;
         else if(Time.time>=nextPainting)SelectedSkill=3;
         else if(Time.time>=nextDragon)SelectedSkill=4;
-        else SelectedSkill=player && Vector3.Distance(player.transform.position,transform.position)<meleeDistance?2:Random.Range(0,2);
-        cooldown=recoverySeconds;
+        else SelectedSkill=player && Vector3.Distance(player.transform.position,transform.position)<meleeDistance?(Random.value<.5f?2:7):new[]{0,1,5,6,8}[Random.Range(0,5)];
+        cooldown=recovery;
         // Ordinary attacks and doubles may finish their bounded lifetimes between attacks.
     }
     public void CancelCast()
     {
+        runePoints.Clear();
+        cooldown=Mathf.Max(cooldown,recoverySeconds);
+        if(beamMesh){Destroy(beamMesh);beamMesh=null;}
+        if(leaping){transform.position=leapGround;leaping=false;}
         casting=false;elapsed=0;evadeClock=-1;painting=null;descendingDragon=null;
         if(brush)brush.ClearCombatPose();
         if(effectsRoot)for(int i=effectsRoot.childCount-1;i>=0;i--)
@@ -262,6 +283,7 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
     void OnDestroy(){if(effectsRoot)Destroy(effectsRoot.gameObject);}
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if(!Active)return;
         float width=360,x=(Screen.width-width)*.5f;
         GUI.Box(new Rect(x,18,width,46),"遊墨行者 — "+SkillName);
