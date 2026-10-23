@@ -2295,6 +2295,7 @@ MonoBehaviour:
   originalEchoMaterial: {fileID: 2100000, guid: 1dc39e4547643f042ac1d935507fa8ac, type: 2}
   suspendedWashMaterial: {fileID: 2100000, guid: 0a5d261be29d4b24682d6e2b2b24f449, type: 2}
   skyVisageMaterial: {fileID: 2100000, guid: 77b421c65efd1d44ca86b0a5d081b029, type: 2}
+  yinYangPrefab: {fileID: 6306347550846905451, guid: de02d3b803998f4448b72cae47431374, type: 3}
   environmentShader: {fileID: 4800000, guid: d703386384056d24cafd5e7a47b53fed, type: 3}
   capacity: 96
   curlStrength: 0.65

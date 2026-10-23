@@ -226,7 +226,11 @@ public sealed class CalligraphyBossCombat : MonoBehaviour,IDamageable
             descendingDragon=go.AddComponent<CalligraphyInkDragon>();
             descendingDragon.Initialize(ink,player,aim+Vector3.up*25,aim,giantDragonScale,3.25f,true,giantDragonDamage);
         }
-        if(elapsed>=3.25f && released==1){released=2;descendingDragon?.Dive();}
+        if(elapsed>=3.25f && released==1)
+        {
+            released=2;
+            if(descendingDragon){descendingDragon.Dive();aim=descendingDragon.TrackedPosition;}
+        }
         if(descendingDragon && descendingDragon.Impacted && !impactDone)
         {
             impactDone=true;onDragonImpact.Invoke(aim);
