@@ -523,10 +523,36 @@ public class SandWormArena : MonoBehaviour
         ClearTails(false);
         if (visuals != null) Destroy(visuals);
         visuals = null;
-        SandBurst(Ground(transform.position), 60, 4f, 1f, 2f);
+        StartCoroutine(DefeatRoutine());
+    }
+
+    /// <summary>打倒後：大沙蟲從中央冒出來說最後幾句話（劇情對話），沉回地底後才出現獎勵植物</summary>
+    IEnumerator DefeatRoutine()
+    {
+        yield return new WaitForSeconds(0.8f);
+        bool talking = true;
+        Vector3 at = Ground(transform.position);
+        SandBurst(at, 60, 5f, 1f, 3f);
+        var worm = SpawnWorm(at, () => talking, 1.6f);
+        if (player != null)
+        {
+            Vector3 d = Flat(player.transform.position - at);
+            if (d.sqrMagnitude > 0.01f) worm.transform.rotation = Quaternion.LookRotation(d);
+        }
+        worms.Add(worm);
+        ThirdPersonCamera.ShakeMain(0.2f, 0.8f);
+        yield return new WaitForSeconds(1.2f);
+
+        bool done = false;
+        PlanetStory.PlayWormDefeat(worm.transform, () => done = true);
+        while (!done) yield return null;
+        talking = false;
+        yield return new WaitForSeconds(1.8f); // 等沙蟲沉回地底
+
+        SandBurst(at, 60, 4f, 1f, 2f);
         if (rewardPlant != null)
         {
-            rewardPlant.transform.position = Ground(transform.position);
+            rewardPlant.transform.position = at;
             rewardPlant.SetActive(true);
         }
         GameAudio.Play("SFX/RPG/handleCoins", transform.position, 1f, 1f, 0f, 0.3f);
