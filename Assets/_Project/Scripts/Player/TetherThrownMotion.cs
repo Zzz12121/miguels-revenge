@@ -33,7 +33,8 @@ public sealed class TetherThrownMotion : MonoBehaviour
         {
             if (!(b is ThirdPersonController) && !(b is EnemyAI) && !(b is EnemyCombat) &&
                 !(b is VoidRendMovingTarget) && !(b is CalligraphyBrushPresentation) && !(b is Animator) &&
-                !(b is BossController) && !(b is ClockEnemyController)) continue;
+                !(b is BossController) && !(b is ClockEnemyController) &&
+                !(b is CalligraphyBossCombat) && !(b is CalligraphyClone)) continue;
             suspended[b]=b.enabled;
             if (b is EnemyCombat combat) { combat.CancelAttack(); combat.StopAllCoroutines(); }
             if (b is BossController boss) boss.SetSkillAirborne(true);

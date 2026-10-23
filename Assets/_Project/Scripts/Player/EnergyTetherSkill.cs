@@ -219,6 +219,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void BeginAiming(bool throwDestination)
     {
+        if (CalligraphyPaintingWorld.BlocksTether) { Notify("畫中之物，不可鎖定"); return; }
         if (aiming || executing || Time.timeScale <= 0f || !SkillAimCancellation.Register(CancelAiming)) return;
         aiming = true;
         aimingThrowDestination = throwDestination;
@@ -300,6 +301,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     {
         Transform root=ResolveTargetRoot(point);
         if (!root || !ValidPoint(point)) yield break;
+        if (CalligraphyAttackContext.Evades(root, CalligraphyAttackContext.NewCast(), 5)) { SetBeams(false); yield break; }
         executing=true;
         activeMotion=root.GetComponent<TetherThrownMotion>() ?? root.gameObject.AddComponent<TetherThrownMotion>();
         activeMotion.Hold();
@@ -327,6 +329,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     IEnumerator PullPlayer(AimPoint targetPoint)
     {
         if (!ValidPoint(targetPoint)) yield break;
+        if (CalligraphyAttackContext.Evades(ResolveTargetRoot(targetPoint), CalligraphyAttackContext.NewCast(), 5)) { SetBeams(false); yield break; }
         executing = true;
         nextUseTime = Time.unscaledTime + skillCooldown;
         bool previousInput = movement == null || movement.inputEnabled;
@@ -363,6 +366,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     {
         Transform targetRoot = ResolveTargetRoot(targetPoint);
         if (targetRoot == null || !ValidPoint(targetPoint)) yield break;
+        if (CalligraphyAttackContext.Evades(targetRoot, CalligraphyAttackContext.NewCast(), 5)) { SetBeams(false); yield break; }
         executing = true;
         nextUseTime = Time.unscaledTime + skillCooldown;
         Rigidbody rb = targetRoot.GetComponent<Rigidbody>();
@@ -588,6 +592,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     }
 
     void OnDisable()
+    { CancelForExternalTransition(); }
+
+    public void CancelForExternalTransition()
     {
         StopAllCoroutines();
         if (aiming) EndAiming(true);

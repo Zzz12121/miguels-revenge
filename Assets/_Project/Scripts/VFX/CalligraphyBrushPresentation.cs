@@ -26,10 +26,29 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
     Transform[] fingers;
     Quaternion rightPalmBasis, leftPalmBasis;
     Vector3[] fingerCurlAxes;
+    int combatStroke;
+    float combatPhase,combatWeight;
+    Transform chest,leftThigh,rightThigh;
+    Quaternion chestRest,leftThighRest,rightThighRest;
+    public void SetCombatPose(int stroke,float phase,float weight=1)
+    { combatStroke=stroke;combatPhase=Mathf.Clamp01(phase);combatWeight=Mathf.Clamp01(weight); }
+    public void ClearCombatPose()
+    {
+        combatWeight=0;
+        if(chest) chest.localRotation=chestRest;
+        if(leftThigh) leftThigh.localRotation=leftThighRest;
+        if(rightThigh) rightThigh.localRotation=rightThighRest;
+    }
 
     void Awake()
     {
         visual=animator.transform; visualPosition=visual.localPosition; visualRotation=visual.localRotation;
+        foreach(var t in visual.GetComponentsInChildren<Transform>())
+        {
+            if(t.name=="Chest") {chest=t;chestRest=t.localRotation;}
+            if(t.name=="Left_UpperLeg") {leftThigh=t;leftThighRest=t.localRotation;}
+            if(t.name=="Right_UpperLeg") {rightThigh=t;rightThighRest=t.localRotation;}
+        }
         rightPalmBasis=PalmBasis(rightHand,"Right_"); leftPalmBasis=PalmBasis(leftHand,"Left_");
         var list=new System.Collections.Generic.List<Transform>();
         foreach(var t in visual.GetComponentsInChildren<Transform>())
@@ -82,7 +101,7 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             if(clock>=cycleSeconds) { clock=0; Sweep(); }
         }
         if(swingClock>=0) { swingClock+=Time.deltaTime; if(swingClock>2.1f) swingClock=-1; }
-        Swinging=swingClock>=0;
+        Swinging=swingClock>=0 || combatWeight>.1f;
     }
     void LateUpdate()
     {
@@ -104,6 +123,27 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             center=Vector3.Lerp(center,neutral,recover);
             rotation=Quaternion.Slerp(Quaternion.Slerp(rotation,Quaternion.Euler(-64,-46,-20),wind),Quaternion.Euler(22,112,18),cut);
             rotation=Quaternion.Slerp(rotation,Quaternion.Euler(-22,64,0),recover);
+        }
+        if(combatWeight>0)
+        {
+            float p=combatPhase;
+            float wind=Mathf.SmoothStep(0,1,Mathf.Clamp01(p/.38f));
+            float stroke=Mathf.SmoothStep(0,1,Mathf.Clamp01((p-.38f)/.28f));
+            float recover=Mathf.SmoothStep(0,1,Mathf.Clamp01((p-.72f)/.28f));
+            float side=combatStroke%2==0?1:-1;
+            bool down=combatStroke==3,up=combatStroke==2;
+            Vector3 from=neutral+new Vector3(.12f*side,down?.48f:.18f,-.10f);
+            Vector3 to=neutral+new Vector3(-.2f*side,up?.46f:-.22f,.18f);
+            Quaternion a=Quaternion.Euler(down?-85:up?35:-32,down?0:-65*side,-15*side);
+            Quaternion b=Quaternion.Euler(down?72:up?-72:8,down?0:80*side,20*side);
+            Vector3 grip=Vector3.Lerp(Vector3.Lerp(neutral,from,wind),to,stroke);
+            center=Vector3.Lerp(center,Vector3.Lerp(grip,neutral,recover),combatWeight);
+            rotation=Quaternion.Slerp(rotation,Quaternion.Slerp(Quaternion.Slerp(Quaternion.Slerp(Quaternion.Euler(-22,64,0),a,wind),b,stroke),Quaternion.Euler(-22,64,0),recover),combatWeight);
+            float twist=Mathf.Lerp(-22*side,28*side,stroke)*wind*(1-recover)*combatWeight;
+            if(chest) chest.localRotation=chestRest*Quaternion.Euler(down?stroke*16:6*wind,twist,0);
+            if(leftThigh) leftThigh.localRotation=leftThighRest*Quaternion.Euler(-14*wind*(1-recover)*combatWeight,0,0);
+            if(rightThigh) rightThigh.localRotation=rightThighRest*Quaternion.Euler(10*wind*(1-recover)*combatWeight,0,0);
+            visual.localPosition=visualPosition+Vector3.down*(Mathf.Sin(p*Mathf.PI)*.09f*combatWeight);
         }
         brushPivot.SetPositionAndRotation(transform.TransformPoint(center),transform.rotation*rotation);
         Vector3 axis=brushPivot.forward;

@@ -31,6 +31,7 @@ public sealed partial class VoidRendSkillDemo
     }
 
     PreviewSkill pendingSkill;
+    int calligraphyCast, calligraphyHit, calligraphySkill;
     VoidRendTargetable hoveredTarget;
     TargetSelection hoveredSelection;
     TargetSelection lockedSelection;
@@ -179,6 +180,9 @@ public sealed partial class VoidRendSkillDemo
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && hoveredTarget != null)
         {
             PreviewSkill selectedSkill = pendingSkill;
+            calligraphyCast = CalligraphyAttackContext.NewCast();
+            calligraphySkill = (int)selectedSkill;
+            calligraphyHit = 0;
             Transform selectedTarget = hoveredTarget.transform;
             lockedSelection = hoveredSelection;
             RestoreTargetingTime();
@@ -200,6 +204,8 @@ public sealed partial class VoidRendSkillDemo
 
     TargetSelection FindTargetUnderPointer()
     {
+        // Outside actors remain in the scene but are not part of the player's painting space.
+        if (CalligraphyPaintingWorld.BlocksTether) return default;
         if (skillCamera == null || Mouse.current == null) return default;
         Vector2 pointer = Mouse.current.position.ReadValue();
         Ray ray = skillCamera.ScreenPointToRay(pointer);
@@ -527,6 +533,7 @@ public sealed partial class VoidRendSkillDemo
     void HitCurrentTarget()
     {
         if (target == null) return;
+        if (CalligraphyAttackContext.Evades(target, calligraphyCast, calligraphySkill)) return;
         target.GetComponent<VoidRendTargetable>()?.PlayHitReaction();
         DamageCurrentTarget(targetSkillDamage);
     }
@@ -536,7 +543,8 @@ public sealed partial class VoidRendSkillDemo
         if (target == null || amount <= 0f) return;
         IDamageable damageable = target.GetComponentInParent<IDamageable>();
         if (damageable == null || damageable.IsDead) return;
-        damageable.TakeDamage(amount, TargetAimPosition());
+        using (CalligraphyAttackContext.Enter(calligraphyCast, calligraphySkill, ++calligraphyHit))
+            damageable.TakeDamage(amount, TargetAimPosition());
     }
 
     void FinishStandaloneSkill(Vector3 position, Quaternion rotation, bool sheathe = true)
