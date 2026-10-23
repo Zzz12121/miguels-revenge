@@ -33,6 +33,10 @@ public class ClockEnemyController : MonoBehaviour
     public float shockwaveForce = 8.0f;
     [Tooltip("二階段四周保護時鐘距離敵人的距離 (m)")]
     public float shieldClockOffset = 2.5f;
+    [Tooltip("震飛玩家之後隔多久才長出保護時鐘 (秒)，讓玩家先飛出去")]
+    public float shieldClockDelay = 0.8f;
+    [Tooltip("保護時鐘出現時，玩家離時鐘這個距離內的那一個就不生成（不會一出現就踩到）")]
+    public float shieldClockClearance = 2.2f;
 
     [Header("衝刺預兆")]
     [Tooltip("衝刺前面向玩家、臉上時鐘忽大忽小的時間 (秒)")]
@@ -220,9 +224,16 @@ public class ClockEnemyController : MonoBehaviour
             playerController.AddImpulse(pushDir * shockwaveForce + Vector3.up * 4f);
         }
 
-        // 2. 在自身四周（前後左右四個方向）生成保護時鐘
-        SpawnShieldClocks();
+        // 2. 等玩家被震飛出去之後，才在自身四周（前後左右四個方向）生成保護時鐘
+        StartCoroutine(SpawnShieldClocksDelayed());
         Debug.Log("【二階段爆發】Boss 釋放震波，並在身邊展開四方向保護時鐘！");
+    }
+
+    IEnumerator SpawnShieldClocksDelayed()
+    {
+        yield return new WaitForSeconds(shieldClockDelay);
+        if (enemyHealth.IsDead) yield break;
+        SpawnShieldClocks();
     }
 
     void SpawnShieldClocks()
@@ -245,7 +256,15 @@ public class ClockEnemyController : MonoBehaviour
         {
             Vector3 spawnPos = center + dir;
             spawnPos.y = center.y; // 保持與敵人同高度
+            // 玩家還在這個時鐘的位置上（沒被震遠）就跳過這一個，避免一出現就必定打中玩家
+            if (player != null)
+            {
+                Vector3 off = player.position - spawnPos;
+                off.y = 0f;
+                if (off.magnitude < shieldClockClearance) continue;
+            }
             SpawnClock(spawnPos);
+            CombatVFX.Impact(spawnPos, new Color(1f, 0.82f, 0.35f));
         }
     }
 

@@ -12,9 +12,9 @@ using UnityEngine.UI;
 ///   - 換場景時畫面淡出淡入，進入新關卡會顯示關卡名稱
 ///   - 換到下一關時玩家的血量、能力升級、背包會帶過去（PlayerState）；重新開始本關會回到進關時的狀態
 ///   - 存檔（SaveSystem）：進入每一關自動存檔，暫停選單可以手動存檔 / 讀檔，主選單可以「繼續遊戲」
-///   - 玩家有 maxLives 條命：倒下時扣一條命並在檢查點復活，命用完 → Game Over 畫面
+///   - 玩家有 maxLives 條命：倒下時扣一條命並在這一關最近碰過的檢查點復活；命用完 → Game Over 畫面幾秒後自動從第一關起點重來（命和時間重算）
 ///   - 打倒最後一關的 Boss（或在最後一關呼叫 LoadNextLevel）→ 通關畫面
-///   - Game Over / 通關畫面都有「重新開始」「回主選單」按鈕；遊戲中按 Esc 開暫停選單
+///   - 通關畫面有「重新開始」「回主選單」按鈕；遊戲中按 Esc 開暫停選單
 ///
 /// 不用手動放進場景：按 Play 時會自動建立。想改關卡順序或標題，
 /// 可以在任一場景放一個掛著 GameManager 的物件，那個物件的設定會優先使用。
@@ -53,7 +53,7 @@ public class GameManager : MonoBehaviour
     public float fadeInTime = 0.8f;
     public Color fadeColor = Color.black;
     [Tooltip("往下一關前進時（第一關 → 第二關、第二關 → 第三關）播放轉場動畫，最少播幾秒")]
-    public float transitionMinTime = 2.5f;
+    public float transitionMinTime = 3.2f;
     LevelTransition transition;
     public bool showLevelTitle = true;
 
@@ -64,6 +64,8 @@ public class GameManager : MonoBehaviour
     [Header("生命")]
     [Tooltip("玩家總共有幾條命，用完就 Game Over")]
     public int maxLives = 3;
+    [Tooltip("命用完後 GAME OVER 畫面停留幾秒，然後自動從第一關起點重來")]
+    public float gameOverRestartDelay = 3f;
 
     [Header("全破")]
     public string gameClearTitle = "ALL CLEAR";
@@ -285,7 +287,17 @@ public class GameManager : MonoBehaviour
         int targetIndex = IndexOf(sceneName);
         bool travel = carryPlayer && CurrentLevelIndex >= 0 && targetIndex > CurrentLevelIndex;
 
-        yield return Fade(1f, fadeOutTime);
+        float shownAt = Time.unscaledTime;
+        if (travel)
+        {
+            // 一進傳送門就直接蓋上轉場畫面（不先黑一下），蓋滿之後底下再換成黑幕
+            if (transition == null) transition = gameObject.AddComponent<LevelTransition>();
+            int fromIndex = CurrentLevelIndex;
+            transition.Begin(levels[fromIndex].title, levels[targetIndex].title, fromIndex, targetIndex);
+            while (!transition.FullyShown) yield return null;
+            fadeAlpha = 1f;
+        }
+        else yield return Fade(1f, fadeOutTime);
 
         CloseOverlay(false);
         IsGameOver = false;
@@ -294,10 +306,7 @@ public class GameManager : MonoBehaviour
         var op = SceneManager.LoadSceneAsync(sceneName);
         if (travel)
         {
-            if (transition == null) transition = gameObject.AddComponent<LevelTransition>();
             op.allowSceneActivation = false; // 先在背景載入，動畫至少播 transitionMinTime 秒
-            transition.Begin(levels[targetIndex].title, targetIndex);
-            float shownAt = Time.unscaledTime;
             while (op.progress < 0.9f || Time.unscaledTime - shownAt < transitionMinTime)
             {
                 // 進度條跟著載入進度，但不會比最短播放時間跑得快
@@ -404,14 +413,13 @@ public class GameManager : MonoBehaviour
         CloseOverlay(true);
     }
 
+    /// <summary>命用完：顯示 GAME OVER 幾秒，接著自動回到最初的出生點（第一關起點）重來，命和遊玩時間都重算</summary>
     void ShowGameOver(string reason)
     {
-        string sub = string.IsNullOrEmpty(reason) ? "生命已經用完了" : $"生命已經用完了（{reason}）";
-        OpenOverlay("GAME OVER", new Color(1f, 0.35f, 0.3f), sub,
-            ("重新挑戰本關", RetryLevel),
-            ("從第一關重新開始", StartNewGame),
-            ("回主選單", GoToMainMenu));
+        string sub = (string.IsNullOrEmpty(reason) ? "生命已經用完了" : $"生命已經用完了（{reason}）") + "\n即將回到最初的出生點重新開始";
+        OpenOverlay("GAME OVER", new Color(1f, 0.35f, 0.3f), sub);
         GameAudio.StopMusic(1.5f);
+        pendingEnding = StartCoroutine(EndingRoutine(gameOverRestartDelay, StartNewGame));
     }
 
     void ShowGameWin()

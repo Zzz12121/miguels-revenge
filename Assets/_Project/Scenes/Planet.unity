@@ -5181,8 +5181,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SandWormArena
   halfSize: {x: 50, y: 50}
-  leaveMargin: 20
-  rounds: 3
+  escapeMargin: 1.5
+  rounds: 4
   stepsPerRound: 4
   lastRoundSteps: 6
   hintTime: {x: 0.9, y: 0.55}
