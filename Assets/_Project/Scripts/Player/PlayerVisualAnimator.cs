@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 /// 不參與移動、碰撞、傷害或技能邏輯。
 /// </summary>
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(100)] // Read grounded/vertical velocity after the movement Update.
 public sealed class PlayerVisualAnimator : MonoBehaviour
 {
     [SerializeField] Animator animator;

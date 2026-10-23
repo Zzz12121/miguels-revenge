@@ -160,7 +160,7 @@ public class ThirdPersonController : MonoBehaviour
     float nextRollTime;
 
     // 之後做動畫 / UI 時可以讀這些值
-    public bool IsGrounded => controller != null && controller.isGrounded;
+    public bool IsGrounded => controller != null && controller.isGrounded && verticalVelocity <= 0f;
     public float CurrentSpeed => horizontalVelocity.magnitude;
     public float VerticalVelocity => verticalVelocity;
 
@@ -445,7 +445,16 @@ public class ThirdPersonController : MonoBehaviour
         verticalVelocity += gravity * dt;
 
         // ---- 5. 實際移動 ----
-        CollisionFlags flags = controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * dt);
+        // Step-up is a grounded walking aid, not an airborne landing. At sprint speed it can
+        // snap a rising capsule onto an obstacle and prematurely replace Jump with Run.
+        float savedStepOffset = controller.stepOffset;
+        CollisionFlags flags;
+        try
+        {
+            if (verticalVelocity > 0f || !controller.isGrounded) controller.stepOffset = 0f;
+            flags = controller.Move((horizontalVelocity + Vector3.up * verticalVelocity) * dt);
+        }
+        finally { controller.stepOffset = savedStepOffset; }
 
         // 撞到天花板時停止上升
         if ((flags & CollisionFlags.Above) != 0 && verticalVelocity > 0f)

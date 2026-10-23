@@ -57,6 +57,7 @@ public static class CalligraphyBossInstaller
             if(display){combat.ink.originalInkMaterial=display.inkMaterial;combat.ink.originalEchoMaterial=display.echoMaterial;}
             combat.ink.suspendedWashMaterial=suspended;
             combat.ink.skyVisageMaterial=visage;
+            combat.ink.yinYangPrefab=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Piloto Studio/Super Realistic FX Bundle 02/Realistic Ying Yang/Ying Yang Rune.prefab");
             root.tag="Enemy";
             if(!root.GetComponent<VoidRendTargetable>())root.AddComponent<VoidRendTargetable>();
             var tether=root.GetComponent<TetherInteractable>()??root.AddComponent<TetherInteractable>();tether.mode=TetherInteractable.TetherMode.Pullable;

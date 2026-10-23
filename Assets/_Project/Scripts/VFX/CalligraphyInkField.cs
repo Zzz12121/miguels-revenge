@@ -7,6 +7,7 @@ public sealed class CalligraphyInkField : MonoBehaviour
     public Material ribbonMaterial, sculptureMaterial, paperMaterial, yinYangMaterial, landscapeMaterial;
     public Material originalInkMaterial,originalEchoMaterial;
     public Material suspendedWashMaterial,skyVisageMaterial;
+    public GameObject yinYangPrefab;
     CalligraphyInkMist mist;
     public void Mist(Vector3 at,Vector3 velocity,float size,float life=3)
     {

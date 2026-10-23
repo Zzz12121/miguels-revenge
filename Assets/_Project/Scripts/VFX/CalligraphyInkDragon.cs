@@ -27,11 +27,13 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     float damage;
     Vector3 pursuitPosition,pursuitDirection;
     float nextContact,passUntil;
+    GameObject packageSeal;
+    bool sealReleased;
     public bool IsHoming=>!giant;
     public Vector3 TrackedPosition=>target;
     public float BodyScale=>scale;
     public float ThicknessMultiplier=>giant?2:1;
-    public bool TelegraphVisible=>telegraph && telegraph.enabled;
+    public bool TelegraphVisible=>(telegraph && telegraph.enabled) || packageSeal;
     public bool IsDiving=>diving;
     public void Initialize(CalligraphyInkField field,PlayerHealth victim,Vector3 from,Vector3 to,float size,float wait,bool large,float damageAmount=0)
     {
@@ -89,7 +91,19 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         CalligraphyGeometry.Line("Chin beard",jaw,ink.ribbonMaterial,new[]{new Vector3(0,-.05f,.6f),new Vector3(0,-.45f,.4f),new Vector3(0,-.8f,-.3f)},.25f);
         head.localScale=new Vector3(ThicknessMultiplier,ThicknessMultiplier,1)*scale;
     }
-    public void Dive(){if(diving)return;diving=true;travel=0;}
+    public void Dive()
+    {
+        if(diving)return;
+        // Lock once at the downward brush strike, not at the start of the wind-up.
+        if(giant && player)
+        {
+            Vector3 locked=CalligraphyGeometry.Ground(player.transform.position,player.transform);
+            Vector3 shift=locked-target;target=locked;start+=shift;previous+=shift;
+            for(int i=0;i<Rings;i++)centers[i]+=shift;
+            if(telegraph)telegraph.transform.position=target+Vector3.up*.06f;
+        }
+        diving=true;travel=0;
+    }
     Vector3 Path(float t)
     {
         if(t<0)
@@ -184,7 +198,18 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
             whiskers[i].SetPositions(whiskerPoints);
         }
         // Final brush stroke ends at 4s. Descent remains at 3.25s; only the seal is delayed.
-        if(telegraph){telegraph.enabled=giant && age>=4;CalligraphyGeometry.Tint(telegraph,Color.white,Mathf.Clamp01((age-4)*8)*(Impacted?1-headFade:.65f));}
+        if(giant && age>=4 && !sealReleased)
+        {
+            sealReleased=true;
+            if(ink.yinYangPrefab)
+            {
+                packageSeal=Instantiate(ink.yinYangPrefab,target+Vector3.up*.06f,Quaternion.identity,transform);
+                packageSeal.name="Piloto Ying Yang landing seal";
+                packageSeal.SetActive(true);
+                foreach(var ps in packageSeal.GetComponentsInChildren<ParticleSystem>())ps.Play(false);
+            }
+        }
+        if(telegraph){telegraph.enabled=giant && age>=4 && !packageSeal;CalligraphyGeometry.Tint(telegraph,Color.white,Mathf.Clamp01((age-4)*8)*(Impacted?1-headFade:.65f));}
         emitClock-=Time.deltaTime;
         if(emitClock<=0)
         {
