@@ -23,6 +23,7 @@ public static class CalligraphyFourthChecks
  static void Check(bool value,string message){if(!value)throw new Exception(message);}
  static CalligraphyBossCombat Setup(int skill)
  {
+  if(!EditorApplication.isPlaying)throw new Exception("Enter Play Mode before running runtime checks");
   Time.timeScale=1;EditorApplication.isPaused=false;
   var range=UnityEngine.Object.FindAnyObjectByType<CalligraphyBossRangeTest>();range.StartTest();
   var b=range.Boss;b.cycleDemonstration=false;b.moveSpeed=0;b.dodgeChance=0;b.recoverySeconds=100;
@@ -66,6 +67,41 @@ public static class CalligraphyFourthChecks
   Check(streams.Length==60,"Stream count changed");Check(world.GetComponentsInChildren<Transform>().Count(t=>t.name.StartsWith("Interior ink wetland"))==9,"Missing interior scenery");
   Time.timeScale=0;return s.ToString();
  }
+ public static async Task<string> MidWindupAndLeftWaves()
+ {
+  var b=Setup(5);var elapsed=typeof(CalligraphyBossCombat).GetField("elapsed",BindingFlags.Instance|BindingFlags.NonPublic);
+  Frame(new Vector3(12,2,15),new Vector3(8,5,-10));
+  float half=b.inkBeam.windupSeconds*.5f,started=-1;CalligraphyPackageEffect beam=null;
+  float deadline=Time.time+4;
+  while(Time.time<deadline)
+  {
+   beam=b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().FirstOrDefault(f=>f.name.StartsWith("Ying Yang Beam"));
+   float t=(float)elapsed.GetValue(b);
+   if(beam){started=t-beam.Age;break;}
+   Check(t<half+.12f,"Beam missing at midpoint");await Wait(.01f);
+  }
+  Check(beam && Mathf.Abs(started-half)<.09f,"Wrong beam start: "+started);
+  await Wait(.15f);Check((float)elapsed.GetValue(b)<b.inkBeam.windupSeconds,"X stroke ended early");
+  Check(Visible(beam)>0,"No visible charge during second stroke");Capture("mid-windup-beam");
+  Check(!beam.Systems.Any(ps=>ps.name.StartsWith("Ice_beam_center") && ps.particleCount>0),"Damage beam appeared during initial charge");
+  b.StopBattle();
+  var result=new StringBuilder("PASS visible Beam starts at cast="+started+" / midpoint="+half);
+  foreach(int skill in new[]{6,7})
+  {
+   b=Setup(skill);var locked=b.transform.forward;Frame(new Vector3(10,1,20),new Vector3(9,13,-12));
+   CalligraphyPackageEffect fx=null;deadline=Time.time+6;
+   while(Time.time<deadline && !fx){fx=b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().FirstOrDefault(f=>f.name.StartsWith("Ying Yang Frontal"));if(!fx)await Wait(.01f);}
+   Check(fx,"No wave for "+skill);
+   var previous=Quaternion.LookRotation(locked)*Quaternion.Euler(0,skill==7?-90:0,0);
+   var expected=Quaternion.AngleAxis(-90,Vector3.up)*previous;
+   Check(Quaternion.Angle(fx.transform.rotation,expected)<.1f,"Wave not left 90 relative to previous "+skill);
+   await Wait(.15f);Check(Visible(fx)>0,"Wave invisible "+skill);Capture("left-wave-"+skill);
+   Place(new Vector3(24,1.05f,13));await Wait(.15f);
+   Check(Quaternion.Angle(fx.transform.rotation,expected)<.1f,"Wave reacquired player "+skill);
+   result.Append("; skill="+skill+" left90 visible / direction remains locked");b.StopBattle();
+  }
+  return result.ToString();
+ }
  public static async Task<string> RuneAndExplosion()
  {
   var b=Setup(0);b.CancelCast();b.enabled=false;var p=PlayerHealth.Find();Place(new Vector3(12,1.05f,20));Frame(new Vector3(12,0,20),new Vector3(8,8,-12));
@@ -100,7 +136,8 @@ public static class CalligraphyFourthChecks
   await Wait(1);var locked=b.transform.forward;Place(new Vector3(22,1.05f,16));
   while(!b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().Any(f=>f.name.StartsWith("Ying Yang Frontal [")))await Wait(.01f);
   var frontal=b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().First(f=>f.name.StartsWith("Ying Yang Frontal ["));
-  Check(Vector3.Dot(frontal.transform.forward,locked)>.999f,"Slam reacquired moved player");
+  locked=Quaternion.Euler(0,b.leapSlam.wave.yawOffset+b.leapSlam.forwardYawOffset,0)*locked;
+  Check(Vector3.Dot(frontal.transform.forward,locked)>.999f,"Slam did not retain configured left rotation");
   float tipY=b.brush.brushTip.position.y;Check(Mathf.Abs(tipY-.04f)<.12f,"Tip missed floor: "+tipY);
   Check(Vector3.Distance(frontal.transform.position,b.brush.brushTip.position)<.15f,"Impact not at tip");Frame(b.brush.brushTip.position+Vector3.up*.5f,new Vector3(4,3,-5));await Wait(.08f);Capture("slam-impact");
   await Wait(.3f);Check(Vector3.Dot(frontal.transform.forward,locked)>.999f,"Frontal changed direction");
@@ -167,7 +204,7 @@ public static class CalligraphyFourthChecks
   typeof(PlayerHealth).GetField("dodgeInvulnerableUntil",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(p,0f);
   float start=Time.time,first=-1;Action<float> hit=amount=>{if(first<0)first=Time.time-start;};p.OnDamaged+=hit;
   try
-  {await Wait(6.5f);Check(first>5 && first<6.4f,"Beam early/missing damage="+first);b.StopBattle();
+  {await Wait(6.5f);Check(first>4 && first<5.5f,"Beam early/missing damage="+first);b.StopBattle();
    b=Setup(5);b.inkBeam.maximumRange=8;Place(new Vector3(12,1.05f,35));typeof(PlayerHealth).GetField("dodgeInvulnerableUntil",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(p,0f);first=-1;
    await Wait(8.5f);Check(first<0,"Beam damaged past visual range");b.StopBattle();return "PASS horizontal live beam hit after charge; far capsule no damage";}
   finally{p.OnDamaged-=hit;if(b)b.StopBattle();}

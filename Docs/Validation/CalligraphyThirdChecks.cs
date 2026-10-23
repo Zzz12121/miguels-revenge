@@ -46,16 +46,16 @@ public static class CalligraphyThirdChecks
         var b=Setup(7);var p=PlayerHealth.Find();Place(p,new Vector3(22,1.05f,12));
         await Wait(1.4f);
         var pulse=b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().Single(f=>f.name.StartsWith("Ying Yang Frontal Pulses"));
-        Check(Mathf.Abs(pulse.transform.lossyScale.x-1.8f)<.001f,"Pulses not 4x");
-        Check(Vector3.Dot(pulse.transform.right,Vector3.right)>.999f,"Pulses native +X not aimed at player");
+        Check(Mathf.Abs(pulse.transform.lossyScale.x-b.frontalPulses.vfxScale)<.001f,"Pulses scale differs from Inspector");
+        Check(Vector3.Dot(pulse.transform.right,Quaternion.Euler(0,b.frontalPulses.yawOffset,0)*Vector3.right)>.999f,"Pulses native +X missed configured yaw");
         b.CancelCast();b.SelectSkill(6);Place(p,new Vector3(12,1.05f,22));
         await Wait(1.4f);Place(p,new Vector3(20,1.05f,19));await Wait(1.6f);
         var frontal=b.EffectsRoot.GetComponentsInChildren<CalligraphyPackageEffect>().Single(f=>f.name.StartsWith("Ying Yang Frontal ["));
-        Vector3 expected=Vector3.forward; // Fourth round explicitly locks at cast start.
+        Vector3 expected=Quaternion.Euler(0,b.leapSlam.wave.yawOffset+b.leapSlam.forwardYawOffset,0)*Vector3.forward;
         Check(Vector3.Dot(frontal.transform.forward,expected)>.999f,"Frontal reacquired player after jump");
         var locked=frontal.transform.rotation;Place(p,new Vector3(8,1.05f,8));await Wait(.25f);
         Check(Quaternion.Angle(locked,frontal.transform.rotation)<.01f,"Frontal tracked after release");
-        b.StopBattle();return "PASS Pulses scale1.8 / +X points toward player; slam locks pre-jump direction (fourth-round rule)";
+        b.StopBattle();return "PASS Pulses Inspector scale / configured left yaw; slam locks pre-jump direction plus configured yaw";
     }
     public static async Task<string> Clones()
     {

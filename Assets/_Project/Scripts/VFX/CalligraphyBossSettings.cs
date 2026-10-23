@@ -25,6 +25,7 @@ public sealed partial class CalligraphyBossCombat
     }
     [Serializable] public class WaveSettings
     {
+        [Range(-180,180),Tooltip("相對原有特效朝向的水平偏移；-90 向左轉九十度，判定與擊退一起旋轉。")] public float yawOffset=-90;
         [Range(1,16),Tooltip("實際傷害波的數量；周圍裝飾粒子仍保留原資源構成。")] public int waveCount=1;
         [Min(.1f),Tooltip("相鄰衝擊波的生成間隔（秒）。")] public float waveInterval=1;
         [Min(.01f),Tooltip("Pulses 原本 .45，現在 1.8：每一空間尺寸都是原本四倍。判定讀取實際粒子網格。")] public float vfxScale=1.8f;

@@ -1847,6 +1847,7 @@ MonoBehaviour:
     cloneFadeSeconds: 1.3
     cloneHits: 5
   frontalPulses:
+    yawOffset: -90
     waveCount: 6
     waveInterval: 1
     vfxScale: 3
@@ -1864,6 +1865,7 @@ MonoBehaviour:
     jumpDistance: 12
     directHitRadius: 2
     wave:
+      yawOffset: -90
       waveCount: 1
       waveInterval: 1
       vfxScale: 1.25

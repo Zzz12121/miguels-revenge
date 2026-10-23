@@ -91,6 +91,7 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
     IEnumerator Frontal(Vector3 direction,bool light,bool excludeDirect,CalligraphyBossCombat.WaveSettings settings)
     {
         var lib=CalligraphyVfxLibrary.Current;if(!lib){Destroy(gameObject);yield break;}
+        direction=Quaternion.Euler(0,settings.yawOffset,0)*direction;
         var fx=CalligraphyVfxLibrary.Play(light?lib.frontalPulses:lib.frontal,transform.position,
             Quaternion.LookRotation(direction)*Quaternion.Euler(0,light?-90:0,0),settings.vfxScale,1,0,transform);
         if(fx)fx.ConfigureWaves(settings.waveCount,settings.waveInterval);

@@ -2,6 +2,14 @@
 
 日期：2026-10-24。驗證環境：Unity 6000.6.3f1 / Windows Editor / DX11。
 
+## 同日後續調整：前搖中段墨光與墨浪左轉
+
+- 墨光特效從揮筆前搖的一半開始播放（預設第 0.9 秒），第二筆 X 形揮動不被指向姿勢中斷。特效自身的蓄能／光束播放仍保留，傷害仍依實際光束網格而非蓄能粒子判斷。
+- 躍筆重砸 Frontal、連環墨浪 Pulses 都在上一版方向上再向左轉 90°；不改重砸跳躍目的地。新增 `Wave Settings → Yaw Offset`，預設 `-90`。傷害沿旋轉後實際粒子網格，擊退也同步轉向。
+- 調整路徑：同一 Boss Prefab / Calligraphy Boss Combat → `6 躍筆重砸／Frontal → Leap Slam → Wave → Yaw Offset`；或 `7 連環墨浪／Frontal Pulses → Frontal Pulses → Yaw Offset`。墨光前搖總長仍在 `5 交叉運筆／墨光 → Ink Beam → Windup Seconds`。
+- `MidWindupAndLeftWaves` 實測：特效起播約 0.903 秒（目標 0.9），兩種波相對舊朝向都左轉 90°，後續玩家移動不改向，Game View 已檢視。前輪下方「蓄力後命中」測試的時間門檻已隨前移調整；蓄能階段不會因這次提早播放而直接造成傷害。
+- 編譯通過。Game View 截圖：本機 `Logs/FourthSkills-mid-windup-beam.png`、`left-wave-6.png`、`left-wave-7.png`（後兩張同樣帶 `FourthSkills-` 前綴）。
+
 ## 需求完成情況
 
 | 需求 | 結果 | 實際修改與驗證 |

@@ -33,16 +33,19 @@ public sealed partial class CalligraphyBossCombat
     void Beam()
     {
         float stroke=Mathf.Max(.05f,inkBeam.windupSeconds)*.5f;
-        if(elapsed<stroke*2){if(elapsed<.4f)Face(Abdomen(player));brush.SetCombatPose(elapsed<stroke?13:14,(elapsed%stroke)/stroke);return;}
+        bool winding=elapsed<stroke*2;
+        if(winding){if(elapsed<.4f)Face(Abdomen(player));brush.SetCombatPose(elapsed<stroke?13:14,(elapsed%stroke)/stroke);}
+        // Start the package's charge at the midpoint, while the second X stroke continues.
+        if(elapsed<stroke)return;
         if(!skillEffect && released==0)
         {
-            aim=BeamAim();Face(aim);brush.SetCombatPose(9,1);
+            aim=BeamAim();
             beamDirection=(aim-brush.brushTip.position).normalized;
             var lib=CalligraphyVfxLibrary.Current;
             if(lib)skillEffect=CalligraphyVfxLibrary.Play(lib.beam,brush.brushTip.position+inkBeam.emitterOffset,Quaternion.LookRotation(-beamDirection)*Quaternion.Euler(inkBeam.vfxEuler),inkBeam.vfxScale,1,0,effectsRoot);
             released=1;beamHitAt=0;
         }
-        Face(aim);brush.SetCombatPose(9,1);
+        if(!winding){Face(aim);brush.SetCombatPose(9,1);}
         if(skillEffect && skillEffect.Age<3)
         {
             Vector3 origin=brush.brushTip.position+inkBeam.emitterOffset;
@@ -71,7 +74,7 @@ public sealed partial class CalligraphyBossCombat
                 {CalligraphyPlayerHitGate.Hit(player,beamDamage,actualDirection,"被墨光擊倒",Abdomen(player));beamHitAt=Time.time+inkBeam.hitInterval;}
             }
         }
-        if(elapsed>=stroke*2+6.4f){if(beamMesh)Destroy(beamMesh);FinishCast();}
+        if(elapsed>=stroke+6.4f){if(beamMesh)Destroy(beamMesh);FinishCast();}
     }
     void LeapSlam()
     {
