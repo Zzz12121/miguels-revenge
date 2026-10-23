@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 /// 第一關（Planet）的劇情：
 ///   - 開場：玩家頭暈醒來（原本應該要去地下城），遠處的商人出聲叫玩家過去，商人頭上出現指引標記
 ///   - 沙蟲低谷：沙蟲先開口要玩家接受考驗，中間穿插商人大喊忘了提醒（由 SandWormArena 呼叫 PlayWormIntro）
+///   - 沙蟲被打倒：沙蟲說玩家逃不出這循環，玩家疑惑世界的秘密（由 SandWormArena 呼叫 PlayWormDefeat）
 ///   - Boss 房：玩家疑惑「這不是商人嗎？」，Boss 說商人只是棋子、自己的目標是時間的運行、要重回那個夜晚
 ///   - Boss 倒下：時間不會停止流動，總有一天會再奪回大權
 /// 對話用 StoryDialogue（左邊玩家、右邊對方的半身像）。進入 Planet 場景時自動建立，不用放進場景。
@@ -108,6 +109,23 @@ public class PlanetStory : MonoBehaviour
         instance.WormIntro(worm, onDone);
     }
 
+    public static void PlayWormDefeat(Transform worm, System.Action onDone)
+    {
+        if (instance == null) { onDone?.Invoke(); return; }
+        instance.WormDefeat(worm, onDone);
+    }
+
+    void WormDefeat(Transform worm, System.Action onDone)
+    {
+        StoryDialogue.Line Worm(string text) => StoryDialogue.L(wormName, worm, true, text, WormColor);
+        StoryDialogue.Play(new[]
+        {
+            Worm("就算你這次擊敗了我，還是逃不出這循環……"),
+            Me("這個世界到底還隱藏了甚麼秘密……"),
+            Worm("你永遠不會知道的。"),
+        }, onDone);
+    }
+
     void WormIntro(Transform worm, System.Action onDone)
     {
         StoryDialogue.Line Worm(string text) => StoryDialogue.L(wormName, worm, true, text, WormColor);
@@ -118,6 +136,7 @@ public class PlanetStory : MonoBehaviour
             Worm("欲過此地，必先接受吾之考驗。記住大地的脈動——走錯一步，便葬身沙海。"),
             Merchant("糟——糟了！旅人——！我忘了告訴你，那片低谷住著沙蟲啊——！"),
             Merchant("看地面亮起的順序！第一波站第一個亮的地方、第二波站第二個……照著順序站就不會被吞下去！"),
+            Merchant("還有！安全的地方會冒出牠的尾巴——那是牠的弱點！趁機狠狠砍下去，多砍幾下牠就會退了！"),
             Worm("聒噪的商人……考驗，開始。"),
         }, onDone);
     }
