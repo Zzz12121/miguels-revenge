@@ -37,6 +37,8 @@ public sealed class CalligraphyBossCombatEditor : Editor
         var boss=(CalligraphyBossCombat)target;
         if(Application.isPlaying && boss.Active)
         {
+            if(boss.WaitingForPreview)EditorGUILayout.HelpBox("此招已結束，等待指令：↑ 重播、↓ 下一招。",MessageType.Info);
+            if(GUILayout.Button("重播目前技能（↑）"))boss.ReplaySkill();
             EditorGUILayout.LabelField("測試指定技能（中止目前技能）",EditorStyles.boldLabel);
             for(int i=0;i<CalligraphyBossCombat.SkillNames.Length;i++)if(GUILayout.Button(i+" · "+CalligraphyBossCombat.SkillNames[i]))boss.SelectSkill(i);
         }

@@ -90,6 +90,7 @@ public sealed partial class CalligraphyBossCombat
     [Serializable] public class BeamSettings
     {
         [Min(.05f)] public float windupSeconds=1.8f,hitInterval=.55f,hitRadius=.65f,vfxScale=.7f;
+        [Min(0),Tooltip("蓄能固定在老者身上的高度；不使用揮動中的筆尖。")] public float emitterHeight=1.5f;
         public bool horizontalOnLevelGround=true;
         [Min(0)] public float heightTolerance=2;
         [Min(.1f)] public float maximumRange=35;

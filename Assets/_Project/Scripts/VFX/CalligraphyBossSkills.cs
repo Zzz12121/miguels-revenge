@@ -10,10 +10,13 @@ public sealed partial class CalligraphyBossCombat
     float deathClock,deathDuration=7,beamHitAt;
     int slashVfx=-1;
     Vector3 leapStart,leapGround,leapForward,beamDirection;
-    Vector3 BeamAim()
+    float beamRangeRatio=1,beamAuthoredLength,beamBaseScaleZ;
+    bool beamFired;
+    Vector3 BeamOrigin()=>transform.position+Vector3.up*inkBeam.emitterHeight+inkBeam.emitterOffset;
+    Vector3 BeamAim(Vector3 origin)
     {
         Vector3 point=player.transform.position;
-        float emitterY=brush.brushTip.position.y+inkBeam.emitterOffset.y;
+        float emitterY=origin.y;
         float groundDelta=player.FeetY-CalligraphyGeometry.Ground(transform.position,transform).y;
         point.y=inkBeam.horizontalOnLevelGround && Mathf.Abs(groundDelta)<=inkBeam.heightTolerance?emitterY:player.GetComponent<CharacterController>().bounds.max.y;
         return point;
@@ -39,42 +42,48 @@ public sealed partial class CalligraphyBossCombat
         if(elapsed<stroke)return;
         if(!skillEffect && released==0)
         {
-            aim=BeamAim();
-            beamDirection=(aim-brush.brushTip.position).normalized;
+            Vector3 origin=BeamOrigin();aim=BeamAim(origin);
+            beamDirection=(aim-origin).normalized;beamRangeRatio=1;beamAuthoredLength=0;beamFired=false;
             var lib=CalligraphyVfxLibrary.Current;
-            if(lib)skillEffect=CalligraphyVfxLibrary.Play(lib.beam,brush.brushTip.position+inkBeam.emitterOffset,Quaternion.LookRotation(-beamDirection)*Quaternion.Euler(inkBeam.vfxEuler),inkBeam.vfxScale,1,0,effectsRoot);
+            if(lib)skillEffect=CalligraphyVfxLibrary.Play(lib.beam,origin,Quaternion.LookRotation(-beamDirection)*Quaternion.Euler(inkBeam.vfxEuler),inkBeam.vfxScale,1,0,effectsRoot);
+            if(skillEffect)beamBaseScaleZ=skillEffect.transform.localScale.z;
             released=1;beamHitAt=0;
         }
         if(!winding){Face(aim);brush.SetCombatPose(9,1);}
-        if(skillEffect && skillEffect.Age<3)
+        if(skillEffect && !beamFired)
         {
-            Vector3 origin=brush.brushTip.position+inkBeam.emitterOffset;
-            if(inkBeam.horizontalOnLevelGround && Mathf.Abs(player.FeetY-CalligraphyGeometry.Ground(transform.position,transform).y)<=inkBeam.heightTolerance)aim.y=origin.y;
+            Vector3 origin=BeamOrigin();aim=BeamAim(origin);
             beamDirection=(aim-origin).normalized;
             skillEffect.transform.SetPositionAndRotation(origin,Quaternion.LookRotation(-beamDirection)*Quaternion.Euler(inkBeam.vfxEuler));
+            if(skillEffect.Age>=3)beamFired=true;
         }
         // Only the live beam meshes can deal damage. Charge particles cannot extend the hit volume.
-        if(skillEffect && skillEffect.Age>=3 && skillEffect.Age<=6 && Time.time>=beamHitAt)
+        if(skillEffect && beamFired)
         {
+            Vector3 from=skillEffect.transform.position;
+            Vector3 actualDirection=skillEffect.transform.TransformDirection(Vector3.back).normalized;
+            float length=0;
             foreach(var ps in skillEffect.Systems)
             {
                 if(!ps.name.StartsWith("Ice_beam_center") || ps.particleCount==0)continue;
                 var renderer=ps.GetComponent<ParticleSystemRenderer>();if(!renderer)continue;
-                Vector3 from=skillEffect.transform.position;
-                Vector3 actualDirection=skillEffect.transform.TransformDirection(Vector3.back).normalized;
                 if(!beamMesh)beamMesh=new Mesh();
                 renderer.BakeMesh(beamMesh,Camera.main,ParticleSystemBakeMeshOptions.BakeRotationAndScale);
-                beamMesh.GetVertices(beamVertices);float length=0;
+                beamMesh.GetVertices(beamVertices);
                 // BakeRotationAndScale has already applied the renderer's world rotation/scale.
                 foreach(var v in beamVertices)length=Mathf.Max(length,Vector3.Dot(renderer.transform.position+v-from,actualDirection));
-                if(length>inkBeam.maximumRange)
-                {var scale=skillEffect.transform.localScale;scale.z*=inkBeam.maximumRange/length;skillEffect.transform.localScale=scale;}
-                length=Mathf.Min(length,inkBeam.maximumRange);
-                if(length>0 && CalligraphyPlayerHitGate.Touches(player,from,from+actualDirection*length,inkBeam.hitRadius))
-                {CalligraphyPlayerHitGate.Hit(player,beamDamage,actualDirection,"被墨光擊倒",Abdomen(player));beamHitAt=Time.time+inkBeam.hitInterval;}
             }
+            // Compare against unscaled authored length: never multiply the last frame's
+            // shortened scale again. Range limiting is independent of player/hit timing.
+            beamAuthoredLength=Mathf.Max(beamAuthoredLength,length/Mathf.Max(.0001f,beamRangeRatio));
+            float ratio=beamAuthoredLength>0?Mathf.Min(1,inkBeam.maximumRange/beamAuthoredLength):1;
+            length*=ratio/Mathf.Max(.0001f,beamRangeRatio);beamRangeRatio=ratio;
+            var scale=skillEffect.transform.localScale;scale.z=beamBaseScaleZ*ratio;skillEffect.transform.localScale=scale;
+            length=Mathf.Min(length,inkBeam.maximumRange);
+            if(length>0 && Time.time>=beamHitAt && CalligraphyPlayerHitGate.Touches(player,from,from+actualDirection*length,inkBeam.hitRadius))
+            {CalligraphyPlayerHitGate.Hit(player,beamDamage,actualDirection,"被墨光擊倒",Abdomen(player));beamHitAt=Time.time+inkBeam.hitInterval;}
         }
-        if(elapsed>=stroke+6.4f){if(beamMesh)Destroy(beamMesh);FinishCast();}
+        if(released>0 && !skillEffect){if(beamMesh)Destroy(beamMesh);FinishCast();}
     }
     void LeapSlam()
     {

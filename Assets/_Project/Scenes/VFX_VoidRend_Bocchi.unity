@@ -4182,11 +4182,11 @@ MonoBehaviour:
   cloneTemplate: {fileID: 2835637790468908604, guid: cb2ab42acb159b94f8d7d1dfa80246ef, type: 3}
   player: {fileID: 45219142}
   maxHealth: 10000
-  moveSpeed: 0
+  moveSpeed: 2.8
   meleeDistance: 3.6
   projectileSpeed: 15
   projectileDamage: 12
-  recoverySeconds: 100
+  recoverySeconds: 1.1
   dodgeDistance: 2.8
   cycleDemonstration: 0
   paintingCooldown: 32
@@ -4198,7 +4198,7 @@ MonoBehaviour:
   giantDragonDamage: 35
   paintingDragonDamage: 15
   paintingDragonScale: 2.6
-  dodgeChance: 0
+  dodgeChance: 0.33333334
   onDragonImpact:
     m_PersistentCalls:
       m_Calls: []
@@ -4321,6 +4321,7 @@ MonoBehaviour:
     hitInterval: 0.55
     hitRadius: 1.2
     vfxScale: 1.5
+    emitterHeight: 1.5
     horizontalOnLevelGround: 1
     heightTolerance: 2
     maximumRange: 35

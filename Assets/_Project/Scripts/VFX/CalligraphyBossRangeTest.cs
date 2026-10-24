@@ -13,7 +13,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     PlayerHealth player;
     float lastDamage;
     bool menuOpen;
-    bool pendingNext;
+    bool pendingNext,pendingReplay;
     CursorLockMode previousCursor;
     bool previousVisible;
     ThirdPersonCamera pointerCamera;
@@ -50,7 +50,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
         if(Running)CancelPlayerSkills();
         if(player){player.OnDamaged-=OnDamaged;player.SetPracticeProtection(this,false);}
         if(Boss){Boss.ResetPracticeActor();Boss.StopBattle();Boss.transform.position=spawnPosition;}
-        Running=false;pendingNext=false;CloseMenu();
+        Running=false;pendingNext=pendingReplay=false;CloseMenu();
     }
     void OnDamaged(float amount){if(amount>0)lastDamage=Time.time;}
     void CancelPlayerSkills()
@@ -82,14 +82,15 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
         if(menuOpen && GameUI.OverlayOpen)CloseMenu();
         if(!Running)return;
         if(player && Time.time-lastDamage>=healAfterSeconds)player.HealFull();
-        if(Keyboard.current.downArrowKey.wasPressedThisFrame && !GameUI.OverlayOpen)pendingNext=true;
-        if(pendingNext)
+        if(Keyboard.current.downArrowKey.wasPressedThisFrame && !GameUI.OverlayOpen){pendingNext=true;pendingReplay=false;}
+        if(Keyboard.current.upArrowKey.wasPressedThisFrame && !GameUI.OverlayOpen){pendingReplay=true;pendingNext=false;}
+        if(pendingNext || pendingReplay)
         {
             bool busy=false;
             foreach(var skill in FindObjectsByType<VoidRendSkillDemo>())busy|=skill.IsPlaying;
             var tether=player?player.GetComponent<EnergyTetherSkill>():null;
             busy|=tether && tether.IsExecuting;
-            if(!busy){pendingNext=false;Boss?.NextSkill();}
+            if(!busy){if(pendingReplay)Boss?.ReplaySkill();else Boss?.NextSkill();pendingNext=pendingReplay=false;}
         }
     }
     void CloseMenu()
@@ -108,7 +109,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
         if(GUI.Button(new Rect(x+10,110,245,32),"遊墨行者 Boss 測試"))StartTest();
         if(Running)
         {
-            GUI.Label(new Rect(x+10,145,245,23),"↓ 下一招 · 五秒無傷回滿 · HP ≥ 1");
+            GUI.Label(new Rect(x+10,145,245,23),"↓ 下一招 · ↑ 重播 · 結束後待命");
             if(GUI.Button(new Rect(x+10,170,245,22),"停止測試"))StopTest();
         }
     }
