@@ -32,6 +32,8 @@ public sealed partial class CalligraphyBossCombat
         [Min(0)] public float damage=10;
         [Min(.05f)] public float hitInterval=.8f,controlSeconds=.5f;
         [Min(0),Tooltip("水平擊退初速 / 垂直擊飛初速；高度同時受玩家重力影響。")] public float knockbackSpeed=3,launchSpeed=3;
+        [Min(.05f),Tooltip("連環墨浪波前的離地判定高度（公尺）；腳底高於此值即可跳過該波。")] public float pulseContactHeight=.55f;
+        [Range(.01f,1),Tooltip("重砸最外緣保留的擊退比例；從筆尖落點到特效邊緣線性減弱，不影響傷害值。")] public float edgeKnockbackMultiplier=.15f;
     }
     [Serializable] public class PulseSettings : WaveSettings
     {

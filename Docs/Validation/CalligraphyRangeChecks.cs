@@ -160,14 +160,17 @@ public static class CalligraphyRangeChecks
   Place(p,new Vector3(0,1.05f,-10));p.HealFull();
   typeof(PlayerHealth).GetField("dodgeInvulnerableUntil",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(p,0f);
   var settings=new CalligraphyBossCombat.WaveSettings{vfxScale=1.8f,waveCount=1,damage=1,controlSeconds=1,knockbackSpeed=6,launchSpeed=3};
+  // Stand ahead before emission; entering an arbitrary triangle after the front
+  // has passed is deliberately safe now (see CalligraphyWaveChecks.WaveGap).
+  Place(p,Quaternion.Euler(0,yaw,0)*new Vector3(0,1.05f,10));
   CalligraphySkillSequence.Wave(p,new Vector3(0,.05f,0),Quaternion.Euler(0,yaw,0)*Vector3.forward,true,false,b.EffectsRoot,settings);
   var fx=b.EffectsRoot.GetComponentInChildren<CalligraphyPackageEffect>();Vector3 expected=Vector3.zero;ParticleSystem pulse=null;
   float until=Time.time+3;
   while(Time.time<until && !pulse){pulse=fx.Systems.FirstOrDefault(ps=>ps.name.StartsWith("yy_Shockwave_1") && ps.particleCount>0);if(!pulse)await Wait(.01f);}
   Check(pulse,"No visible pulse");var mesh=new Mesh();pulse.GetComponent<ParticleSystemRenderer>().BakeMesh(mesh,Camera.main,ParticleSystemBakeMeshOptions.BakeRotationAndScale);
   expected=Vector3.ProjectOnPlane(pulse.transform.position+mesh.bounds.center-fx.transform.position,Vector3.up).normalized;
-  var v=mesh.vertices;var tris=mesh.triangles;var at=pulse.transform.position+(v[tris[0]]+v[tris[1]]+v[tris[2]])/3;UnityEngine.Object.Destroy(mesh);
-  Place(p,new Vector3(at.x,1.05f,at.z));Frame(p.transform.position,new Vector3(7,5,-9));var motor=p.GetComponent<ThirdPersonController>();until=Time.time+1;
+  UnityEngine.Object.Destroy(mesh);
+  Frame(p.transform.position,new Vector3(7,5,-9));var motor=p.GetComponent<ThirdPersonController>();until=Time.time+1;
   while(Time.time<until && !motor.IsBallistic)await Wait(.01f);
   Check(motor.IsBallistic,"Fixture did not meet real shockwave");var velocity=(Vector3)typeof(ThirdPersonController).GetField("horizontalVelocity",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(motor);
   float alignment=Vector3.Dot(velocity.normalized,expected.normalized);Check(alignment>.99f,"Launch is sideways to pulse: "+alignment);
