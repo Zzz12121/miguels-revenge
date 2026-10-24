@@ -188,6 +188,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     [ContextMenu("Play Void Rend")]
     public void PlaySkill()
     {
+        if(!PlayerSkillAvailability.TryUse())return;
         if (!playing && isActiveAndEnabled && caster != null && target != null)
         {
             PrepareSkillOrigin();

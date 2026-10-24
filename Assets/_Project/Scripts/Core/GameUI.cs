@@ -126,7 +126,7 @@ public static class GameUI
         get
         {
             var gm = GameManager.Instance;
-            return gm != null && gm.IsOverlayOpen;
+            return RangeInputSettings.InputBlocked || (gm != null && gm.IsOverlayOpen);
         }
     }
 }

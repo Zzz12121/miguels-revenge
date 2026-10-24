@@ -17,6 +17,7 @@ public static class SkillAimCancellation
         return true;
     }
     public static void Release(Action callback) { if (cancel == callback) cancel = null; }
+    public static void ConsumeEscape() { consumedFrame = Time.frameCount; }
     public static bool CancelForEscape()
     {
         if (consumedFrame == Time.frameCount) return true;

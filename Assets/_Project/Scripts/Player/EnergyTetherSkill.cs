@@ -111,6 +111,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void Update()
     {
+        if(RangeInputSettings.InputBlocked)return;
+        if(CalligraphyPaintingWorld.BlocksTether)
+        {if(aiming || executing)CancelForExternalTransition();return;}
         if (Time.timeScale <= 0f) return;
         if (aimCamera == null) ResolveCameraAndHands();
         Mouse mouse = Mouse.current;
@@ -219,7 +222,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     void BeginAiming(bool throwDestination)
     {
-        if (CalligraphyPaintingWorld.BlocksTether) { Notify("畫中之物，不可鎖定"); return; }
+        if (!PlayerSkillAvailability.TryUse()) return;
         if (aiming || executing || Time.timeScale <= 0f || !SkillAimCancellation.Register(CancelAiming)) return;
         aiming = true;
         aimingThrowDestination = throwDestination;

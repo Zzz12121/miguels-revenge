@@ -214,7 +214,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (controller == null) return;
 
         bool sprinting = controller.CurrentSpeed > controller.walkSpeed * 1.05f;
-        bool jumpPressed = Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
+        bool jumpPressed = Keyboard.current != null && !RangeInputSettings.InputBlocked &&
+            Keyboard.current[RangeInputSettings.Binding(controller,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
         if (grounded && sprinting && jumpPressed)
         {
             pounceStartedAt = Time.unscaledTime;

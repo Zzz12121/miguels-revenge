@@ -77,6 +77,12 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdatePreviewInputAndTargeting()
     {
+        if(RangeInputSettings.InputBlocked)return;
+        if(CalligraphyPaintingWorld.BlocksTether)
+        {
+            if(IsTargeting)CancelTargeting();
+            return;
+        }
         if (Keyboard.current == null) return;
         if (Time.timeScale <= 0f) return;
 
@@ -143,6 +149,7 @@ public sealed partial class VoidRendSkillDemo
 
     void BeginTargeting(PreviewSkill skill)
     {
+        if(!PlayerSkillAvailability.TryUse())return;
         if (playing || skill == PreviewSkill.None || Time.timeScale <= 0f ||
             !SkillAimCancellation.Register(CancelTargeting)) return;
         pendingSkill = skill;
@@ -161,6 +168,7 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateTargetSelection()
     {
+        if(!PlayerSkillAvailability.TryUse()){CancelTargeting();return;}
         if (Mouse.current != null && practiceOrbitCamera != null)
             practiceOrbitCamera.PanFromScreenEdge(Mouse.current.position.ReadValue(), Time.unscaledDeltaTime);
         hoveredSelection = FindTargetUnderPointer();
@@ -570,7 +578,11 @@ public sealed partial class VoidRendSkillDemo
             normal = { textColor = new Color(0.78f, 0.94f, 1f, 0.94f) }
         };
         GUI.Box(new Rect(18f, Screen.height - 91f, 610f, 67f), GUIContent.none);
-        GUI.Label(new Rect(31f, Screen.height - 83f, 700f, 24f), "WASD 移動　空白：跳躍　V：翻滾　滑鼠：視角", controls);
+        var owner=practiceController?practiceController:(Component)this;
+        string sprint=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Sprint));
+        string jump=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Jump));
+        string roll=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Roll));
+        GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), $"WASD 移動　{sprint}：衝刺　{jump}：跳躍　{roll}：翻滾"+(RangeInputSettings.IsRange(owner)?"　K：按鍵設定":""), controls);
         GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
 
         if (!IsTargeting) return;

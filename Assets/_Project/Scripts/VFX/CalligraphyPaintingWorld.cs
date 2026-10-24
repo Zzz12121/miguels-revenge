@@ -40,6 +40,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     float originalFarClip;
     public void Begin(CalligraphyBossCombat owner,PlayerHealth target,CalligraphyInkField field)
     {
+        PlayerSkillAvailability.CancelActive(target);
         boss=owner;player=target;entryPosition=player.transform.position;
         transform.position=CalligraphyGeometry.Ground(player.transform.position,player.transform);
         // World pigment has its own lifetime and remains visible while the outside boss is hidden.

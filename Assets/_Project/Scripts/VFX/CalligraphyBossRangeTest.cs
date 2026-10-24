@@ -62,6 +62,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     }
     void Update()
     {
+        if(RangeInputSettings.InputBlocked)return;
         if(Running && Boss && Boss.Vanished && Time.time-Boss.VanishedAt>=5)
         {
             StartTest();
@@ -103,6 +104,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     void OnDisable()=>StopTest();
     void OnGUI()
     {
+        if(RangeInputSettings.InputBlocked)return;
         float x=Screen.width-280;
         GUI.Box(new Rect(x,78,265,Running?116:82),"");
         GUI.Label(new Rect(x+10,84,250,25),Running?"F8：顯示／收起測試游標":"F8：讓中央老者開始攻擊");

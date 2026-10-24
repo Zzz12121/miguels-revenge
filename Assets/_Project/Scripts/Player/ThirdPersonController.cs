@@ -69,7 +69,7 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("鎖定面向，不會自動轉向移動方向（攻擊時使用）")]
     public bool lockRotation = false;
 
-    [Header("翻滾閃避（V）")]
+    [Header("翻滾閃避（V；靶場預設 C，可按 K 設定）")]
     [Min(0.2f)] public float rollDuration = 0.48f;
     [Min(0.5f)] public float rollDistance = 5.2f;
     [Min(0f)] public float rollCooldown = 0.18f;
@@ -356,6 +356,7 @@ public class ThirdPersonController : MonoBehaviour
 
     void Update()
     {
+        if (RangeInputSettings.IsRange(this) && RangeInputSettings.InputBlocked) return;
         if (controller == null || !controller.enabled) return;
         float dt = Time.deltaTime;
         Vector3 moveDir;
@@ -609,7 +610,7 @@ public class ThirdPersonController : MonoBehaviour
         sprint = false;
         jumpPressed = false;
         rollPressed = false;
-        if (!inputEnabled) return Vector2.zero;
+        if (!inputEnabled || (RangeInputSettings.IsRange(this) && RangeInputSettings.InputBlocked)) return Vector2.zero;
 
         Vector2 input = Vector2.zero;
         var kb = Keyboard.current;
@@ -620,9 +621,9 @@ public class ThirdPersonController : MonoBehaviour
             if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
             if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
 
-            sprint = kb.leftShiftKey.isPressed;
-            jumpPressed = kb.spaceKey.wasPressedThisFrame;
-            rollPressed = kb.vKey.wasPressedThisFrame;
+            sprint = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Sprint)].isPressed;
+            jumpPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
+            rollPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Roll)].wasPressedThisFrame;
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
@@ -631,7 +632,7 @@ public class ThirdPersonController : MonoBehaviour
             input.y = Input.GetAxisRaw("Vertical");
             sprint = Input.GetKey(KeyCode.LeftShift);
             jumpPressed = Input.GetKeyDown(KeyCode.Space);
-            rollPressed = Input.GetKeyDown(KeyCode.V);
+            rollPressed = Input.GetKeyDown(RangeInputSettings.IsRange(this) ? KeyCode.C : KeyCode.V);
         }
 #endif
         return Vector2.ClampMagnitude(input, 1f); // 斜走不會比較快

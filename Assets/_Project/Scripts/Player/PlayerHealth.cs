@@ -80,6 +80,7 @@ public class PlayerHealth : MonoBehaviour
 
         // 精力條：衝刺 / 翻滾 / 跳躍消耗，站著不動時回復
         if (GetComponent<PlayerStamina>() == null) gameObject.AddComponent<PlayerStamina>();
+        if (GetComponent<PlayerSkillAvailability>() == null) gameObject.AddComponent<PlayerSkillAvailability>();
 
         // 有水的關卡：潛到水裡要消耗氧氣
         if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
