@@ -113,7 +113,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             return;
         }
         Vector3 direction=player.transform.position-transform.position;direction.y=0;
-        if(direction.sqrMagnitude>.001f && (!casting || (SelectedSkill!=6 && elapsed<.4f)))
+        if(direction.sqrMagnitude>.001f && (!casting || SelectedSkill<=1 || (SelectedSkill!=6 && elapsed<.4f)))
             transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),240*Time.deltaTime);
         if(!casting)
         {

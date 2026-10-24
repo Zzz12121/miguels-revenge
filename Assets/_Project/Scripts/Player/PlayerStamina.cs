@@ -46,6 +46,7 @@ public class PlayerStamina : MonoBehaviour
         else if (!airborne) Stamina = Mathf.Min(maxStamina, Stamina + idleRegenPerSecond * maxStamina * dt);
     }
 
+    public bool CanAffordRoll => Stamina + .001f >= rollCost * maxStamina;
     public bool TrySpendRoll() => TrySpend(rollCost);
     public bool TrySpendJump() => TrySpend(jumpCost);
 

@@ -361,6 +361,14 @@ public class ThirdPersonCamera : MonoBehaviour
     /// <summary>
     /// 立即將鏡頭瞬移至目標身後（切換跟隨目標或傳送時呼叫，防止平滑插值穿幫或卡在障礙物）
     /// </summary>
+    public void WarpWithTarget(Vector3 delta)
+    {
+        smoothedPivot+=delta;
+        if(cameraTarget)cameraTarget.position+=delta;
+        transform.position+=delta;
+        if(cinemachineCamera && cameraTarget)cinemachineCamera.OnTargetObjectWarped(cameraTarget,delta);
+    }
+
     public void SnapToTarget()
     {
         if (target == null || cameraTarget == null) return;

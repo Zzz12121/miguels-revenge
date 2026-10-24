@@ -12,7 +12,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     public bool Running {get;private set;}
     PlayerHealth player;
     float lastDamage;
-    bool menuOpen,displayWasActive;
+    bool menuOpen;
     bool pendingNext;
     CursorLockMode previousCursor;
     bool previousVisible;
@@ -21,24 +21,27 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     {
         if(gameObject.scene.name!="VFX_VoidRend_Bocchi"){enabled=false;return;}
         player=PlayerHealth.Find();
+        Boss=existingDisplay?existingDisplay.GetComponent<CalligraphyBossCombat>():null;
+        if(!Boss)Boss=FindAnyObjectByType<CalligraphyBossCombat>();
+        if(!Boss && bossPrefab){Boss=Instantiate(bossPrefab,spawnPosition,Quaternion.identity).GetComponent<CalligraphyBossCombat>();}
+        if(Boss){existingDisplay=Boss.gameObject;spawnPosition=Boss.transform.position;Boss.StopBattle();}
     }
     public void StartTest()
     {
         if(!player)player=PlayerHealth.Find();
-        if(!player || !bossPrefab)return;
+        if(!player || (!Boss && !bossPrefab))return;
         CancelPlayerSkills();
         if(!Running)
         {
             player.OnDamaged+=OnDamaged;player.SetPracticeProtection(this,true);
-            if(existingDisplay){displayWasActive=existingDisplay.activeSelf;existingDisplay.SetActive(false);}
         }
         Running=true;lastDamage=Time.time;player.HealFull();
         if(!player.GetComponent<CalligraphyPlayerBladeTrail>())player.gameObject.AddComponent<CalligraphyPlayerBladeTrail>();
-        if(Boss && Boss.IsDead){Destroy(Boss.gameObject);Boss=null;}
         if(!Boss)
         {
             var go=Instantiate(bossPrefab,spawnPosition,Quaternion.identity);Boss=go.GetComponent<CalligraphyBossCombat>();
         }
+        Boss.ResetPracticeActor();
         Boss.GetComponent<TetherThrownMotion>()?.Interrupt();Boss.transform.position=spawnPosition;
         Boss.StartBattle(player,true);CloseMenu();
     }
@@ -46,8 +49,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     {
         if(Running)CancelPlayerSkills();
         if(player){player.OnDamaged-=OnDamaged;player.SetPracticeProtection(this,false);}
-        if(Boss){Boss.StopBattle();Destroy(Boss.gameObject);Boss=null;}
-        if(Running && existingDisplay)existingDisplay.SetActive(displayWasActive);
+        if(Boss){Boss.ResetPracticeActor();Boss.StopBattle();Boss.transform.position=spawnPosition;}
         Running=false;pendingNext=false;CloseMenu();
     }
     void OnDamaged(float amount){if(amount>0)lastDamage=Time.time;}
@@ -62,11 +64,12 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     {
         if(Running && Boss && Boss.Vanished && Time.time-Boss.VanishedAt>=5)
         {
-            Destroy(Boss.gameObject);Boss=null;StartTest();
+            StartTest();
         }
         if(Keyboard.current==null)return;
         if(Keyboard.current.f8Key.wasPressedThisFrame)
         {
+            if(!Running && !GameUI.OverlayOpen && !SkillAimCancellation.IsAiming)StartTest();
             if(menuOpen)CloseMenu();
             else if(!GameUI.OverlayOpen && !SkillAimCancellation.IsAiming)
             {
@@ -101,7 +104,7 @@ public sealed class CalligraphyBossRangeTest : MonoBehaviour
     {
         float x=Screen.width-280;
         GUI.Box(new Rect(x,78,265,Running?116:82),"");
-        GUI.Label(new Rect(x+10,84,250,25),"F8：顯示／收起測試游標");
+        GUI.Label(new Rect(x+10,84,250,25),Running?"F8：顯示／收起測試游標":"F8：讓中央老者開始攻擊");
         if(GUI.Button(new Rect(x+10,110,245,32),"遊墨行者 Boss 測試"))StartTest();
         if(Running)
         {

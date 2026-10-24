@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>Local six-panel landscape transformation. No camera cuts, teleport or global render-setting mutation.</summary>
+/// <summary>Local landscape transformation with a seamless return to the entry coordinate.</summary>
 public sealed class CalligraphyPaintingWorld : MonoBehaviour
 {
     public enum WorldPhase { Entering,Contained,Exiting,Finished }
@@ -31,6 +31,8 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     readonly List<HangingStroke> curtains=new();
     float footprintClock;
     Vector3 previousPlayer;
+    Vector3 entryPosition;
+    bool returned;
     Vector3 lastFootprintPosition;
     Quaternion previousRotation;
     float sizeMultiplier=1;
@@ -38,7 +40,8 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     float originalFarClip;
     public void Begin(CalligraphyBossCombat owner,PlayerHealth target,CalligraphyInkField field)
     {
-        boss=owner;player=target;transform.position=CalligraphyGeometry.Ground(player.transform.position,player.transform);
+        boss=owner;player=target;entryPosition=player.transform.position;
+        transform.position=CalligraphyGeometry.Ground(player.transform.position,player.transform);
         // World pigment has its own lifetime and remains visible while the outside boss is hidden.
         var pool=new GameObject("Painting pigment pool");pool.SetActive(false);pool.transform.SetParent(transform,false);
         ink=pool.AddComponent<CalligraphyInkField>();
@@ -63,7 +66,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         }
         for(int i=0;i<panelTargets.Count;i++){var p=panelTargets[i];p.y*=1.5f*sizeMultiplier;panelTargets[i]=p;}
         BuildSupport();
-        isolation=gameObject.AddComponent<CalligraphyWorldIsolation>();isolation.Initialize(player);
+        isolation=gameObject.AddComponent<CalligraphyWorldIsolation>();isolation.Initialize(player);isolation.SetReturnPosition(entryPosition);
     }
     void BuildSupport()
     {
@@ -421,10 +424,28 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
             }
         }
         // Wait for a fully opaque outside frame, then remove the painting without a final pop.
-        if(exit>=1 && isolation.FullyRevealed){Finished=true;owners.Remove(this);Destroy(gameObject);}
+        if(exit>=1 && isolation.FullyRevealed){ReturnToEntry();Finished=true;owners.Remove(this);Destroy(gameObject);}
+    }
+    void ReturnToEntry()
+    {
+        if(returned || !player)return;returned=true;
+        Vector3 delta=entryPosition-player.transform.position;
+        var motor=player.GetComponent<ThirdPersonController>();
+        var body=player.GetComponent<CharacterController>();bool enabled=body && body.enabled;
+        if(body)body.enabled=false;
+        player.transform.position=entryPosition;motor?.ResetMotion();
+        if(body)body.enabled=enabled;
+        Physics.SyncTransforms();
+        if(worldCamera)
+        {
+            var orbit=worldCamera.GetComponent<ThirdPersonCamera>();
+            if(orbit)orbit.WarpWithTarget(delta);
+            else worldCamera.transform.position+=delta;
+        }
     }
     void OnDisable()
     {
+        ReturnToEntry();
         if(worldCamera)worldCamera.farClipPlane=originalFarClip;
         owners.Remove(this);
     }

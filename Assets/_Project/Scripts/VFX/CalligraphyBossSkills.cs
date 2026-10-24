@@ -154,6 +154,15 @@ public sealed partial class CalligraphyBossCombat
         deathRenderers=GetComponentsInChildren<Renderer>();deathMaterials=new Material[deathRenderers.Length][];
         for(int i=0;i<deathRenderers.Length;i++)deathMaterials[i]=deathRenderers[i].sharedMaterials;
     }
+    public void ResetPracticeActor()
+    {
+        dying=false;Vanished=false;Health=maxHealth;deathClock=0;
+        if(deathRenderers!=null)for(int i=0;i<deathRenderers.Length;i++)if(deathRenderers[i])
+        {deathRenderers[i].enabled=true;deathRenderers[i].sharedMaterials=deathMaterials[i];CalligraphyGeometry.Tint(deathRenderers[i],Color.white);}
+        deathRenderers=null;deathMaterials=null;
+        foreach(var c in GetComponentsInChildren<Collider>())c.enabled=true;
+        if(brush){brush.enabled=true;brush.ClearCombatPose();}
+    }
     void UpdateDeath()
     {
         if(Vanished)return;

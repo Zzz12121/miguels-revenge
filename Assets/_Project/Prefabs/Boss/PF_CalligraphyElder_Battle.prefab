@@ -1850,7 +1850,7 @@ MonoBehaviour:
     yawOffset: -90
     waveCount: 6
     waveInterval: 1
-    vfxScale: 3
+    vfxScale: 2.2
     damage: 10
     hitInterval: 0.8
     controlSeconds: 0.5
@@ -1868,7 +1868,7 @@ MonoBehaviour:
       yawOffset: -90
       waveCount: 1
       waveInterval: 1
-      vfxScale: 1.25
+      vfxScale: 1.1
       damage: 22
       hitInterval: 0.8
       controlSeconds: 1.15

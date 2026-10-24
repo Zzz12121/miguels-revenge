@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.Rendering;
 
 /// <summary>Temporary presentation boundary. Keeps original ground physics and restores every owned change.</summary>
 [DefaultExecutionOrder(10000)]
@@ -26,6 +27,9 @@ public sealed class CalligraphyWorldIsolation : MonoBehaviour
     Camera revealCamera;
     RenderTexture outside;
     RawImage reveal;
+    Vector3 returnPosition;
+    bool hasReturnPosition;
+    public void SetReturnPosition(Vector3 position){returnPosition=position;hasReturnPosition=true;}
     public float RevealProgress {get;set;}
     public bool FullyRevealed {get;private set;}
     public int CapturedFrames {get;private set;}
@@ -33,15 +37,26 @@ public sealed class CalligraphyWorldIsolation : MonoBehaviour
     public void Initialize(PlayerHealth target)
     {
         player=target;playerColliders=target.GetComponentsInChildren<Collider>();active.Add(this);Scan();
+        RenderPipelineManager.beginCameraRendering+=BeforeCamera;
+    }
+    void BeforeCamera(ScriptableRenderContext context,Camera camera)
+    {
+        if(camera==revealCamera)return;
+        HideOutsideRenderers();
+    }
+    void HideOutsideRenderers()
+    {
+        foreach(var r in FindObjectsByType<Renderer>())
+        {
+            if(Inside(r.transform))continue;
+            if(!renderers.ContainsKey(r))renderers.Add(r,r.forceRenderingOff);
+            r.forceRenderingOff=true;
+        }
     }
     bool Inside(Transform t)=>t.IsChildOf(transform) || (player && t.IsChildOf(player.transform));
     void Scan()
     {
-        foreach(var r in FindObjectsByType<Renderer>())
-        {
-            if(Inside(r.transform) || renderers.ContainsKey(r))continue;
-            renderers.Add(r,r.forceRenderingOff);r.forceRenderingOff=true;
-        }
+        HideOutsideRenderers();
         foreach(var t in Terrain.activeTerrains)if(!Inside(t.transform) && !terrains.ContainsKey(t))
         {terrains.Add(t,(t.drawHeightmap,t.drawTreesAndFoliage));t.drawHeightmap=false;t.drawTreesAndFoliage=false;}
         foreach(var c in FindObjectsByType<Canvas>())
@@ -81,13 +96,18 @@ public sealed class CalligraphyWorldIsolation : MonoBehaviour
             outside=new RenderTexture(width,height,24,RenderTextureFormat.ARGB32){name="Painting exit live outside"};outside.Create();reveal.texture=outside;
         }
         revealCamera.CopyFrom(source);revealCamera.enabled=false;revealCamera.targetTexture=outside;
-        revealCamera.transform.SetPositionAndRotation(source.transform.position,source.transform.rotation);
+        Vector3 offset=hasReturnPosition && player?returnPosition-player.transform.position:Vector3.zero;
+        revealCamera.transform.SetPositionAndRotation(source.transform.position+offset,source.transform.rotation);
         var data=revealCamera.GetUniversalAdditionalCameraData();var sourceData=source.GetUniversalAdditionalCameraData();
         data.renderPostProcessing=sourceData.renderPostProcessing;data.volumeLayerMask=sourceData.volumeLayerMask;
         data.volumeTrigger=sourceData.volumeTrigger;data.antialiasing=sourceData.antialiasing;
         var local=GetComponentsInChildren<Renderer>();var old=new bool[local.Length];
+        Vector3 paintingPosition=player?player.transform.position:Vector3.zero;
         try
         {
+            // Render the outside at the entry coordinate, including the player's matching pose.
+            // No physics step occurs during this synchronous render; restore before gameplay resumes.
+            if(player)player.transform.position=paintingPosition+offset;
             for(int i=0;i<local.Length;i++){old[i]=local[i].forceRenderingOff;local[i].forceRenderingOff=true;}
             foreach(var p in renderers)if(p.Key)p.Key.forceRenderingOff=p.Value;
             foreach(var p in terrains)if(p.Key){p.Key.drawHeightmap=p.Value.heightmap;p.Key.drawTreesAndFoliage=p.Value.foliage;}
@@ -96,6 +116,7 @@ public sealed class CalligraphyWorldIsolation : MonoBehaviour
         }
         finally
         {
+            if(player)player.transform.position=paintingPosition;
             for(int i=0;i<local.Length;i++)if(local[i])local[i].forceRenderingOff=old[i];
             foreach(var p in renderers)if(p.Key)p.Key.forceRenderingOff=true;
             foreach(var p in terrains)if(p.Key){p.Key.drawHeightmap=false;p.Key.drawTreesAndFoliage=false;}
@@ -106,6 +127,7 @@ public sealed class CalligraphyWorldIsolation : MonoBehaviour
     }
     void OnDisable()
     {
+        RenderPipelineManager.beginCameraRendering-=BeforeCamera;
         active.Remove(this);
         if(reveal)reveal.gameObject.SetActive(false);
         if(revealCamera)revealCamera.targetTexture=null;

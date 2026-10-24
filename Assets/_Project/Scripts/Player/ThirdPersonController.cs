@@ -159,6 +159,9 @@ public class ThirdPersonController : MonoBehaviour
     float lastJumpPressedTime = float.NegativeInfinity;
     Vector3 rollDirection;
     float rollStartedAt;
+    bool rollCommitted;
+    bool rollPending;
+    float rollTravel;
     float nextRollTime;
 
     // 之後做動畫 / UI 時可以讀這些值
@@ -267,10 +270,11 @@ public class ThirdPersonController : MonoBehaviour
 
     void EndRoll()
     {
-        if (!IsRolling) return;
-        IsRolling = false;
+        if (!IsRolling && !rollPending) return;
+        bool committed=rollCommitted;rollCommitted=false;
+        IsRolling = false;rollPending=false;
         horizontalVelocity = Vector3.zero;
-        OnRollEnded?.Invoke();
+        if(committed)OnRollEnded?.Invoke();
     }
 
     /// <summary>立刻轉向某個方向（攻擊時面向鏡頭前方）</summary>
@@ -294,6 +298,7 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>清除所有速度（重生 / 傳送時使用）</summary>
     public void ResetMotion()
     {
+        EndRoll();
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         ballistic = false;
@@ -382,7 +387,7 @@ public class ThirdPersonController : MonoBehaviour
         // 動作鎖定中（對話、喝藥水）或剛結束對話：這一下空白鍵不算跳躍
         if (ActionsLocked || Time.unscaledTime < suppressJumpUntil) jumpPressed = false;
         if (rollPressed) TryStartRoll(moveDir);
-        if (IsRolling)
+        if (IsRolling || rollPending)
         {
             UpdateRoll(dt);
             return;
@@ -557,8 +562,11 @@ public class ThirdPersonController : MonoBehaviour
 
     void TryStartRoll(Vector3 requestedDirection)
     {
-        if (aiControlled || !inputEnabled || ActionsLocked || IsRolling || !controller.isGrounded || Time.unscaledTime < nextRollTime) return;
-        if (Stamina != null && !Stamina.TrySpendRoll()) return;
+        if (aiControlled || !isActiveAndEnabled || !inputEnabled || ActionsLocked || IsStunned || ballistic || IsRolling || rollPending ||
+            !controller || !controller.enabled || !controller.isGrounded || Time.timeScale<=0 || GameUI.OverlayOpen ||
+            (GetComponent<PlayerHealth>()?.IsDead??false) || Time.unscaledTime < nextRollTime) return;
+        // Affordability first; payment is committed only after the controller really moves.
+        if (Stamina != null && !Stamina.CanAffordRoll){Stamina.TrySpendRoll();return;}
         requestedDirection.y = 0f;
         rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
         FaceDirection(rollDirection);
@@ -567,18 +575,31 @@ public class ThirdPersonController : MonoBehaviour
         ballistic = false;
         GetComponent<PlayerCombat>()?.CancelTransientActions();
         rollStartedAt = Time.unscaledTime;
-        nextRollTime = rollStartedAt + rollDuration + rollCooldown;
-        IsRolling = true;
-        GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(rollDuration + .08f);
-        OnRollStarted?.Invoke();
+        rollCommitted=false;rollTravel=0;
+        rollPending = true;
     }
 
     void UpdateRoll(float dt)
     {
+        if(dt<=0)return;
+        if(!inputEnabled || ActionsLocked || IsStunned){EndRoll();return;}
         float u = Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration));
         // 半正弦速度：起步與收尾不突兀，積分後仍約等於設定距離。
-        float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(u * Mathf.PI);
+        float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(Mathf.Clamp01(u+dt/rollDuration*.5f) * Mathf.PI);
+        Vector3 before=transform.position;
         controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
+        if(!rollCommitted)
+        {
+            rollTravel+=Mathf.Max(0,Vector3.Dot(transform.position-before,rollDirection));
+            if(rollTravel>=Mathf.Clamp(rollDistance*.01f,.005f,.05f))
+            {
+                if(Stamina!=null && !Stamina.TrySpendRoll()){EndRoll();return;}
+                rollCommitted=true;rollPending=false;IsRolling=true;nextRollTime=rollStartedAt+rollDuration+rollCooldown;
+                GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(Mathf.Max(0,rollDuration*(1-u))+.08f);
+                OnRollStarted?.Invoke();
+            }
+            else if(u>.08f){EndRoll();return;}
+        }
         if (u < 1f) return;
         EndRoll();
     }

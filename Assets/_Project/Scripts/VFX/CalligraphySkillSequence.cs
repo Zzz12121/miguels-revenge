@@ -95,6 +95,8 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
         var fx=CalligraphyVfxLibrary.Play(light?lib.frontalPulses:lib.frontal,transform.position,
             Quaternion.LookRotation(direction)*Quaternion.Euler(0,light?-90:0,0),settings.vfxScale,1,0,transform);
         if(fx)fx.ConfigureWaves(settings.waveCount,settings.waveInterval);
+        // Frontal Pulses travels on native +X; its extra prefab yaw must also rotate launch.
+        Vector3 launchDirection=fx?(light?fx.transform.right:fx.transform.forward):direction;
         float nextHit=0;
         while(fx)
         {
@@ -135,7 +137,7 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
                         }
                         if(!onWave)continue;
                         contacted.Add(key);nextHit=Time.time+settings.hitInterval;
-                        CalligraphyPlayerHitGate.Hit(player,settings.damage,direction,"被墨浪擊倒",point+Vector3.up*.5f,
+                        CalligraphyPlayerHitGate.Hit(player,settings.damage,launchDirection,"被墨浪擊倒",point+Vector3.up*.5f,
                             light?CalligraphyPlayerControl.Reaction.LightLaunch:CalligraphyPlayerControl.Reaction.StrongLaunch,settings.controlSeconds,new Vector2(settings.knockbackSpeed,settings.launchSpeed));
                         if(!light)excludeDirect=true;
                         break;

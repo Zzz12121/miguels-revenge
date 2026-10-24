@@ -214,6 +214,7 @@ public static class CalligraphyFourthChecks
   var b=Setup(0);b.CancelCast();b.enabled=false;var p=PlayerHealth.Find();var motor=p.GetComponent<ThirdPersonController>();
   typeof(PlayerHealth).GetField("dodgeInvulnerableUntil",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(p,0f);
   await Wait(.2f);typeof(ThirdPersonController).GetMethod("TryStartRoll",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(motor,new object[]{Vector3.right});
+  await Wait(.06f); // Roll state/cost begins only once a small real movement has succeeded.
   Check(motor.IsRolling,"Fixture could not start actual roll");float hp=p.Health;
   bool hit=CalligraphyPlayerHitGate.Hit(p,24,Vector3.forward,"roll validation",p.transform.position,CalligraphyPlayerControl.Reaction.StrongLaunch,1);
   Check(!hit && p.Health==hp && motor.AddSpeedMultiplierLease(.6f)==0,"Roll did not prevent damage/slow");
