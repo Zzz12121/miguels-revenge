@@ -17,6 +17,14 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
     public string[] animationStates;
     public AnimationClip[] animationClips;
     public string currentAnimation;
+    [HideInInspector] public float avatarSweepAngle=60;
+    [HideInInspector] public bool useGroundHeightOverride;
+    [HideInInspector] public float groundHeightOverride;
+    [HideInInspector] public bool useAvatarBrushTarget;
+    [HideInInspector] public Vector3 avatarBrushTarget;
+    [HideInInspector] public float avatarVerticalWeight;
+    [HideInInspector] public Vector3 avatarGripOffset;
+    [HideInInspector] public Vector3 avatarBasePosition;
     public bool Swinging { get; private set; }
     float clock, swingClock=-1;
     Vector3 visualPosition;
@@ -118,6 +126,7 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
     void LateUpdate()
     {
         if(!brushPivot || !rightHand || !leftHand || !animator) return;
+        if(useAvatarBrushTarget)transform.position=avatarBasePosition;
         // Never allow FBX object-level animation to rotate/translate the character out of its root.
         visual.localPosition=visualPosition; visual.localRotation=visualRotation;
         float t=swingClock;
@@ -159,7 +168,7 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
         }
         if(combatWeight>0 && combatStroke>=4)SpecialPose(neutral,ref center,ref rotation);
         brushPivot.SetPositionAndRotation(transform.TransformPoint(center),transform.rotation*rotation);
-        if(combatWeight>0 && combatStroke==11)
+        if(combatWeight>0 && (combatStroke==11 || combatStroke==15))
         {
             float open=Mathf.SmoothStep(0,1,combatPhase/.4f);
             Solve(rightUpper,rightLower,rightHand,rightUpper.position+transform.right*.5f*open-transform.forward*.3f*open-Vector3.up*.32f,transform.forward,transform.rotation*rightPalmBasis);
@@ -183,19 +192,70 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             }
             brushPivot.position=gripCenter;
         }
-        if(combatWeight>0 && combatStroke==10 && combatPhase>=.74f && combatPhase<.82f)
+        if(combatWeight>0 && (combatStroke==10 || combatStroke==18) && combatPhase>=.74f && combatPhase<(combatStroke==18?.86f:.82f))
         {
             // Solve AFTER reachable grip adjustment, otherwise FitGrip lifts the bristles
             // again. The damage event runs later in this same LateUpdate frame.
             Vector3 tipVector=brushTip.position-brushPivot.position;
             float length=tipVector.magnitude;
-            float groundY=CalligraphyGeometry.Ground(transform.position,transform).y+.04f;
+            float groundY=(useGroundHeightOverride?groundHeightOverride:CalligraphyGeometry.Ground(transform.position,transform).y)+.04f;
             float height=Mathf.Clamp(brushPivot.position.y-groundY,0,length*.99f);
             Vector3 contact=brushPivot.position+transform.forward*Mathf.Sqrt(Mathf.Max(0,length*length-height*height))-Vector3.up*height;
             brushPivot.rotation=Quaternion.FromToRotation(tipVector,contact-brushPivot.position)*brushPivot.rotation;
             axis=brushPivot.forward;palmForward=brushPivot.up;
             palmFrame=Quaternion.LookRotation(palmForward,brushPivot.right);
             wristOffset=-palmForward*.075f-brushPivot.right*.025f;
+        }
+        if(combatWeight>0 && (combatStroke==16 || combatStroke==17) && useGroundHeightOverride)
+        {
+            Vector3 tipVector=brushTip.position-brushPivot.position;
+            float length=tipVector.magnitude,height=Mathf.Clamp(brushPivot.position.y-groundHeightOverride-1.2f,0,length*.99f);
+            Vector3 direction=Vector3.ProjectOnPlane(brushPivot.forward,Vector3.up).normalized;
+            Vector3 contact=brushPivot.position+direction*Mathf.Sqrt(Mathf.Max(0,length*length-height*height))-Vector3.up*height;
+            brushPivot.rotation=Quaternion.FromToRotation(tipVector,contact-brushPivot.position)*brushPivot.rotation;
+            axis=brushPivot.forward;palmForward=brushPivot.up;palmFrame=Quaternion.LookRotation(palmForward,brushPivot.right);
+            wristOffset=-palmForward*.075f-brushPivot.right*.025f;
+        }
+        if(useAvatarBrushTarget)
+        {
+            // The enlarged rig must actually reach the authored fan / slam point. Fit the
+            // visual shaft length, then solve both hands; never stretch the character's arms.
+            for(int pass=0;pass<5;pass++)
+            {
+                Vector3 offset=brushTip.position-brushPivot.position,to=avatarBrushTarget-brushPivot.position;
+                if(offset.sqrMagnitude<.0001f || to.sqrMagnitude<.0001f)break;
+                brushPivot.rotation=Quaternion.FromToRotation(offset,to)*brushPivot.rotation;
+                Vector3 size=brushPivot.localScale;size.z*=to.magnitude/offset.magnitude;brushPivot.localScale=size;
+                axis=brushPivot.forward;palmForward=brushPivot.up;palmFrame=Quaternion.LookRotation(palmForward,brushPivot.right);
+                wristOffset=-palmForward*.075f-brushPivot.right*.025f;
+                Vector3 centre=brushPivot.position;
+                FitGrip(ref centre,rightUpper,rightLower,rightHand,axis*gripSpacing*.5f+wristOffset);
+                FitGrip(ref centre,leftUpper,leftLower,leftHand,-axis*gripSpacing*.5f+wristOffset);
+                brushPivot.position=centre;
+            }
+        }
+        if(useAvatarBrushTarget && avatarVerticalWeight>0)
+        {
+            // Bring the whole upper body over its pillar during the gather, not a one-frame
+            // rotation at contact. The arm-chain lengths and both palms remain constrained.
+            float w=Mathf.Clamp01(avatarVerticalWeight);
+            var q=Quaternion.FromToRotation(brushTip.position-brushPivot.position,Vector3.down)*brushPivot.rotation;
+            brushPivot.rotation=Quaternion.Slerp(brushPivot.rotation,q,w);
+            axis=brushPivot.forward;palmForward=brushPivot.up;
+            wristOffset=-palmForward*.075f-brushPivot.right*.025f;
+            Vector3 centre=transform.TransformPoint(neutral+avatarGripOffset);
+            centre.y+=Mathf.Sin(Mathf.Clamp01(combatPhase/.74f)*Mathf.PI)*gripSpacing*.65f;
+            for(int pass=0;pass<10;pass++)
+            {
+                FitGrip(ref centre,rightUpper,rightLower,rightHand,axis*gripSpacing*.5f+wristOffset);
+                FitGrip(ref centre,leftUpper,leftLower,leftHand,-axis*gripSpacing*.5f+wristOffset);
+            }
+            Vector3 shift=Vector3.ProjectOnPlane(avatarBrushTarget-centre,Vector3.up)*w;
+            transform.position+=shift;brushPivot.position=Vector3.Lerp(brushPivot.position,centre+shift,w);
+            float length=Vector3.Distance(brushTip.position,brushPivot.position);
+            float targetLength=Mathf.Max(gripSpacing*.55f,brushPivot.position.y-avatarBrushTarget.y);
+            Vector3 scale=brushPivot.localScale;scale.z*=Mathf.Lerp(1,targetLength/Mathf.Max(.01f,length),w);brushPivot.localScale=scale;
+            palmFrame=Quaternion.LookRotation(palmForward,brushPivot.right);
         }
         Solve(rightUpper,rightLower,rightHand,brushPivot.position+axis*gripSpacing*0.5f+wristOffset,transform.TransformDirection(new Vector3(1,-0.7f,0)),palmFrame*rightPalmBasis*Quaternion.Euler(rightPalmEuler));
         Solve(leftUpper,leftLower,leftHand,brushPivot.position-axis*gripSpacing*0.5f+wristOffset,transform.TransformDirection(new Vector3(-1,-0.7f,0)),palmFrame*leftPalmBasis*Quaternion.Euler(leftPalmEuler));
@@ -207,6 +267,8 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
     }
     void SpecialPose(Vector3 neutral,ref Vector3 center,ref Quaternion rotation)
     {
+        if(combatStroke>=16)
+        {if(neck)neck.localRotation=neckRest;if(head)head.localRotation=headRest;}
         float p=combatPhase,wind=Mathf.SmoothStep(0,1,p/.38f),cut=Mathf.SmoothStep(0,1,(p-.38f)/.28f),recover=Mathf.SmoothStep(0,1,(p-.72f)/.28f);
         float weight=wind*(1-recover);Vector3 grip=neutral;Quaternion q=Quaternion.Euler(-22,64,0);
         float lean=0,twist=0,crouch=0;
@@ -235,7 +297,7 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             q=direction.sqrMagnitude>.001f?Quaternion.LookRotation(direction):Quaternion.identity;
             lean=5+dot*20;twist=-8;
         }
-        else if(combatStroke==10)
+        else if(combatStroke==10 || combatStroke==18)
         {
             float raise=Mathf.SmoothStep(0,1,p/.18f),slam=Mathf.SmoothStep(0,1,(p-.58f)/.16f),settle=Mathf.SmoothStep(0,1,(p-.8f)/.2f);
             grip=Vector3.Lerp(neutral,neutral+new Vector3(0,.92f,-.06f),raise);
@@ -246,14 +308,14 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             if(p>=.72f && p<.82f)
             {
                 float length=Vector3.Distance(brushPivot.position,brushTip.position);
-                float height=transform.TransformPoint(grip).y-CalligraphyGeometry.Ground(transform.position,transform).y;
+                float height=transform.TransformPoint(grip).y-(useGroundHeightOverride?groundHeightOverride:CalligraphyGeometry.Ground(transform.position,transform).y);
                 q=Quaternion.Euler(Mathf.Asin(Mathf.Clamp(height/Mathf.Max(.1f,length),0,.98f))*Mathf.Rad2Deg,0,0);
             }
             crouch=.22f*Mathf.Sin(Mathf.Clamp01(p/.25f)*Mathf.PI)+.23f*slam*(1-settle);
             lean=Mathf.Lerp(-12,24,slam)*(1-settle);
             grip=Vector3.Lerp(grip,neutral,settle);q=Quaternion.Slerp(q,Quaternion.Euler(-22,64,0),settle);
         }
-        else if(combatStroke==11)
+        else if(combatStroke==11 || combatStroke==15)
         {
             float open=Mathf.SmoothStep(0,1,p/.4f);lean=-27*open;grip=neutral+new Vector3(.65f,-.3f,-.3f)*open;q=Quaternion.Euler(58,35,-20);
             if(neck){neck.localRotation=neckRest;neck.rotation=Quaternion.AngleAxis(-16*open,transform.right)*neck.rotation;}
@@ -267,6 +329,15 @@ public sealed class CalligraphyBrushPresentation : MonoBehaviour
             grip=neutral+new Vector3(side*Mathf.Lerp(.12f,-.12f,cut),Mathf.Lerp(.18f,-.13f,cut),.04f)*weight;
             Quaternion diagonal=Quaternion.LookRotation(Vector3.Lerp(high,low,cut)-grip);
             q=Quaternion.Slerp(q,diagonal,weight);twist=side*Mathf.Lerp(-18,23,cut)*weight;lean=8*cut*weight;
+        }
+        else if(combatStroke==16 || combatStroke==17)
+        {
+            float sweep=Mathf.SmoothStep(0,1,(p-.2f)/.6f);
+            float side=combatStroke==16?1:-1;
+            float yaw=Mathf.Lerp(avatarSweepAngle*.5f,-avatarSweepAngle*.5f,sweep)*side;
+            grip=neutral+new Vector3(-.06f*side,-.08f,.08f);
+            q=Quaternion.Euler(24,yaw,0);
+            lean=9+Mathf.Sin(sweep*Mathf.PI)*7;twist=yaw*.6f;
         }
         center=Vector3.Lerp(center,grip,combatWeight);rotation=Quaternion.Slerp(rotation,q,combatWeight);
         if(chest){chest.localRotation=chestRest;chest.rotation=Quaternion.AngleAxis(twist,transform.up)*Quaternion.AngleAxis(lean,transform.right)*chest.rotation;}

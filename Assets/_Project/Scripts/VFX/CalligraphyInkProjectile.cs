@@ -10,18 +10,26 @@ public sealed class CalligraphyInkProjectile : MonoBehaviour
     CalligraphyPackageEffect visual;
     PlayerHealth target;
     CalligraphyBossCombat.ProjectileSettings settings;
+    Transform cleanupRoot;
+    bool scopedLifetime;
     public float DistanceTravelled {get;private set;}
     public bool HeadingLocked {get;private set;}
     public Vector3 Heading=>velocity.normalized;
     readonly RaycastHit[] hits=new RaycastHit[32];
-    public void Launch(CalligraphyInkField field,Transform source,Vector3 from,Vector3 direction,float speed,float amount,PlayerHealth victim=null,CalligraphyBossCombat.ProjectileSettings tuning=null)
+    public void Launch(CalligraphyInkField field,Transform source,Vector3 from,Vector3 direction,float speed,float amount,PlayerHealth victim=null,CalligraphyBossCombat.ProjectileSettings tuning=null,Transform cleanupOwner=null)
     {
+        cleanupRoot=cleanupOwner;scopedLifetime=cleanupOwner;
         settings=tuning??new CalligraphyBossCombat.ProjectileSettings();target=victim;
         ink=field;owner=source;transform.position=from;velocity=direction.normalized*Mathf.Max(.1f,speed);damage=amount;life=settings.maximumDistance/Mathf.Max(.1f,speed)+1;
         var library=CalligraphyVfxLibrary.Current;
         if(library)visual=CalligraphyVfxLibrary.Play(library.projectile,from,Quaternion.LookRotation(direction),settings.vfxScale,1,0,transform);
     }
-    void OnDestroy(){if(visual){visual.transform.SetParent(null,true);visual.FadeOut(.4f);}}
+    void OnDestroy()
+    {
+        if(!visual)return;
+        if(scopedLifetime && (!cleanupRoot || !cleanupRoot.gameObject.activeInHierarchy)){Destroy(visual.gameObject);return;}
+        visual.transform.SetParent(scopedLifetime?cleanupRoot:null,true);visual.FadeOut(.4f);
+    }
     void Update()
     {
         if(!ink || CalligraphyPaintingWorld.BlocksTether){Destroy(gameObject);return;}
@@ -49,7 +57,7 @@ public sealed class CalligraphyInkProjectile : MonoBehaviour
         if(nearest>=0)
         {
             var h=hits[nearest];var player=h.collider.GetComponentInParent<PlayerHealth>();
-            if(player)CalligraphyPlayerHitGate.Hit(player,damage,velocity.normalized*1.4f,"被遊墨行者的筆觸擊倒",h.point);
+            if(player)CalligraphyPlayerHitGate.Hit(player,damage,velocity.normalized*1.4f,"被遊墨行者的筆觸擊倒",h.point,feedbackParent:scopedLifetime?cleanupRoot:null);
             ink.Burst(h.point,1.1f);Destroy(gameObject);return;
         }
         transform.position+=step;DistanceTravelled+=step.magnitude;trailClock-=dt;

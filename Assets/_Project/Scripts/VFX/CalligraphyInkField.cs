@@ -34,25 +34,38 @@ public sealed class CalligraphyInkField : MonoBehaviour
     public int ActiveCount { get; private set; }
     Vector3 disturbance, disturbanceVelocity;
     float disturbanceRadius, disturbanceUntil;
-    void Awake()
+    void Awake()=>EnsurePool();
+    void OnEnable()=>EnsurePool();
+    void EnsurePool()
     {
+        if(strands!=null && block!=null)return;
         block=new MaterialPropertyBlock();
         strands=new Strand[Mathf.Clamp(capacity,32,160)];
+        // Nonserialized caches disappear after an Editor domain reload, while the children
+        // survive. Rebind them instead of leaking another full pool or updating a null array.
+        var existing=new System.Collections.Generic.List<LineRenderer>();
+        foreach(Transform child in transform)
+            if(child.name=="Pooled ink filament" && child.TryGetComponent<LineRenderer>(out var pooled))existing.Add(pooled);
         for(int i=0;i<strands.Length;i++)
         {
-            var go=new GameObject("Pooled ink filament"); go.transform.SetParent(transform,false);
-            var line=go.AddComponent<LineRenderer>(); line.sharedMaterial=ribbonMaterial;
+            LineRenderer line;
+            if(i<existing.Count)line=existing[i];
+            else{var go=new GameObject("Pooled ink filament");go.transform.SetParent(transform,false);line=go.AddComponent<LineRenderer>();}
+            line.sharedMaterial=ribbonMaterial;
             line.positionCount=40; line.useWorldSpace=true; line.textureMode=LineTextureMode.Stretch;
             line.shadowCastingMode=ShadowCastingMode.Off; line.receiveShadows=false;
             line.numCornerVertices=3; line.numCapVertices=3; line.enabled=false;
             line.widthCurve=new AnimationCurve(new Keyframe(0,.05f),new Keyframe(.12f,1),new Keyframe(.4f,.7f),new Keyframe(1,0));
             strands[i]=new Strand{line=line};
         }
+        for(int i=strands.Length;i<existing.Count;i++)existing[i].enabled=false;
+        cursor=0;ActiveCount=0;
     }
     public void Emit(Vector3 origin,Vector3 velocity,float size=1,float life=0,bool white=false)
     {
-        if(strands==null) return;
+        EnsurePool();
         var s=strands[cursor];cursor=(cursor+1)%strands.Length;
+        if(!s.line)return;
         if(velocity.sqrMagnitude<.8f)velocity=(velocity+Random.onUnitSphere*.5f).normalized*1.1f;
         s.origin=origin; s.velocity=velocity; s.size=size; s.life=life>0?life:filamentLifetime;
         s.seed=Random.value*40; s.born=Time.time; s.active=true;
@@ -76,15 +89,16 @@ public sealed class CalligraphyInkField : MonoBehaviour
     {
         if(mist)mist.Clear();
         if(strands==null) return;
-        foreach(var s in strands) {s.active=false;s.line.enabled=false;}
+        foreach(var s in strands) {s.active=false;if(s.line)s.line.enabled=false;}
         ActiveCount=0;
     }
     void Update()
     {
+        EnsurePool();
         ActiveCount=0;
         foreach(var s in strands)
         {
-            if(!s.active) continue;
+            if(!s.active || !s.line) continue;
             float age=Time.time-s.born;
             if(age>=s.life) {s.active=false;s.line.enabled=false;continue;}
             ActiveCount++; UpdateStrand(s,age);

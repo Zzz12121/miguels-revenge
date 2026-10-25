@@ -79,7 +79,8 @@ public sealed partial class CalligraphyBossCombat
     {
         [Min(.1f),Tooltip("相對上一版 192×108×192 包覆空間；預設 1.7，不再次套用之前的 1.5。")] public float sizeMultiplier=1.7f;
         [Min(.1f)] public float entrySeconds=4,containedSeconds=20,exitSeconds=2.5f;
-        [Range(0,12)] public int dragonCount=6;
+        [Range(0,12),Tooltip("畫中世界墨龍總數。起點以 360°／數量平均環繞玩家；5 隻=72°、6 隻=60°、4 隻=90°。改值於下次施放生效。")]
+        public int dragonCount=5;
         [Min(.05f)] public float pulseScale=.35f,pulseInterval=.3f,pulseFade=1.5f;
         [Min(1)] public float faceScale=125;
         [Range(0,1)] public float faceOpacity=.72f;
@@ -113,7 +114,7 @@ public sealed partial class CalligraphyBossCombat
     }
     public DeathSettings deathPresentation=new();
     [Tooltip("各招收招後冷卻；0 使用共用 Recovery Seconds。順序與技能清單相同。")]
-    public float[] skillRecovery=new float[9];
+    public float[] skillRecovery=new float[10];
 
     public static Vector3 Abdomen(PlayerHealth target)
     {
@@ -142,6 +143,17 @@ public sealed partial class CalligraphyBossCombat
     }
     void OnDrawGizmosSelected()
     {
+        if(inkAvatarUltimate!=null)
+        {
+            var a=inkAvatarUltimate;Vector3 impact=transform.position+transform.forward*a.slam.forwardDistance;
+            if(avatarUltimate && avatarUltimate.GroundIsHazardous)impact=avatarUltimate.ImpactPoint;
+            void Ring(Vector3 center,float radius)
+            {Vector3 prev=center+Vector3.right*radius;for(int i=1;i<=64;i++){float angle=i*Mathf.PI*2/64;Vector3 next=center+new Vector3(Mathf.Cos(angle),0,Mathf.Sin(angle))*radius;Gizmos.DrawLine(prev,next);prev=next;}}
+            Gizmos.color=new Color(.15f,.75f,.8f,.8f);Ring(impact,a.sea.radius);
+            Gizmos.color=new Color(.8f,.65f,.2f,.8f);Ring(impact+Vector3.up*a.platforms.heightRange.x,a.platforms.spawnRadius);Ring(impact+Vector3.up*a.platforms.heightRange.y,a.platforms.spawnRadius);
+            Gizmos.color=Color.white;Gizmos.DrawLine(impact,impact+Vector3.up*25);Gizmos.DrawWireSphere(impact,1);
+            if(avatarUltimate && avatarUltimate.GroundIsHazardous){Gizmos.color=Color.green;Ring(avatarUltimate.LandingPoint,a.platforms.landingPlatformSize*.5f);}
+        }
         Gizmos.color=Color.red;Gizmos.DrawWireSphere(transform.position,meleeDistance);
         Gizmos.DrawWireSphere(transform.position+transform.forward*7,inkDragon.impactRadius);
         Gizmos.color=Color.cyan;Gizmos.DrawWireSphere(player?player.transform.position:transform.position,runeAttack.spawnRadius);

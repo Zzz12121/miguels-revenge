@@ -26,7 +26,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     CalligraphyWorldIsolation isolation;
     readonly List<Renderer> faceRenderers=new();
     float age,spawnClock;
-    bool sixReleased;
+    bool dragonsReleased;
     sealed class HangingStroke {public LineRenderer line;public Vector3[] basis,points;public float seed;}
     readonly List<HangingStroke> curtains=new();
     float footprintClock;
@@ -412,13 +412,14 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
             spawnClock=1.2f;
             ink.Mist(transform.position+new Vector3(Random.Range(-radius,radius),Random.Range(-7,22),Random.Range(-radius,radius)),Vector3.up*.1f,3.5f,5);
         }
-        if(age>=entrySeconds && !sixReleased)
+        if(age>=entrySeconds && !dragonsReleased)
         {
-            sixReleased=true;
-            for(int i=0;i<boss.paintingWorld.dragonCount;i++)
+            dragonsReleased=true;
+            int count=Mathf.Clamp(boss.paintingWorld.dragonCount,0,12);
+            Vector3 target=CalligraphyGeometry.Ground(player.transform.position,player.transform);
+            for(int i=0;i<count;i++)
             {
-                float a=i*Mathf.PI*2/Mathf.Max(1,boss.paintingWorld.dragonCount);
-                Vector3 target=CalligraphyGeometry.Ground(player.transform.position,player.transform);
+                float a=i*Mathf.PI*2/count;
                 Vector3 from=target+new Vector3(Mathf.Cos(a)*34.5f,7.5f+i%3*3,Mathf.Sin(a)*34.5f)*sizeMultiplier;
                 var go=new GameObject("Painting dragon "+(i+1));go.transform.SetParent(transform,false);
                 var dragon=go.AddComponent<CalligraphyInkDragon>();dragon.Initialize(ink,player,from,target,boss.paintingDragonScale,1+i*2.5f,false,boss.paintingDragonDamage);dragons.Add(dragon);

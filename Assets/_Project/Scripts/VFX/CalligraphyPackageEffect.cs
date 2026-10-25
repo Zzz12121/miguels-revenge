@@ -112,6 +112,7 @@ public sealed class CalligraphyPackageEffect : MonoBehaviour
         }
     }
     public void StopAfter(float delay,float tail=1.5f){stopAt=Age+delay;scheduledFade=tail;}
+    public void KeepAliveFor(float seconds){Duration=Mathf.Max(Duration,seconds);}
     public void Initialize(float playbackSpeed,float skip)
     {
         speed=Mathf.Max(.01f,playbackSpeed);Systems=GetComponentsInChildren<ParticleSystem>(true);

@@ -609,6 +609,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         UpdateReticle(default, false);
     }
 
+    // Read-only integration point for the ink arena's W-intent ledge climb.
+    public bool IsPullingPlayer => pullingPlayerControls;
+
     void OnDestroy()
     {
         if (lineMaterial != null) Destroy(lineMaterial);

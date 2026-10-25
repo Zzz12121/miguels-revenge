@@ -4177,6 +4177,152 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c00c45ebfb3d1cb4d92247be018eb607, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CalligraphyBossCombat
+  inkAvatarUltimate:
+    roarSeconds: 4.3
+    pillars:
+      prefab: {fileID: 571280465873317699, guid: 1c3b238ab20ef9447a95bc64a9277cee, type: 3}
+      scale: 1.8
+      opacity: 0.6
+      count: 4
+      spawnRange: {x: 7, y: 0.4, z: 7}
+      stagger: 0.18
+      duration: 1.6
+      frequency: 1.15
+      randomDistribution: 1
+      followElder: 1
+      height: 0.1
+      minimumDistance: 1.8
+      maximumDistance: 7
+    avatar:
+      size: 100
+      positionOffset: {x: 0, y: 0, z: 0}
+      distanceBehind: 24
+      height: 0
+      opacity: 0.78
+      appearSeconds: 3.2
+      dissolveSeconds: 2.5
+      flowStrength: 0.65
+      faceClarity: 0.86
+      hairAmplitude: 2.2
+      beardAmplitude: 1.3
+      robeAmplitude: 2.8
+      hairSpeed: 0.85
+      robeSpeed: 0.65
+      flowSpeed: 1
+      motionInertia: 0.8
+      eyeVisibility: 0.9
+      eyeContrast: 1
+      gazeSpeed: 0.7
+      gazeOffset: {x: 0, y: 0}
+      followElderRotation: 0
+      material: {fileID: 2100000, guid: b1d7440f0a094cd42b07ff65457a6e85, type: 2}
+    sweep:
+      angle: 60
+      radius: 58
+      seconds: 1.55
+      interval: 0.65
+      firstDamage: 20
+      secondDamage: 24
+      firstKnockback: 1
+      secondKnockback: 1
+      knockbackSpeed: 10
+      contactHeight: 3.5
+      trajectoryWidth: 4.5
+      brushLengthMultiplier: 1.18
+      trailSize: 1
+      trailLifetime: 1.8
+      trailOpacity: 0.88
+    slam:
+      seconds: 2.2
+      damage: 32
+      radius: 75
+      forwardDistance: 20
+      launchHeight: 25
+      minimumLaunchSpeed: 28
+      horizontalPush: 5
+      verticalReady: 0.38
+      gripOffset: {x: 0, y: 0, z: 0}
+    sea:
+      radius: 75
+      spreadSeconds: 2.6
+      duration: 28
+      fadeSeconds: 2
+      opacity: 0.95
+      density: 1
+      damage: 8
+      damageInterval: 1.5
+      meanHeight: 0.15
+      waveAmplitude: 2.4
+      churnSpeed: 0.85
+      vortexDensity: 1
+      vortexStrength: 1.3
+      inkFilaments: 20
+      edgeStrength: 0.8
+      slowMultiplier: 0.45
+      rescueToPlatform: 0
+      material: {fileID: 2100000, guid: 15f8a68ced2b9d44c935ed2d5bdadbe2, type: 2}
+    platforms:
+      count: 64
+      sizeRange: {x: 7, y: 10}
+      heightRange: {x: 3, y: 85}
+      heightWeights:
+      - 0.18
+      - 0.24
+      - 0.22
+      - 0.2
+      - 0.16
+      smallSize: {x: 3.5, y: 6}
+      mediumSize: {x: 8, y: 15}
+      largeSize: {x: 19, y: 29}
+      sizeWeights: {x: 0.42, y: 0.4, z: 0.18}
+      thicknessRange: {x: 4, y: 22}
+      irregularity: 0.65
+      sharpness: 0.85
+      clustering: 0.4
+      spawnStagger: 0.035
+      riseSpeedVariation: 0.4
+      spawnRadius: 68
+      riseSpeed: 18
+      minimumGap: 0.7
+      randomYaw: 1
+      landingPlatformSize: 14
+      material: {fileID: 2100000, guid: c894f125c9503fb409df9d9202956e19, type: 2}
+    climb:
+      enabled: 1
+      reach: 1.35
+      seconds: 2.1
+      facingAngle: 55
+      waistClearance: 0.08
+      ledgeHeight: {x: 0.5, y: 2.5}
+    roarShake:
+      strength: 0.045
+      duration: 3.5
+      frequency: 7
+    summonShake:
+      strength: 0.14
+      duration: 1.1
+      frequency: 6
+    firstSweepShake:
+      strength: 0.23
+      duration: 0.6
+      frequency: 12
+    secondSweepShake:
+      strength: 0.28
+      duration: 0.7
+      frequency: 14
+    slamShake:
+      strength: 0.65
+      duration: 1.1
+      frequency: 18
+    risingShake:
+      strength: 0.09
+      duration: 2.6
+      frequency: 5
+    airCombatProjectiles: 1
+    airAttackInterval: 2.5
+    airAttackDamage: 8
+    airProjectileSpeed: 18
+    randomSeed: 521
   brush: {fileID: 1401178070}
   ink: {fileID: 163795483}
   cloneTemplate: {fileID: 2835637790468908604, guid: cb2ab42acb159b94f8d7d1dfa80246ef, type: 3}
@@ -4237,6 +4383,8 @@ MonoBehaviour:
     controlSeconds: 0.5
     knockbackSpeed: 3
     launchSpeed: 3
+    pulseContactHeight: 0.55
+    edgeKnockbackMultiplier: 0.15
     releaseSeconds: 0.8
     castSeconds: 4.5
   leapSlam:
@@ -4255,6 +4403,8 @@ MonoBehaviour:
       controlSeconds: 1.15
       knockbackSpeed: 9
       launchSpeed: 7
+      pulseContactHeight: 0.55
+      edgeKnockbackMultiplier: 0.15
   runeAttack:
     count: 12
     spawnRadius: 20
@@ -4304,7 +4454,7 @@ MonoBehaviour:
     entrySeconds: 4
     containedSeconds: 20
     exitSeconds: 2.5
-    dragonCount: 6
+    dragonCount: 5
     pulseScale: 0.35
     pulseInterval: 0.3
     pulseFade: 1.5
@@ -4332,6 +4482,7 @@ MonoBehaviour:
     playbackSpeed: 1.5
     fadeSeconds: 1.5
   skillRecovery:
+  - 0
   - 0
   - 0
   - 0
@@ -4506,6 +4657,14 @@ MonoBehaviour:
   - {fileID: 7400000, guid: 45de92ebe01d7d743bea842ef0c42d72, type: 2}
   - {fileID: 7400000, guid: c6b6151ae3758094ab6f7259aaf2652a, type: 2}
   currentAnimation: standing_relax
+  avatarSweepAngle: 60
+  useGroundHeightOverride: 0
+  groundHeightOverride: 0
+  useAvatarBrushTarget: 0
+  avatarBrushTarget: {x: 0, y: 0, z: 0}
+  avatarVerticalWeight: 0
+  avatarGripOffset: {x: 0, y: 0, z: 0}
+  avatarBasePosition: {x: 0, y: 0, z: 0}
 --- !u!4 &1401178071
 Transform:
   m_ObjectHideFlags: 0

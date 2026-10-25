@@ -15,14 +15,14 @@ public sealed class CalligraphyPlayerHitGate : MonoBehaviour
         return false;
     }
     public static bool Hit(PlayerHealth player,float damage,Vector3 impulse,string reason,Vector3? contact=null,
-        CalligraphyPlayerControl.Reaction reaction=CalligraphyPlayerControl.Reaction.None,float controlSeconds=1,Vector2? launch=null,Transform source=null)
+        CalligraphyPlayerControl.Reaction reaction=CalligraphyPlayerControl.Reaction.None,float controlSeconds=1,Vector2? launch=null,Transform source=null,Transform feedbackParent=null,bool allowOrdinaryStun=true)
     {
         if(!player || player.IsDead)return false;
         if(CalligraphyPaintingWorld.BlocksTether && (!source || !CalligraphyWorldIsolation.Allows(source)))return false;
         var gate=player.GetComponent<CalligraphyPlayerHitGate>()??player.gameObject.AddComponent<CalligraphyPlayerHitGate>();
         var controller=player.GetComponent<ThirdPersonController>();
         bool controlled=(controller && (controller.ActionsLocked || controller.IsStunned || controller.IsBallistic)) || (player.GetComponent<TetherThrownMotion>()?.IsActive??false);
-        bool stun=reaction==CalligraphyPlayerControl.Reaction.None && !controlled && Time.time>=gate.nextStun;
+        bool stun=allowOrdinaryStun && reaction==CalligraphyPlayerControl.Reaction.None && !controlled && Time.time>=gate.nextStun;
         float before=player.Health;
         bool actual=false;System.Action<float> receipt=a=>actual|=a>0;
         player.OnDamaged+=receipt;
@@ -45,7 +45,7 @@ public sealed class CalligraphyPlayerHitGate : MonoBehaviour
             Vector3 at=contact??(cc?cc.ClosestPoint(player.transform.position+Vector3.up-direction):player.transform.position+Vector3.up);
             if(cc)at=cc.ClosestPoint(at);
             Quaternion rotation=Quaternion.LookRotation(direction);
-            Transform parent=CalligraphyPaintingWorld.BlocksTether && source?source.parent:null;
+            Transform parent=feedbackParent?feedbackParent:CalligraphyPaintingWorld.BlocksTether && source?source.parent:null;
             CalligraphyVfxLibrary.Play((gate.hitSequence++%2==0)?library.novaLight:library.novaHeavy,at,rotation,.55f,1.5f,0,parent);
             CalligraphyVfxLibrary.Play(library.impact,at,rotation,.45f,1.5f,0,parent);
             CalligraphyVfxLibrary.Play(library.cone,at,rotation,.45f,1.5f,0,parent);

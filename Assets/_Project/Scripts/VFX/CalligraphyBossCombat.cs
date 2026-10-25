@@ -27,7 +27,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     public float Health {get;private set;}
     public int SelectedSkill {get;private set;}
     public string SkillName=>SkillNames[Mathf.Clamp(SelectedSkill,0,SkillNames.Length-1)];
-    public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍","交叉運筆・墨光","躍筆重砸","連環墨浪","點墨落印"};
+    public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍","交叉運筆・墨光","躍筆重砸","連環墨浪","點墨落印","墨相鎮海・浮墨天階"};
     public bool IsCasting=>casting;
     public bool WaitingForPreview {get;private set;}
     public Transform EffectsRoot=>effectsRoot;
@@ -140,6 +140,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             case 6: LeapSlam();break;
             case 7: FrontalPulses();break;
             case 8: Runes();break;
+            case 9: InkAvatarUltimate();break;
         }
         inkClock-=Time.deltaTime;
         if(inkClock<=0 && brush && brush.brushTip)
@@ -273,6 +274,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     public void CancelCast()
     {
+        if(avatarUltimate){avatarUltimate.Cleanup();Destroy(avatarUltimate.gameObject);avatarUltimate=null;}
         WaitingForPreview=practiceImmortal && Active;
         runePoints.Clear();
         cooldown=Mathf.Max(cooldown,recoverySeconds);
