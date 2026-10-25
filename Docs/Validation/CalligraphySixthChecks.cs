@@ -97,7 +97,7 @@ public static class CalligraphySixthChecks
         foreach(var p in u.Platforms){Check(p.GetComponent<MeshCollider>().convex,"Missing convex collider");Check(p.Depth>=2,"Thin wafer");}
         await Until(()=>motor.IsGrounded && cc.bounds.min.y>5,8,"Initial launch did not land on reserved rock");
         Shot("arena");
-        var fold=u.GetComponentsInChildren<MeshFilter>().First(m=>m.sharedMesh.name=="Overturning ink wave sheets");
+        var fold=u.GetComponentsInChildren<MeshFilter>().First(m=>m.sharedMesh.name=="Branching airborne ink diffusion");
         var old=fold.sharedMesh.vertices;await Wait(.7f);var now=fold.sharedMesh.vertices;
         Check(now.All(v=>float.IsFinite(v.x)&&float.IsFinite(v.y)&&float.IsFinite(v.z)),"Invalid wave vertices");
         Check(now.Where((v,i)=>Vector3.Distance(v,old[i])>.05f).Count()>100,"Sea is not moving");

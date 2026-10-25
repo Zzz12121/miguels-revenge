@@ -25,15 +25,14 @@ public sealed partial class CalligraphyBossCombat
         [Min(.1f)] public float appearSeconds=3.2f,dissolveSeconds=2.5f;
         [Range(0,2)] public float flowStrength=.65f;
         [Range(0,1)] public float faceClarity=.86f;
-        [Header("髮鬚／衣袍生命感（世界公尺）")]
-        [Min(0)] public float hairAmplitude=2.2f,beardAmplitude=1.3f,robeAmplitude=2.8f;
-        [Min(.05f)] public float hairSpeed=.85f,robeSpeed=.65f,flowSpeed=1;
+        [Header("衣袍生命感（頭部與髮鬚保持原型）")]
+        [Min(0)] public float robeAmplitude=2.8f;
+        [Min(.05f)] public float robeSpeed=.65f,flowSpeed=1;
         [Range(0,2)] public float motionInertia=.8f;
-        [Header("點睛／緩慢凝視")]
-        [Range(0,1)] public float eyeVisibility=.9f;
-        [Range(0,2)] public float eyeContrast=1;
-        [Min(.05f)] public float gazeSpeed=.7f;
-        public Vector2 gazeOffset;
+        // Retain old serialized data without offering controls for the removed head/eye effects.
+        [HideInInspector] public float hairAmplitude=2.2f,beardAmplitude=1.3f,hairSpeed=.85f;
+        [HideInInspector] public float eyeVisibility=.9f,eyeContrast=1,gazeSpeed=.7f;
+        [HideInInspector] public Vector2 gazeOffset;
         public bool followElderRotation=false;
         public Material material;
     }
@@ -68,13 +67,20 @@ public sealed partial class CalligraphyBossCombat
         [Range(.1f,2)] public float density=1;
         [Min(0)] public float damage=8;
         [Min(.2f)] public float damageInterval=1.5f;
-        [Header("宿墨翻湧（視覺浪峰不施加彈跳）")]
+        [Header("平墨面／向空氣滲墨（純視覺）")]
         public float meanHeight=.15f;
-        [Min(0)] public float waveAmplitude=2.4f;
+        [Range(0,.35f),Tooltip("輕微表面起伏，避免厚重黏稠的捲浪。")] public float waveAmplitude=.18f;
         [Min(.05f)] public float churnSpeed=.85f;
         [Range(.1f,3)] public float vortexDensity=1,vortexStrength=1.3f;
-        [Range(0,48)] public int inkFilaments=20;
+        [HideInInspector] public int inkFilaments=20;
         [Range(0,2)] public float edgeStrength=.8f;
+        [Range(0,160),Tooltip("均勻分散的滲墨位置數；各自錯開生命週期，消散時其他位置會接續。")] public int airPlumeCount=112;
+        [Tooltip("墨從平面向空氣滲出的高度範圍（公尺）。")] public Vector2 airHeight=new(2.5f,7);
+        [Tooltip("每團墨從滲出、分岔到消散的秒數範圍。")] public Vector2 airLifetime=new(3.2f,5.5f);
+        [Range(.3f,6),Tooltip("分岔向外擴散的寬度。")] public float airSpread=2.3f;
+        [Range(0,1)] public float airOpacity=.62f;
+        [Range(0,1),Tooltip("細碎分形墨絲與邊緣的侵蝕程度。")] public float airBranching=.8f;
+        public Material diffusionMaterial;
         [Range(.1f,1),Tooltip("落海時移速倍率；離開墨海即解除。落海不再彈起。")] public float slowMultiplier=.45f;
         [HideInInspector] public bool rescueToPlatform=false;
         public Material material;

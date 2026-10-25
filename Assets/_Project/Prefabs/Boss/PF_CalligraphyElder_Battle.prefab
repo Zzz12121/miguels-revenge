@@ -1830,13 +1830,13 @@ MonoBehaviour:
       dissolveSeconds: 2.5
       flowStrength: 0.65
       faceClarity: 0.86
-      hairAmplitude: 2.2
-      beardAmplitude: 1.3
       robeAmplitude: 2.8
-      hairSpeed: 0.85
       robeSpeed: 0.65
       flowSpeed: 1
       motionInertia: 0.8
+      hairAmplitude: 2.2
+      beardAmplitude: 1.3
+      hairSpeed: 0.85
       eyeVisibility: 0.9
       eyeContrast: 1
       gazeSpeed: 0.7
@@ -1879,12 +1879,19 @@ MonoBehaviour:
       damage: 8
       damageInterval: 1.5
       meanHeight: 0.15
-      waveAmplitude: 2.4
+      waveAmplitude: 0.18
       churnSpeed: 0.85
       vortexDensity: 1
       vortexStrength: 1.3
       inkFilaments: 20
       edgeStrength: 0.8
+      airPlumeCount: 112
+      airHeight: {x: 2.5, y: 7}
+      airLifetime: {x: 3.2, y: 5.5}
+      airSpread: 2.3
+      airOpacity: 0.62
+      airBranching: 0.8
+      diffusionMaterial: {fileID: 2100000, guid: 2f9f80c4896097b42945eac2a7188c3a, type: 2}
       slowMultiplier: 0.45
       rescueToPlatform: 0
       material: {fileID: 2100000, guid: 15f8a68ced2b9d44c935ed2d5bdadbe2, type: 2}

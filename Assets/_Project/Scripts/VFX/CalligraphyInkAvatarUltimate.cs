@@ -184,7 +184,7 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
             if(r is SkinnedMeshRenderer skin)skin.updateWhenOffscreen=true;
         }
         SetAvatarPlacement();root.SetActive(true);
-        life=root.AddComponent<CalligraphyAvatarLife>();life.Initialize(avatar,head,player.transform,s.avatar,avatarRenderers);
+        life=root.AddComponent<CalligraphyAvatarLife>();life.Initialize(avatar,head,s.avatar,avatarRenderers);
     }
     void SetAvatarPlacement()
     {
