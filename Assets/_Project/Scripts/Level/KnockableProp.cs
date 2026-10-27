@@ -7,6 +7,8 @@ using UnityEngine;
 /// - 被玩家或小怪的攻擊掃到：往攻擊者的反方向飛出去、翻滾，之後就是一個普通的物理物件
 /// - 玩家或小怪用走的頂到它：會把它往前頂開（越重的越難推），所以翻倒的木桶不會把路堵死
 /// - 被打飛的那一瞬間暫時不跟附近的角色互撞（不然出手的人往前踏步會跟它擠在一起，畫面一頓一頓的）
+/// - 被「玩家」打到時有機率碎掉：炸成一堆木塊碎片，裡面有機率掉出補血道具（HealthPickup）。
+///   小怪揮劍掃到只會打飛、不會打碎。打越多下越容易碎（breakChancePerHit 每下累加）。
 ///
 /// 想在別的場景用：把這個元件加到任何有模型的物件上，執行時會自動幫它配好碰撞和 Rigidbody。
 /// </summary>
@@ -22,12 +24,29 @@ public class KnockableProp : Knockable
     public AudioClip[] landSounds;
     [Range(0f, 1f)] public float soundVolume = 0.6f;
 
+    [Header("被打碎")]
+    [Tooltip("可不可以被打碎")]
+    public bool breakable = true;
+    [Tooltip("被玩家打一下碎掉的機率（0~1）。沒碎的話下一下機率會再加上這麼多，所以多打幾下一定會碎")]
+    [Range(0f, 1f)] public float breakChancePerHit = 0.3f;
+    [Tooltip("碎掉時掉出補血道具的機率（0~1）")]
+    [Range(0f, 1f)] public float dropChance = 0.6f;
+    [Tooltip("掉出來的補血道具（DungeonGenerator 會自動填 Prefabs/HealthPickup）。留空 = 用程式做一個一樣的紅十字")]
+    public GameObject dropPrefab;
+    [Tooltip("掉出來的補血道具回多少血（只在 Drop Prefab 留空、用程式做的時候有用）")]
+    public float dropHealAmount = 30f;
+    [Tooltip("碎片的數量")]
+    public int debrisCount = 9;
+
+    float breakChance;
+    bool broken;
+
     Rigidbody body;
     BoxCollider box;
     float lastKnockTime = float.NegativeInfinity;
     float lastThudTime = float.NegativeInfinity;
 
-    public override bool IsDead => false; // 可以一直打
+    public override bool IsDead => broken; // 碎掉之前可以一直打
 
     /// <summary>把一個只有模型的物件變成可以打飛的擺設</summary>
     public static KnockableProp Setup(GameObject go)
@@ -131,6 +150,94 @@ public class KnockableProp : Knockable
         IgnoreCharactersFor(box, body.worldCenterOfMass, 3.5f, 0.4f);
     }
 
+    /// <summary>被玩家打到：擲骰決定碎不碎（每打一下沒碎，下一下的機率就更高）</summary>
+    protected override void OnPlayerHit(float damage)
+    {
+        if (!breakable || broken) return;
+        // 重擊（連擊第三下、蓄力重擊）比較容易碎
+        breakChance += breakChancePerHit * Mathf.Clamp(damage / 12f, 0.7f, 1.6f);
+        if (Random.value < breakChance) Break();
+    }
+
+    /// <summary>碎掉：模型換成一堆往外飛的碎片，有機率在原地掉出補血道具</summary>
+    public void Break()
+    {
+        if (broken) return;
+        broken = true;
+
+        Bounds wb = box != null ? box.bounds : new Bounds(transform.position + Vector3.up * 0.5f, Vector3.one);
+        Vector3 center = wb.center;
+        Vector3 baseVel = body != null && !body.isKinematic ? body.linearVelocity * 0.4f : Vector3.zero;
+
+        // 碎片用原本模型的材質（木頭的顏色）
+        Material mat = null;
+        foreach (var r in GetComponentsInChildren<Renderer>())
+            if (r.sharedMaterial != null) { mat = r.sharedMaterial; break; }
+        SpawnDebris(wb, baseVel, mat);
+
+        GameAudio.Play("SFX/RPG/chop", center, 0.9f, Random.Range(0.55f, 0.7f), 0.05f, 1f, 35f);
+        GameAudio.PlayAt(GameAudio.Pick(landSounds, "SFX/RPG/bookPlace1", "SFX/RPG/bookPlace2", "SFX/RPG/bookPlace3"),
+                         center, soundVolume, Random.Range(0.5f, 0.65f), 1f, 30f);
+        CombatVFX.Impact(center, new Color(0.85f, 0.65f, 0.4f));
+
+        if (Random.value < dropChance) DropPickup(wb);
+
+        Destroy(gameObject);
+    }
+
+    void SpawnDebris(Bounds wb, Vector3 baseVel, Material mat)
+    {
+        Vector3 size = wb.size;
+        float piece = Mathf.Clamp(Mathf.Min(size.x, size.y, size.z) * 0.35f, 0.08f, 0.35f);
+        var holder = new GameObject(name + "_Debris");
+        holder.transform.position = wb.center;
+        for (int i = 0; i < Mathf.Max(1, debrisCount); i++)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "Splinter";
+            go.transform.SetParent(holder.transform, false);
+            Vector3 local = new Vector3(Random.Range(-0.4f, 0.4f) * size.x, Random.Range(-0.4f, 0.4f) * size.y, Random.Range(-0.4f, 0.4f) * size.z);
+            go.transform.position = wb.center + local;
+            go.transform.rotation = Random.rotation;
+            // 長條形的木片 + 一些小方塊
+            go.transform.localScale = i % 3 == 0
+                ? new Vector3(piece * 0.8f, piece * 0.8f, piece * 0.8f)
+                : new Vector3(piece * 0.45f, piece * 0.3f, piece * Random.Range(1.6f, 2.6f));
+            var rend = go.GetComponent<Renderer>();
+            if (mat != null) rend.sharedMaterial = mat;
+            rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var rb = go.AddComponent<Rigidbody>();
+            rb.mass = 0.5f;
+            Vector3 outDir = (local.sqrMagnitude > 0.0001f ? local.normalized : Random.onUnitSphere) + Vector3.up * 0.8f;
+            rb.linearVelocity = baseVel + outDir.normalized * Random.Range(3f, 6.5f);
+            rb.angularVelocity = Random.insideUnitSphere * 12f;
+            // 碎片不要擋住角色和鏡頭（只跟地板 / 牆碰撞）
+            int n = Physics.OverlapSphereNonAlloc(wb.center, 6f, debrisNearby, ~0, QueryTriggerInteraction.Ignore);
+            var col = go.GetComponent<Collider>();
+            for (int k = 0; k < n; k++)
+                if (debrisNearby[k] is CharacterController) Physics.IgnoreCollision(col, debrisNearby[k], true);
+        }
+        holder.AddComponent<DebrisFade>().life = 2.5f;
+    }
+    static readonly Collider[] debrisNearby = new Collider[32];
+
+    void DropPickup(Bounds wb)
+    {
+        // 掉在碎掉的地方的地面上
+        Vector3 p = wb.center;
+        float groundY = wb.min.y;
+        var hits = Physics.RaycastAll(p + Vector3.up * 0.5f, Vector3.down, 8f, ~0, QueryTriggerInteraction.Ignore);
+        float best = float.NegativeInfinity;
+        foreach (var h in hits)
+        {
+            if (h.collider is CharacterController || h.collider.transform.IsChildOf(transform)) continue;
+            if (h.collider.attachedRigidbody != null && !h.collider.attachedRigidbody.isKinematic) continue; // 別的木桶、碎片
+            if (h.point.y > best) best = h.point.y;
+        }
+        if (!float.IsNegativeInfinity(best)) groundY = best;
+        HealthPickup.Spawn(new Vector3(p.x, groundY, p.z), dropPrefab, dropHealAmount);
+    }
+
     /// <summary>進關卡時先把會用到的音效載好，第一次打到東西時才不會為了讀檔頓一下</summary>
     public static void Prewarm()
     {
@@ -178,4 +285,28 @@ public class KnockableProp : Knockable
                          Random.Range(0.6f, 0.8f) * Mathf.Lerp(1.15f, 0.85f, Mathf.InverseLerp(12f, 160f, body.mass)), 1f, 30f);
     }
 
+}
+
+/// <summary>木桶碎片：幾秒後縮小消失</summary>
+public class DebrisFade : MonoBehaviour
+{
+    public float life = 2.5f;
+    float t;
+    Vector3[] scales;
+
+    void Start()
+    {
+        scales = new Vector3[transform.childCount];
+        for (int i = 0; i < scales.Length; i++) scales[i] = transform.GetChild(i).localScale;
+    }
+
+    void Update()
+    {
+        t += Time.deltaTime;
+        float k = Mathf.Clamp01((t - life) / 0.6f);
+        if (k >= 1f) { Destroy(gameObject); return; }
+        if (k <= 0f) return;
+        for (int i = 0; i < scales.Length && i < transform.childCount; i++)
+            transform.GetChild(i).localScale = scales[i] * (1f - k);
+    }
 }

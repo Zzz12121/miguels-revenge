@@ -41,7 +41,11 @@ public abstract class Knockable : MonoBehaviour, IDamageable
             if (go != null) player = go.transform;
         }
         Knock(player != null ? player.position : hitPoint, amount);
+        OnPlayerHit(amount);
     }
+
+    /// <summary>被玩家的攻擊打到之後（Knock 之後）呼叫。子類別可以在這裡做「被玩家打才會發生」的事，例如木桶碎掉</summary>
+    protected virtual void OnPlayerHit(float damage) { }
 
     /// <summary>
     /// 接下來 seconds 秒，own 這個碰撞體不跟 center 附近 radius 公尺內的角色（玩家、小怪）互相碰撞。
