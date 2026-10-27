@@ -44,6 +44,7 @@ public class BossHealth : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || Invulnerable || amount <= 0f) return;
         Health = Mathf.Max(0f, Health - amount);
         lastHitTime = Time.time;
@@ -117,6 +118,7 @@ public class BossHealth : MonoBehaviour, IDamageable
     // ---------- Boss 血條 ----------
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (!ShowBar) return;
         if (IsDead && Time.time - deathTime > 5f) return; // 擊敗 5 秒後收起血條
         float w = Screen.width * 0.55f, h = 14f;

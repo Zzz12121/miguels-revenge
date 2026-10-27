@@ -312,6 +312,7 @@ public class ClockTrap : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         // 地上的時鐘：鐘面上方顯示倒數秒數
         if (!floorMode || isTriggered || GameUI.OverlayOpen) return;
         var cam = Camera.main;

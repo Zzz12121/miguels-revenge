@@ -1815,6 +1815,7 @@ public class BossController : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (!showStatus || (!FightActive && !dead)) return;
         var style = new GUIStyle(GUI.skin.label) { fontSize = 20, alignment = TextAnchor.UpperCenter, fontStyle = FontStyle.Bold };
         GUI.color = Color.white;

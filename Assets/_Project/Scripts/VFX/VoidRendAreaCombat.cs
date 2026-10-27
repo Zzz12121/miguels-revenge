@@ -68,7 +68,8 @@ public sealed partial class VoidRendSkillDemo
     {
         if (!component || component == this || victim.behaviours.ContainsKey(component)) return;
         if (!explicitOptIn && !ShouldSuspendVictimBehaviour(component) &&
-            !(component is VoidRendMovingTarget) && !(component is CalligraphyBrushPresentation)) return;
+            !(component is VoidRendMovingTarget) && !(component is CalligraphyBrushPresentation) &&
+            !(component is CalligraphyBossCombat) && !(component is CalligraphyClone)) return;
         victim.behaviours[component] = component.enabled;
         // Disabling a MonoBehaviour alone does NOT cancel its attack coroutines.
         if (component is EnemyCombat combat) { combat.CancelAttack(); combat.StopAllCoroutines(); }

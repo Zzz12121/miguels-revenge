@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a6dd9d49a68506b4a8bd3a705195f561, type: 3}
+  m_Name: CalligraphyVfxLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::CalligraphyVfxLibrary
+  pulse: {fileID: 5393501014961797963, guid: 44b3fc9a312540845b673a8cb14f9a6f, type: 3}
+  beam: {fileID: 3646937959271726984, guid: dd19b9655bb5cf5499a9a794b41bc4e3, type: 3}
+  smoke: {fileID: 4355778539890196292, guid: 5467556fae3f022439692d3cd5c0c939, type: 3}
+  bigExplosion: {fileID: 2526853237465068104, guid: 8fd01f168635c5e41a9888d2395fd67e, type: 3}
+  buffUp: {fileID: 5596407787817797596, guid: a317ab86765053742bcbdbeb3a4beb43, type: 3}
+  flashAoE: {fileID: 2465785194192440128, guid: 2d9273a1456db4c4e9e2987060c3c816, type: 3}
+  frontal: {fileID: 5241176593275279683, guid: 43e4aa1e005bae34f9da07f48c397192, type: 3}
+  frontalPulses: {fileID: 7522945423020047524, guid: ab5ff32e22349264382b36fc01bb5868, type: 3}
+  rune: {fileID: 6306347550846905451, guid: de02d3b803998f4448b72cae47431374, type: 3}
+  runeFall: {fileID: 9198519339036348952, guid: 84b4ed8197a1eda4f8c826b6a248766a, type: 3}
+  verticalExplosion: {fileID: 5746232153738284568, guid: c32c02777a6c98f4395ae41c61949bef, type: 3}
+  stab: {fileID: 93425656693196802, guid: 8d7835f4305b5e94294f1aebc4f36f41, type: 3}
+  cLight: {fileID: 8936698720221818097, guid: b2bc4aa873f08864c9ccef04bee9f459, type: 3}
+  cHeavy: {fileID: 6379623941502364909, guid: d0b4d2cee3e048943ba147aade9a43a1, type: 3}
+  circleLight: {fileID: 3817420857917277778, guid: 2792c26b0f01534439970c5788cf6810, type: 3}
+  circleHeavy: {fileID: 8479172791277090509, guid: ebeefb181ba2fa1448ef980f85ca0ab6, type: 3}
+  lunge: {fileID: 4062359760759018480, guid: c38ad4738b91478458ba224ab34eb102, type: 3}
+  projectile: {fileID: 8041152646951664015, guid: b9a99c76c99eff44dac94092a2e098f7, type: 3}
+  novaLight: {fileID: 3273038533473548251, guid: 060ba07432dfabc44aaed05898aa0c7a, type: 3}
+  novaHeavy: {fileID: 1728162147477254910, guid: 902add6b810385c4e8e32d6cc5f24e5c, type: 3}
+  impact: {fileID: 6015671654742010074, guid: 3a00b05f600e91b40abcce475c4786e8, type: 3}
+  cone: {fileID: 4317999751745903880, guid: bd58944cdf4061f4ca18aaeb6a62b90c, type: 3}
+  bladeTrail: {fileID: 2100000, guid: 8762c432d7abfc34da207c01dc21b721, type: 2}

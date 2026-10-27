@@ -17,6 +17,7 @@ public class BoatCrewMember : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || amount <= 0f) return;
         hits++;
         GameAudio.Play("SFX/RPG/cloth2", hitPoint, 0.9f, Random.Range(0.9f, 1.1f), 0f, 1f, 50f);

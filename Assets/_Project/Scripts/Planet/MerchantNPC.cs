@@ -240,6 +240,7 @@ public class MerchantNPC : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (GameUI.OverlayOpen) return;
         if (guiding && mode == Mode.Idle && !StoryDialogue.Active) DrawGuideMarker();
         switch (mode)

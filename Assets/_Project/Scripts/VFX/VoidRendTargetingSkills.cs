@@ -31,6 +31,7 @@ public sealed partial class VoidRendSkillDemo
     }
 
     PreviewSkill pendingSkill;
+    int calligraphyCast, calligraphyHit, calligraphySkill;
     VoidRendTargetable hoveredTarget;
     TargetSelection hoveredSelection;
     TargetSelection lockedSelection;
@@ -76,6 +77,12 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdatePreviewInputAndTargeting()
     {
+        if(RangeInputSettings.InputBlocked)return;
+        if(CalligraphyPaintingWorld.BlocksTether)
+        {
+            if(IsTargeting)CancelTargeting();
+            return;
+        }
         if (Keyboard.current == null) return;
         if (Time.timeScale <= 0f) return;
 
@@ -142,6 +149,7 @@ public sealed partial class VoidRendSkillDemo
 
     void BeginTargeting(PreviewSkill skill)
     {
+        if(!PlayerSkillAvailability.TryUse())return;
         if (playing || skill == PreviewSkill.None || Time.timeScale <= 0f ||
             !SkillAimCancellation.Register(CancelTargeting)) return;
         pendingSkill = skill;
@@ -160,6 +168,7 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateTargetSelection()
     {
+        if(!PlayerSkillAvailability.TryUse()){CancelTargeting();return;}
         if (Mouse.current != null && practiceOrbitCamera != null)
             practiceOrbitCamera.PanFromScreenEdge(Mouse.current.position.ReadValue(), Time.unscaledDeltaTime);
         hoveredSelection = FindTargetUnderPointer();
@@ -179,6 +188,9 @@ public sealed partial class VoidRendSkillDemo
         if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && hoveredTarget != null)
         {
             PreviewSkill selectedSkill = pendingSkill;
+            calligraphyCast = CalligraphyAttackContext.NewCast();
+            calligraphySkill = (int)selectedSkill;
+            calligraphyHit = 0;
             Transform selectedTarget = hoveredTarget.transform;
             lockedSelection = hoveredSelection;
             RestoreTargetingTime();
@@ -200,6 +212,8 @@ public sealed partial class VoidRendSkillDemo
 
     TargetSelection FindTargetUnderPointer()
     {
+        // Outside actors remain in the scene but are not part of the player's painting space.
+        if (CalligraphyPaintingWorld.BlocksTether) return default;
         if (skillCamera == null || Mouse.current == null) return default;
         Vector2 pointer = Mouse.current.position.ReadValue();
         Ray ray = skillCamera.ScreenPointToRay(pointer);
@@ -527,16 +541,19 @@ public sealed partial class VoidRendSkillDemo
     void HitCurrentTarget()
     {
         if (target == null) return;
+        if (CalligraphyAttackContext.Evades(target, calligraphyCast, calligraphySkill)) return;
         target.GetComponent<VoidRendTargetable>()?.PlayHitReaction();
         DamageCurrentTarget(targetSkillDamage);
     }
 
     void DamageCurrentTarget(float amount)
     {
+        if(target && !CalligraphyWorldIsolation.Allows(target))return;
         if (target == null || amount <= 0f) return;
         IDamageable damageable = target.GetComponentInParent<IDamageable>();
         if (damageable == null || damageable.IsDead) return;
-        damageable.TakeDamage(amount, TargetAimPosition());
+        using (CalligraphyAttackContext.Enter(calligraphyCast, calligraphySkill, ++calligraphyHit))
+            damageable.TakeDamage(amount, TargetAimPosition());
     }
 
     void FinishStandaloneSkill(Vector3 position, Quaternion rotation, bool sheathe = true)
@@ -561,7 +578,11 @@ public sealed partial class VoidRendSkillDemo
             normal = { textColor = new Color(0.78f, 0.94f, 1f, 0.94f) }
         };
         GUI.Box(new Rect(18f, Screen.height - 91f, 610f, 67f), GUIContent.none);
-        GUI.Label(new Rect(31f, Screen.height - 83f, 700f, 24f), "WASD 移動　空白：跳躍　V：翻滾　滑鼠：視角", controls);
+        var owner=practiceController?practiceController:(Component)this;
+        string sprint=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Sprint));
+        string jump=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Jump));
+        string roll=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Roll));
+        GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), $"WASD 移動　{sprint}：衝刺　{jump}：跳躍　{roll}：翻滾"+(RangeInputSettings.IsRange(owner)?"　K：按鍵設定":""), controls);
         GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
 
         if (!IsTargeting) return;

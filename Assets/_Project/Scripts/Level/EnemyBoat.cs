@@ -472,6 +472,7 @@ public class EnemyBoat : MonoBehaviour, IDamageable
     /// <summary>船身打不壞：只顯示「無效」，要射船上的人才有用</summary>
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (isDead || amount <= 0f) return;
         ShowInvalidHit(hitPoint);
     }
@@ -529,6 +530,7 @@ public class EnemyBoat : MonoBehaviour, IDamageable
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (isDead) return;
         var cam = Camera.main;
         if (cam == null) return;

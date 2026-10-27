@@ -552,15 +552,8 @@ public class VikingBoat : MonoBehaviour
 
     IEnumerator TransitionRoutine()
     {
-        float duration = 2.5f;
-        float elapsed = 0f;
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            fadeAlpha = Mathf.Clamp01(elapsed / duration);
-            yield return null;
-        }
+        // 抵達就直接進下一關：GameManager 會馬上蓋上「海域 → 地下城」的轉場動畫，不先黑屏
+        yield return null;
 
         Debug.Log($"[VikingBoat] 抵達指定航行海域，前往：{(string.IsNullOrEmpty(nextSceneName) ? "下一關" : nextSceneName)}");
         if (string.IsNullOrEmpty(nextSceneName)) GameManager.Instance.LoadNextLevel();
@@ -592,6 +585,7 @@ public class VikingBoat : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         var cam = Camera.main;
 
         // 增援敵艦出現的提示

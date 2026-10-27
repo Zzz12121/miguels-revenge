@@ -354,6 +354,7 @@ public class PlayerCombat : MeleeCombat
         for (int i = 0; i < n; i++)
         {
             var c = bashOverlap[i];
+            if (!CalligraphyWorldIsolation.Allows(c.transform)) continue;
             if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
             var target = c.GetComponentInParent<IDamageable>();
             if (target == null || target.IsDead || alreadyHit.Contains(target)) continue;
@@ -543,6 +544,7 @@ public class PlayerCombat : MeleeCombat
 
     protected override bool TryDamage(Collider c, float damage, Vector3 hitPoint, HashSet<object> alreadyHit)
     {
+        if(!CalligraphyWorldIsolation.Allows(c.transform))return false;
         var target = c.GetComponentInParent<IDamageable>();
         if (target == null || target.IsDead || alreadyHit.Contains(target)) return false;
 

@@ -46,6 +46,12 @@ public class PlayerHealth : MonoBehaviour
     float lastFlashTime = float.NegativeInfinity;
     float dodgeInvulnerableUntil = float.NegativeInfinity;
     readonly System.Collections.Generic.HashSet<Object> skillInvulnerability = new();
+    readonly System.Collections.Generic.HashSet<Object> practiceProtection = new();
+    public void SetPracticeProtection(Object owner, bool active)
+    {
+        if (active && owner) practiceProtection.Add(owner);
+        else practiceProtection.Remove(owner);
+    }
     public void SetSkillInvulnerability(Object owner, bool active)
     {
         if (active && owner) skillInvulnerability.Add(owner);
@@ -74,6 +80,7 @@ public class PlayerHealth : MonoBehaviour
 
         // 精力條：衝刺 / 翻滾 / 跳躍消耗，站著不動時回復
         if (GetComponent<PlayerStamina>() == null) gameObject.AddComponent<PlayerStamina>();
+        if (GetComponent<PlayerSkillAvailability>() == null) gameObject.AddComponent<PlayerSkillAvailability>();
 
         // 有水的關卡：潛到水裡要消耗氧氣
         if (PlayerOxygen.SceneHasWater(gameObject.scene.name) && GetComponent<PlayerOxygen>() == null)
@@ -89,8 +96,10 @@ public class PlayerHealth : MonoBehaviour
     /// <param name="ignoreInvincibility">true = 持續傷害（例如光束），不受也不觸發受傷後的無敵時間</param>
     /// <param name="deathReason">這一下把玩家打死時，死亡畫面顯示的原因</param>
     public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false,
-                           string deathReason = "被打倒了")
+                           string deathReason = "被打倒了", bool applyHitStun = true)
     {
+        // Painting attacks use the explicit scoped hit gate; outside enemies cannot hit through it.
+        if(CalligraphyPaintingWorld.BlocksTether && !CalligraphyPlayerHitGate.DeliveringPaintingDamage)return false;
         if (IsDead) return false;
         skillInvulnerability.RemoveWhere(owner => !owner);
         if (skillInvulnerability.Count > 0) return false;
@@ -116,10 +125,11 @@ public class PlayerHealth : MonoBehaviour
         if (perks != null && perks.TryNegateHit()) return false;
         if (perks != null) amount *= perks.IncomingDamageScale;
         lastFlashTime = Time.time;
-        Health = Mathf.Max(0f, Health - amount);
+        practiceProtection.RemoveWhere(owner => !owner);
+        Health = Mathf.Max(practiceProtection.Count > 0 ? 1f : 0f, Health - amount);
         controller.AddImpulse(knockback);
         // 受擊僵直（持續傷害例如光束不算，不然會一直被定住）
-        if (!ignoreInvincibility && hitStunTime > 0f && amount > 0f)
+        if (applyHitStun && !ignoreInvincibility && hitStunTime > 0f && amount > 0f)
         {
             controller.Stun(hitStunTime);
             combat.CancelAttack();

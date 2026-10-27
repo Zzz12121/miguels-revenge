@@ -52,7 +52,9 @@ public class AbyssMark : MonoBehaviour
         Vector3 p = transform.position + Vector3.up * 1f;
         if (stored > 0f)
         {
-            target.TakeDamage(stored, p);
+            // 深淵復仇的傷害不受 Boss 受擊無敵時間影響
+            if (target is IUnblockableDamageable unblockable) unblockable.TakeUnblockableDamage(stored, p);
+            else target.TakeDamage(stored, p);
             CombatVFX.Impact(p, MarkColor);
             CombatVFX.Ring(transform.position + Vector3.up * 0.1f, MarkColor, 2.4f);
             GameAudio.Play("SFX/RPG/metalPot3", p, 1f, 0.6f, 0.05f, 0.3f);
@@ -69,6 +71,7 @@ public class AbyssMark : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (GameUI.OverlayOpen) return;
         var cam = Camera.main;
         if (cam == null) return;

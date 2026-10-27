@@ -249,7 +249,17 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // Cinemachine 的 Third Person Follow 會把鏡頭放在注視點正後方 distance 公尺（有牆就往前拉）
         cameraTarget.SetPositionAndRotation(lookPoint, rotation);
-        if (follow != null) follow.CameraDistance = dist;
+        if (follow != null)
+        {
+            var avoid=follow.AvoidObstacles;
+            bool painting=CalligraphyPaintingWorld.BlocksTether;
+            avoid.Enabled=!painting;follow.AvoidObstacles=avoid;
+            if(painting)
+                foreach(var hit in Physics.SphereCastAll(lookPoint,collisionRadius,-(rotation*Vector3.forward),dist,collisionMask,QueryTriggerInteraction.Ignore))
+                    if(!hit.transform.IsChildOf(target) && CalligraphyWorldIsolation.Allows(hit.transform) && hit.distance>0)
+                        dist=Mathf.Min(dist,Mathf.Max(.3f,hit.distance-.1f));
+            follow.CameraDistance = dist;
+        }
     }
 
     /// <summary>
@@ -277,6 +287,7 @@ public class ThirdPersonCamera : MonoBehaviour
                                                collisionMask, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < count; i++)
         {
+            if(!CalligraphyWorldIsolation.Allows(hits[i].transform))continue;
             if (hits[i].transform.IsChildOf(target)) continue;
             if (hits[i].collider is CharacterController) continue;
             if (hits[i].distance <= 0f) continue;
@@ -300,6 +311,8 @@ public class ThirdPersonCamera : MonoBehaviour
 
     void HandleInput()
     {
+        pointerUiOwners.RemoveWhere(owner=>!owner);
+        if(pointerUiOwners.Count>0)return;
         var mouse = Mouse.current;
         var kb = Keyboard.current;
 
@@ -348,6 +361,14 @@ public class ThirdPersonCamera : MonoBehaviour
     /// <summary>
     /// 立即將鏡頭瞬移至目標身後（切換跟隨目標或傳送時呼叫，防止平滑插值穿幫或卡在障礙物）
     /// </summary>
+    public void WarpWithTarget(Vector3 delta)
+    {
+        smoothedPivot+=delta;
+        if(cameraTarget)cameraTarget.position+=delta;
+        transform.position+=delta;
+        if(cinemachineCamera && cameraTarget)cinemachineCamera.OnTargetObjectWarped(cameraTarget,delta);
+    }
+
     public void SnapToTarget()
     {
         if (target == null || cameraTarget == null) return;
@@ -363,5 +384,13 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
         Cursor.visible = !locked;
+    }
+
+    readonly System.Collections.Generic.HashSet<UnityEngine.Object> pointerUiOwners=new();
+    /// <summary>Temporary UI ownership prevents click-to-relock from swallowing a visible menu button.</summary>
+    public void SetPointerUiOwner(UnityEngine.Object owner,bool active)
+    {
+        if(active && owner)pointerUiOwners.Add(owner);
+        else pointerUiOwners.Remove(owner);
     }
 }

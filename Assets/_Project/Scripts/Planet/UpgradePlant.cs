@@ -31,6 +31,10 @@ public class UpgradePlant : MonoBehaviour
     public bool advanced;
     [Tooltip("這個物件本身沒有模型時，複製這個物件的外觀（例如蜘蛛房的第一株植物）")]
     public GameObject copyVisualFrom;
+    [Tooltip("直接用這個 Prefab / 模型當外觀（優先於 copyVisualFrom；被複製的植物撿走後會被刪掉，用 Prefab 比較保險）")]
+    public GameObject visualPrefab;
+    [Tooltip("visualPrefab 的世界縮放")]
+    public float visualScale = 10f;
 
     Transform player;
     ThirdPersonController controller;
@@ -50,17 +54,18 @@ public class UpgradePlant : MonoBehaviour
     void Start()
     {
         InitPlayerReferences();
-        if (copyVisualFrom != null && GetComponentInChildren<Renderer>() == null) CopyVisual();
+        if ((visualPrefab != null || copyVisualFrom != null) && GetComponentInChildren<Renderer>() == null) CopyVisual();
     }
 
     /// <summary>複製另一株植物的模型當外觀（只留模型，不帶腳本和碰撞）</summary>
     void CopyVisual()
     {
-        var src = copyVisualFrom.transform;
-        var copy = Instantiate(copyVisualFrom, transform.position, src.rotation, transform);
+        var source = visualPrefab != null ? visualPrefab : copyVisualFrom;
+        var src = source.transform;
+        var copy = Instantiate(source, transform.position, src.rotation, transform);
         foreach (var mb in copy.GetComponentsInChildren<MonoBehaviour>(true)) DestroyImmediate(mb);
         foreach (var col in copy.GetComponentsInChildren<Collider>(true)) Destroy(col);
-        Vector3 ls = transform.lossyScale, want = src.lossyScale;
+        Vector3 ls = transform.lossyScale, want = visualPrefab != null ? src.localScale * visualScale : src.lossyScale;
         copy.transform.localScale = new Vector3(want.x / ls.x, want.y / ls.y, want.z / ls.z);
         copy.SetActive(true);
         copy.name = "Visual";

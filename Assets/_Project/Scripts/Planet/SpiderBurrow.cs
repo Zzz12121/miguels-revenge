@@ -473,6 +473,7 @@ public class SpiderBurrow : MonoBehaviour
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (GameUI.OverlayOpen) return;
 
         // 第一次鑽地時的說明

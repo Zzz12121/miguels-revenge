@@ -63,6 +63,7 @@ public class EnemyHealth : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (IsDead || amount <= 0f) return;
         if (hitsToKill > 0) amount = maxHealth / hitsToKill; // 每一下扣固定比例
         Health = Mathf.Max(0f, Health - amount);
@@ -203,6 +204,7 @@ public class EnemyHealth : MonoBehaviour, IDamageable
 
     void OnGUI()
     {
+        if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (!showHealthBar || IsDead) return;
         if (!ForceShowBar && Time.time - LastHitTime > barShowTime) return;
 
