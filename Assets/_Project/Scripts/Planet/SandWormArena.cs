@@ -37,11 +37,11 @@ public class SandWormArena : MonoBehaviour
     [Tooltip("提示結束到第一波之間的準備時間")]
     public float prepareTime = 1.5f;
     [Tooltip("每一波的倒數（期間不會提示哪裡危險）")]
-    public float waveWarnTime = 1.3f;
+    public float waveWarnTime = 2f;
     [Tooltip("沙蟲冒出前，地面先震動冒沙的時間")]
     public float rumbleLead = 0.4f;
     [Tooltip("沙蟲冒出後到下一波倒數開始")]
-    public float waveInterval = 1.1f;
+    public float waveInterval = 1.7f;
     public float restBetweenRounds = 2.5f;
 
     [Header("攻擊")]
@@ -51,6 +51,11 @@ public class SandWormArena : MonoBehaviour
     public float wormHeight = 7f;
     [Tooltip("攻擊時冒出來的沙蟲大小倍率（身體粗細和高度）")]
     public float attackWormScale = 2f;
+
+    [Header("音樂")]
+    [Tooltip("戰鬥音樂（不填 = Resources/Audio/Music/bgm_battle_sandworm）。開戰時換上，打完 / 死掉重來時換回關卡音樂")]
+    public AudioClip battleMusic;
+    [Range(0f, 1f)] public float battleMusicVolume = 0.5f;
 
     [Header("尾巴")]
     [Tooltip("要打中尾巴幾次才結束（沒打滿會一直循環）")]
@@ -153,6 +158,7 @@ public class SandWormArena : MonoBehaviour
         layoutAngle = 0f;
         BuildVisuals();
         fight = StartCoroutine(introShown ? FightRoutine(0) : IntroThenFight());
+        BattleMusic.Begin(battleMusic, battleMusicVolume, 1.5f, "Music/bgm_battle_sandworm");
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 1f, 0.4f, 0.05f, 0.3f);
     }
 
@@ -200,6 +206,7 @@ public class SandWormArena : MonoBehaviour
         layoutAngle = 0f;
         state = State.Idle;
         fightId++;
+        BattleMusic.End();
     }
 
     /// <summary>一輪接一輪，直到尾巴被打滿 tailHits 下（OnTailHit 會結束這個流程）</summary>
@@ -518,6 +525,7 @@ public class SandWormArena : MonoBehaviour
         if (fight != null) StopCoroutine(fight);
         fight = null;
         state = State.Done;
+        BattleMusic.End();
         showBar = false;
         hintQuadrant = -1;
         ClearTails(false);

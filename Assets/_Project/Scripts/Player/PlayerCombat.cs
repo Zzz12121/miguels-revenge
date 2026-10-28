@@ -87,6 +87,13 @@ public class PlayerCombat : MeleeCombat
     {
         base.Awake();
         health = GetComponent<PlayerHealth>();
+        // 跳劈落地：地面衝擊 + 鏡頭震動
+        OnPlungeLanded += p =>
+        {
+            CombatVFX.Impact(p + transform.forward * hitForwardOffset + Vector3.up * .1f, new Color(1f, .85f, .55f));
+            ThirdPersonCamera.ShakeMain(.28f, .22f);
+            GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), p, soundVolume, .7f, 1f, 30f);
+        };
         // 所有場景都共用同一個玩家物件；缺少時自動補上雙極牽引技能，
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)

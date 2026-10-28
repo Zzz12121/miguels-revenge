@@ -24,6 +24,7 @@ public class EnemyCombat : MeleeCombat
     int hitsLeft;
 
     protected override float PitchScale => 0.85f; // 小怪的揮劍聲比較低沉
+    protected override bool AllowAirAttacks => false; // 小怪不做空中攻擊
 
     /// <summary>開始一輪連擊，打 hits 下（1 ~ 連擊段數）。已經在攻擊中就回傳 false</summary>
     public bool StartCombo(int hits)
