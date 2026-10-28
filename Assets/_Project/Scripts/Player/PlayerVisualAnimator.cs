@@ -25,6 +25,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     static readonly int SpeedHash = Animator.StringToHash("Speed");
     static readonly int GroundedHash = Animator.StringToHash("Grounded");
     static readonly int VerticalSpeedHash = Animator.StringToHash("VerticalSpeed");
+    // 落地緩衝動畫（Land）的播放速度：輕輕落地播快一點、從高處摔下來播慢一點（完整地蹲下緩衝）
+    static readonly int LandRateHash = Animator.StringToHash("LandRate");
     static readonly int Attack1Hash = Animator.StringToHash("Attack1");
     static readonly int Attack2Hash = Animator.StringToHash("Attack2");
     static readonly int DieHash = Animator.StringToHash("Die");
@@ -145,6 +147,15 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             return;
         }
 
+        // 攀爬中：Climb 動畫的進度由 CalligraphyPlatformClimb 控制，這裡不要切任何動畫
+        if (CalligraphyPlatformClimb.IsClimbing(health != null ? health.transform : transform))
+        {
+            if (health != null) previousHealth = health.Health;
+            landingVelocity = 0f;
+            previousGrounded = true;
+            return;
+        }
+
         UpdateRollAnimationState();
 
         float normalizedSpeed = 0f;
@@ -225,6 +236,10 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (!grounded) landingVelocity = Mathf.Min(landingVelocity, controller.VerticalVelocity);
         if (!previousGrounded && grounded)
         {
+            // 落得越快，緩衝動畫播得越慢、越完整（Animator 的 Land 狀態用這個參數當速度）
+            float impact = -landingVelocity;
+            float rate = impact < 5f ? 2.2f : impact < 9f ? 1.5f : impact < 14f ? 1.15f : 0.9f;
+            if (HasParameter(LandRateHash)) animator.SetFloat(LandRateHash, rate);
             if (landingVelocity < -2.5f)
                 ThirdPersonCamera.ShakeMain(Mathf.Clamp(-landingVelocity * 0.018f, 0.06f, 0.16f), 0.15f);
             landingVelocity = 0f;
@@ -238,7 +253,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (!grounded || speed > 0.035f || Time.unscaledTime < nextIdleChange) return;
         AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
         if (current.IsName("Attack_1") || current.IsName("Attack_2") || current.IsName("Attack_3") ||
-            current.IsName("Death") || current.IsName("Jump") || current.IsName("Fall"))
+            current.IsName("Death") || current.IsName("Jump") || current.IsName("Fall") ||
+            current.IsName("Land") || current.IsName("Climb") || animator.IsInTransition(0))
         {
             ScheduleNextIdle(1f);
             return;
@@ -272,9 +288,22 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         ScheduleNextIdle(.7f);
     }
 
+    bool? hasLandRate;
+    /// <summary>Animator 裡有沒有 LandRate 參數（還沒執行安裝選單的舊 Controller 沒有，不要每次落地都噴警告）</summary>
+    bool HasParameter(int hash)
+    {
+        if (hasLandRate == null)
+        {
+            hasLandRate = false;
+            foreach (var p in animator.parameters) if (p.nameHash == hash) hasLandRate = true;
+        }
+        return hasLandRate.Value;
+    }
+
     void LateUpdate()
     {
         if (animator == null || !animator.enabled || !animator.isHuman) return;
+        if (CalligraphyPlatformClimb.IsClimbing(health != null ? health.transform : transform)) return;
         if (GetComponent<CalligraphyPlayerControl>()?.Active ?? false) return;
         if (hips == null || chest == null) CacheHumanoidBones();
 

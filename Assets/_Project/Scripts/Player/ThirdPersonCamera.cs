@@ -73,6 +73,12 @@ public class ThirdPersonCamera : MonoBehaviour
     [Tooltip("瞄準時的滑鼠靈敏度倍率")]
     public float aimSensitivityScale = 0.55f;
 
+    [Header("攀爬時")]
+    [Tooltip("攀爬時鏡頭距離 = 一般距離 × 這個倍數（越小越近）")]
+    [Range(.3f, 1f)] public float climbDistanceScale = .7f;
+    [Tooltip("攀爬時注視點比平常低多少公尺（看向角色的身體，而不是頭頂上方）")]
+    public float climbPivotDrop = .35f;
+
     [Header("Cinemachine（留空會自動建立）")]
     public CinemachineCamera cinemachineCamera;
     [Tooltip("Cinemachine 跟隨的注視點，這個腳本每幀設定它的位置和角度")]
@@ -88,6 +94,12 @@ public class ThirdPersonCamera : MonoBehaviour
     bool aiming;
     Transform aimTarget;
     float aimBlend, baseFov = 60f;
+    // 攀爬：角色的根節點會先放到「爬完站好的位置」，身體才慢慢爬上去，
+    // 所以攀爬時注視點改跟著身體（髖部）走，不然鏡頭會停在平台上方很高的地方
+    Animator targetAnimator;
+    Transform targetAnimatorOwner, targetHips;
+    Vector3 hipsLocal, climbShift;
+    float climbBlend;
 
     /// <summary>目前是不是在瞄準（0 = 一般鏡頭，1 = 完全進入瞄準）</summary>
     public float AimBlend => aimBlend;
@@ -218,7 +230,7 @@ public class ThirdPersonCamera : MonoBehaviour
         HandleInput();
 
         // 注視點（平滑跟隨）
-        Vector3 pivot = target.position + targetOffset;
+        Vector3 pivot = target.position + targetOffset + ClimbPivotShift();
         smoothedPivot = followSmoothTime > 0f
             ? Vector3.SmoothDamp(smoothedPivot, pivot, ref pivotVelocity, followSmoothTime)
             : pivot;
@@ -228,7 +240,7 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // 瞄準：注視點移到瞄準對象的肩膀、鏡頭拉近、畫面放大（平滑過渡）
         aimBlend = Mathf.MoveTowards(aimBlend, aiming && aimTarget != null ? 1f : 0f, aimBlendSpeed * Time.deltaTime);
-        float dist = distance;
+        float dist = distance * Mathf.Lerp(1f, climbDistanceScale, Mathf.SmoothStep(0f, 1f, climbBlend));
         if (aimBlend > 0f && aimTarget != null)
         {
             float k = Mathf.SmoothStep(0f, 1f, aimBlend);
@@ -262,6 +274,29 @@ public class ThirdPersonCamera : MonoBehaviour
         }
     }
 
+    /// <summary>攀爬時注視點要額外移動多少：身體離「平常的位置」多遠，就跟著移多遠（再稍微壓低）</summary>
+    Vector3 ClimbPivotShift()
+    {
+        if (targetAnimatorOwner != target)
+        {
+            targetAnimatorOwner = target;
+            targetAnimator = target.GetComponentInChildren<Animator>();
+            targetHips = targetAnimator != null && targetAnimator.isHuman ? targetAnimator.GetBoneTransform(HumanBodyBones.Hips) : null;
+            if (targetHips != null) hipsLocal = target.InverseTransformPoint(targetHips.position);
+        }
+        bool climbing = targetHips != null && CalligraphyPlatformClimb.IsClimbing(target);
+        climbBlend = Mathf.MoveTowards(climbBlend, climbing ? 1f : 0f, Time.deltaTime * 3f);
+        if (targetHips == null) return Vector3.zero;
+        if (climbing)
+            climbShift = targetHips.position - target.TransformPoint(hipsLocal);
+        else
+        {
+            hipsLocal = target.InverseTransformPoint(targetHips.position); // 記住平常的髖部位置
+            climbShift = Vector3.Lerp(climbShift, Vector3.zero, 1f - Mathf.Exp(-8f * Time.deltaTime)); // 爬完平順地回到平常的跟隨
+        }
+        return climbShift + Vector3.down * (climbPivotDrop * Mathf.SmoothStep(0f, 1f, climbBlend));
+    }
+
     /// <summary>
     /// 注視點在角色頭頂上方，本身可能跑進天花板或牆裡（例如在矮門洞底下跳起來）。
     /// 一旦它在牆裡，Cinemachine 從注視點往後的防穿牆檢查就偵測不到那面牆，鏡頭會直接穿過去。
@@ -277,6 +312,7 @@ public class ThirdPersonCamera : MonoBehaviour
             targetBody = target.GetComponent<CharacterController>();
         }
         Vector3 origin = targetBody != null ? target.TransformPoint(targetBody.center) : target.position;
+        origin += climbShift; // 攀爬時從身體真正的位置檢查，不是從平台上方的根節點
         Vector3 to = lookPoint - origin;
         float dist = to.magnitude;
         if (dist < 0.01f) return lookPoint;
