@@ -308,6 +308,7 @@ public class Checkpoint : MonoBehaviour
 
     void OnGUI()
     {
+        if (SteleInscription.AnyOpen) { messageTime = float.NegativeInfinity; return; } // 打開碑文卷軸時就不顯示（收起來也不會再跳出來）
         float since = Time.time - messageTime;
         if (since > 2f || GameUI.OverlayOpen) return;
         GameUI.Banner(message, MessageColor, Mathf.Clamp01((2f - since) / 0.5f));

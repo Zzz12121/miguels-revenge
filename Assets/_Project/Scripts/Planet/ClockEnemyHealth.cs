@@ -157,6 +157,14 @@ public class ClockEnemyHealth : MonoBehaviour, IDamageable, IUnblockableDamageab
         if (Health <= 0f) Die();
     }
 
+    /// <summary>之後才換上的模型（二階段外型）也要跟著閃白、死掉時一起消失</summary>
+    public void AddRenderers(IEnumerable<Renderer> extra)
+    {
+        var all = new List<Renderer>(renderers);
+        foreach (var r in extra) if (r != null && !all.Contains(r)) all.Add(r);
+        renderers = all.ToArray();
+    }
+
     public void Kill()
     {
         if (!IsDead) { Health = 0f; Die(); }
