@@ -7,7 +7,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）。
+/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash，Tripo 做的）。
 ///
 /// 動畫放在 Models/PlayerCharacter/PlayerCatWarrior_AirClimb.fbx（Art/PlayerCatWarrior/player_anim_generator.py 產生）。
 ///  1. 匯入設定是自動的（下面的 AssetPostprocessor）：Humanoid、跟原本的貓戰士用同一套骨架對應，
@@ -176,6 +176,18 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
         if (idle != null) Add(land, idle, 0.2f, 0.85f);
         // 攀爬：進度由程式控制，萬一程式沒接手就自己播完回待機
         if (idle != null) Add(climb, idle, 0.15f, 0.98f);
+
+        // 空中側閃（Tripo 做的 CW_AirDash）：由 PlayerVisualAnimator 在側閃開始時切進來、結束時切回下落；
+        // 萬一沒被切走：落地 → Land、播完 → Fall
+        if (clips.TryGetValue("CW_AirDash", out var dashClip))
+        {
+            var airDash = Find("AirDash") ?? sm.AddState("AirDash", new Vector3(600, 400));
+            airDash.motion = dashClip; airDash.speed = 1f; airDash.writeDefaultValues = true;
+            Clear(airDash);
+            Add(airDash, land, 0.06f).AddCondition(AnimatorConditionMode.If, 0, "Grounded");
+            Add(airDash, fall, 0.15f, 0.95f);
+            log.Add("AC_PlayerCatWarrior：加上 AirDash（空中側閃）狀態");
+        }
 
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；
         // 往下掉要真的有在掉（速度 < -3.5）才切，走下小台階、斜坡時不會一直閃成下落的姿勢（站在地上時速度是 -2）

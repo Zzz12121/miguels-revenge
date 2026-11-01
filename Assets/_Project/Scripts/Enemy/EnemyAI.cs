@@ -102,7 +102,8 @@ public class EnemyAI : MonoBehaviour
     EnemyCombat combat;
     EnemyHealth health;
     CharacterController cc;
-    Transform player;
+    Transform player;        // 現在要追的目標（玩家，或玩家的幻影分身）
+    Transform realPlayer;    // 真正的玩家（踩人 / 撲人的傷害只算真正的玩家）
     PlayerHealth playerHealth;
 
     Vector3 homePos;
@@ -146,7 +147,7 @@ public class EnemyAI : MonoBehaviour
         var p = GameObject.FindWithTag("Player");
         if (p != null)
         {
-            player = p.transform;
+            player = realPlayer = p.transform;
             playerHealth = p.GetComponent<PlayerHealth>();
         }
         combat.target = player;
@@ -179,6 +180,14 @@ public class EnemyAI : MonoBehaviour
         float dt = Time.deltaTime;
         stateTimer += dt;
         if (staggerTimer > 0f) staggerTimer -= dt;
+
+        // 玩家的幻影分身（誘餌）在附近：改追分身；分身消失就回去追玩家
+        if (realPlayer != null)
+        {
+            Transform lure = PhantomDecoy.NearestLure(transform.position);
+            Transform want = lure != null ? lure : realPlayer;
+            if (want != player) { player = want; combat.target = player; }
+        }
 
         // 一輪連擊結束 → 休息一下再打
         if (wasAttacking && !combat.IsAttacking)
@@ -298,7 +307,7 @@ public class EnemyAI : MonoBehaviour
 
         if (player != null && playerHealth != null && !playerHealth.IsDead)
         {
-            Vector3 to = player.position - transform.position;
+            Vector3 to = realPlayer.position - transform.position;
             float dy = to.y;
             to.y = 0f;
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
@@ -782,7 +791,7 @@ public class EnemyAI : MonoBehaviour
 
         if (landed && jumpIsPounce && player != null && playerHealth != null && !playerHealth.IsDead)
         {
-            Vector3 to = player.position - transform.position;
+            Vector3 to = realPlayer.position - transform.position;
             float dy = to.y;
             to.y = 0f;
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
@@ -843,7 +852,7 @@ public class EnemyAI : MonoBehaviour
 
         if (player != null && playerHealth != null && !playerHealth.IsDead)
         {
-            Vector3 to = player.position - transform.position;
+            Vector3 to = realPlayer.position - transform.position;
             float dy = to.y;
             to.y = 0f;
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;

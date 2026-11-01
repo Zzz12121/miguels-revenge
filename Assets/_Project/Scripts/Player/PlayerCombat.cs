@@ -98,7 +98,12 @@ public class PlayerCombat : MeleeCombat
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)
             gameObject.AddComponent<EnergyTetherSkill>();
+        // 幻影分身突進（空中側閃時按左鍵）/ 剪刀斬：自動補上
+        phantom = GetComponent<PhantomStrike>();
+        if (phantom == null) phantom = gameObject.AddComponent<PhantomStrike>();
     }
+
+    PhantomStrike phantom;
 
     void Update()
     {
@@ -134,6 +139,13 @@ public class PlayerCombat : MeleeCombat
             attackQueued = false;
             if (IsBlocking) SetBlocking(false, !rightHeld);
             return;
+        }
+
+        // 幻影分身突進進行中：交給它；空中側閃時按左鍵 = 分身突進、分身還在時按左鍵 = 剪刀斬
+        if (phantom != null)
+        {
+            if (phantom.Busy) return;
+            if (leftClick && !ShieldUp && (phantom.TryStartFromDash() || phantom.TryScissor())) return;
         }
 
         // 右鍵按一下：舉盾衝撞（揮劍連擊中、破防中不能用）

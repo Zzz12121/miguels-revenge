@@ -129,6 +129,27 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         prepareTime = .12f, cutTime = .2f, airborne = true,
     };
 
+    /// <summary>突進斬（幻影分身突進 / 剪刀斬）：單手由右往左水平橫斬，左手往後伸出去平衡</summary>
+    static readonly SlashPath AirDashSlash = new SlashPath
+    {
+        handFrom = new Vector3(.45f, .02f, .12f), handTo = new Vector3(-.62f, .06f, .34f),
+        bladeFrom = new Vector3(.95f, -.02f, .15f), bladeTo = new Vector3(-.9f, .08f, .5f),
+        pole = new Vector3(.4f, -1f, -.2f),
+        twistFrom = .75f, twistTo = -1f, pitchFrom = 0f, pitchTo = 6f, arc = .2f, crouch = 0f, lift = 0f,
+        offFrom = new Vector3(-.35f, -.05f, .15f), offTo = new Vector3(-.55f, -.05f, -.3f), hold = .02f,
+        windBack = new Vector3(.1f, 0f, -.3f), windBlade = new Vector3(.6f, -.05f, -.8f),
+        edgeFlat = .9f, prepareTime = .06f, cutTime = .21f, airborne = true,
+    };
+    // 側閃 / 突進：身體往衝的方向倒多少度、往前衝時前傾多少度、腿縮多少度、雙手往後甩多少；殘影每隔多久留一個 (秒)
+    const float DashSideLean = 28f, DashForwardLean = 22f, DashLegTuck = 38f, DashArmsBack = .85f, DashGhostInterval = .045f;
+    float dashLean, nextDashGhost;
+    Vector3 dashDirLocal;
+    SkinnedMeshRenderer[] ghostRenderers;
+    // Animator 裡有「AirDash」狀態（之後用 Tripo 做的側閃動畫）就播它；沒有就用程式擺姿勢
+    static readonly int AirDashStateHash = Animator.StringToHash("AirDash");
+    bool? hasAirDashState;
+    bool playingAirDashState;
+
     static readonly SlashPath[] SlashPaths =
     {
         new SlashPath // 右下 → 左上
@@ -386,9 +407,10 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         animator.ResetTrigger(Attack1Hash);
         animator.ResetTrigger(Attack2Hash);
         // 空中輕砍：保留跳躍 / 下落動畫，只在上面疊揮刀
-        bool air = combat != null && combat.IsAirSlash;
+        bool dash = combat != null && combat.IsDashSlash;
+        bool air = dash || (combat != null && combat.IsAirSlash);
         if (!air) animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
-        slashSide = air ? -1 : comboIndex;
+        slashSide = dash ? -2 : air ? -1 : comboIndex;
         slashStartedAt = Time.time;
         plungeSlash = false;
         plungeBlend = 0f;
@@ -423,6 +445,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
         GroundFeet();
         ApplyShortKesaSlash();
+        ApplyAirDashPose();
         UpdateBowAndShieldVisuals();
 
         AnimatorStateInfo state = animator.GetCurrentAnimatorStateInfo(0);
@@ -454,6 +477,80 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             float airWeight = Mathf.Sin(Mathf.Clamp01((pounceAge - 0.11f) / 0.51f) * Mathf.PI);
             if (chest != null) chest.localRotation *= Quaternion.Euler(20f * airWeight, 0f, 0f);
             if (hips != null) hips.localRotation *= Quaternion.Euler(8f * airWeight, 0f, 0f);
+        }
+    }
+
+    /// <summary>
+    /// 空中側閃 / 幻影分身突進：不是下落的姿勢，而是「衝出去」的姿勢——
+    /// 身體往衝的方向倒（往前衝就前傾）、兩腿縮起來、雙手往後甩（沒有在揮刀的時候）；
+    /// 衝刺中每隔一小段時間在原地留下一個半透明殘影。
+    /// Animator 有 AirDash 狀態時改播那段動畫，只疊上傾斜和殘影。
+    /// </summary>
+    void ApplyAirDashPose()
+    {
+        if (controller == null || hips == null) return;
+        bool scripted = controller.IsScriptedMoving && controller.ScriptedMoveDirection.sqrMagnitude > .01f;
+        bool dashing = controller.IsAirDashing || scripted;
+        Vector3 dir = controller.IsAirDashing ? controller.AirDashDirection : controller.ScriptedMoveDirection;
+        UpdateAirDashState(controller.IsAirDashing);
+        float target = dashing ? 1f : 0f;
+        dashLean = Mathf.MoveTowards(dashLean, target, Time.deltaTime * (target > dashLean ? 14f : 5f));
+        if (dashLean <= .001f) return;
+        Transform actor = controller.transform;
+        if (dashing) dashDirLocal = actor.InverseTransformDirection(dir);
+        float k = Mathf.SmoothStep(0f, 1f, dashLean);
+        Quaternion lean = Quaternion.AngleAxis(-DashSideLean * dashDirLocal.x * k, actor.forward)
+                        * Quaternion.AngleAxis(DashForwardLean * Mathf.Max(0f, dashDirLocal.z) * k, actor.right);
+        hips.rotation = lean * hips.rotation;
+        if (!playingAirDashState)
+        {
+            // 大腿往前上抬、小腿往後收（縮腿）
+            foreach (var thigh in new[] { leftUpperLeg, rightUpperLeg })
+                if (thigh != null) thigh.rotation = Quaternion.AngleAxis(-DashLegTuck * k, actor.right) * thigh.rotation;
+            foreach (var shin in new[] { leftLowerLeg, rightLowerLeg })
+                if (shin != null) shin.rotation = Quaternion.AngleAxis(DashLegTuck * 1.6f * k, actor.right) * shin.rotation;
+            // 雙手往後下方甩（揮刀中的手交給揮刀動作）
+            bool slashing = Time.time - slashStartedAt < CurrentSlash.Total;
+            if (!slashing)
+            {
+                SweepArmBack(leftUpperArm, leftForearm, -1f, k);
+                SweepArmBack(rightUpperArm, rightForearm, 1f, k);
+            }
+        }
+
+        if (dashing && Time.time >= nextDashGhost)
+        {
+            nextDashGhost = Time.time + DashGhostInterval;
+            if (ghostRenderers == null) ghostRenderers = animator.GetComponentsInChildren<SkinnedMeshRenderer>();
+            AfterimageGhost.Spawn(ghostRenderers, new Color(.55f, .8f, 1f, .45f), .28f);
+        }
+        else if (!dashing) nextDashGhost = 0f;
+    }
+
+    /// <summary>上臂轉向身體後下方（side：-1 = 左手、+1 = 右手），前臂稍微打直</summary>
+    void SweepArmBack(Transform upper, Transform fore, float side, float k)
+    {
+        if (upper == null || fore == null) return;
+        Transform actor = controller.transform;
+        Vector3 want = (-actor.forward * .8f - actor.up * .55f + actor.right * (.3f * side)).normalized;
+        Vector3 cur = (fore.position - upper.position).normalized;
+        upper.rotation = Quaternion.Slerp(Quaternion.identity, Quaternion.FromToRotation(cur, want), DashArmsBack * k) * upper.rotation;
+    }
+
+    /// <summary>側閃開始時切到 AirDash 動畫狀態（有的話），結束時接回下落 / 待機</summary>
+    void UpdateAirDashState(bool airDashing)
+    {
+        if (hasAirDashState == null) hasAirDashState = animator.HasState(0, AirDashStateHash);
+        if (!hasAirDashState.Value) return;
+        if (airDashing && !playingAirDashState)
+        {
+            playingAirDashState = true;
+            animator.CrossFadeInFixedTime(AirDashStateHash, .06f, 0, 0f);
+        }
+        else if (!airDashing && playingAirDashState)
+        {
+            playingAirDashState = false;
+            animator.CrossFadeInFixedTime(controller.IsGrounded ? "Idle" : "Fall", .12f, 0, 0f);
         }
     }
 
@@ -833,7 +930,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         lower.rotation = Quaternion.FromToRotation(end.position - lower.position, goal - lower.position) * lower.rotation;
     }
 
-    SlashPath CurrentSlash => slashSide < 0 ? AirSlash : SlashPaths[slashSide % SlashPaths.Length];
+    SlashPath CurrentSlash => slashSide == -2 ? AirDashSlash : slashSide < 0 ? AirSlash : SlashPaths[slashSide % SlashPaths.Length];
 
     // ---------------- 腳貼地 ----------------
     // 角色控制器的膠囊底部是圓的、還有 skin width，模型在平地上就浮了約 0.15 m，站在斜坡或沙丘上更明顯。

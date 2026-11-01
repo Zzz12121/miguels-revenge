@@ -75,10 +75,14 @@ public abstract class MeleeCombat : MonoBehaviour
     public float plungeLandingRadiusScale = 1.4f;
     [Tooltip("空中攻擊時的移動速度倍率")]
     [Range(0f, 1f)] public float airAttackMoveMultiplier = 0.6f;
+    [Tooltip("突進斬（幻影分身突進 / 剪刀斬）的判定半徑倍率（× hitRadius）；人在衝刺，判定球放在身體前面一點、大一點")]
+    public float dashSlashRadiusScale = 1.15f;
 
     public bool IsAttacking { get; private set; }
     /// <summary>這一刀是空中單手輕砍（OnSwing 之前就設好，動畫用）</summary>
     public bool IsAirSlash { get; private set; }
+    /// <summary>這一刀是突進斬（幻影分身突進 / 剪刀斬；OnSwing 之前就設好，動畫用）</summary>
+    public bool IsDashSlash { get; private set; }
     /// <summary>最後一刀蓄力時跳起來，正在一路劈到落地（動畫用：揮到一半停住，落地才砍完）</summary>
     public bool IsPlunging { get; private set; }
     /// <summary>跳劈落地的那一刻（位置）通知外面（特效 / 鏡頭用）</summary>
@@ -153,7 +157,78 @@ public abstract class MeleeCombat : MonoBehaviour
         }
         IsAttacking = false;
         IsAirSlash = false;
+        IsDashSlash = false;
         IsPlunging = false;
+    }
+
+    /// <summary>
+    /// 突進斬（幻影分身突進 / 剪刀斬用）：一刀由右往左的水平橫斬，duration 秒內揮完。
+    /// face = 要面向的方向（零向量 = 照 GetAimDirection）；damageScale = 第一段傷害的倍率
+    /// </summary>
+    public void BeginDashSlash(float duration, Vector3 face, float damageScale)
+    {
+        if (!isActiveAndEnabled) return;
+        CancelAttack();
+        chain = StartCoroutine(DashSlashRoutine(duration, face, damageScale));
+    }
+
+    /// <summary>在 center 附近 radius 內打一下（分身的刀用；hitSet 用來避免同一刀打同一個目標兩次）</summary>
+    public int StrikeArea(Vector3 center, float radius, float damage, HashSet<object> hitSet)
+    {
+        int hits = 0;
+        int count = Physics.OverlapSphereNonAlloc(center, radius, overlap, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < count; i++)
+        {
+            var c = overlap[i];
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            bool supportsClosestPoint = c is BoxCollider || c is SphereCollider || c is CapsuleCollider
+                || (c is MeshCollider meshCollider && meshCollider.convex);
+            Vector3 hitPoint = supportsClosestPoint ? c.ClosestPoint(center) : c.bounds.ClosestPoint(center);
+            if (TryDamage(c, damage, hitPoint, hitSet))
+            {
+                hits++;
+                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), hitPoint, soundVolume,
+                                 soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
+            }
+        }
+        return hits;
+    }
+
+    IEnumerator DashSlashRoutine(float duration, Vector3 face, float damageScale)
+    {
+        IsAttacking = true;
+        IsDashSlash = true;
+        controller.lockRotation = true;
+        controller.speedMultiplier = airAttackMoveMultiplier;
+        controller.FaceDirection(face.sqrMagnitude > .0001f ? face : GetAimDirection());
+        OnSwingStart(0);
+        OnSwing?.Invoke(0);
+
+        // 由右往左一刀水平橫斬，劍掃過身體前方（衝過去的時候，經過的敵人都會被砍到）
+        Vector3 from = new Vector3(10f, 120f, 0f), to = new Vector3(10f, -120f, 0f);
+        float prep = Mathf.Min(.06f, duration * .2f), cut = Mathf.Max(.08f, duration * .7f);
+        yield return RotateWeapon(weaponPivot.localEulerAngles, from, prep);
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+                         transform.position + Vector3.up, soundVolume * 0.8f,
+                         soundPitch * PitchScale * Random.Range(1.1f, 1.25f), 1f, 30f);
+        hitThisSwing.Clear();
+        float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * damageScale;
+        float t = 0f;
+        while (t < cut)
+        {
+            t += Time.deltaTime;
+            weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / cut)));
+            DoHitCheck(damage, hitRadius * dashSlashRadiusScale, hitForwardOffset * .45f);
+            yield return null;
+        }
+        float r = 0f;
+        while (r < airSlashRecovery) { r += Time.deltaTime; yield return null; }
+        yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.1f);
+        IsDashSlash = false;
+        controller.speedMultiplier = 1f;
+        controller.lockRotation = false;
+        IsAttacking = false;
+        chain = null;
     }
 
     // ---------------- 連擊流程 ----------------
@@ -322,9 +397,9 @@ public abstract class MeleeCombat : MonoBehaviour
         }
     }
 
-    void DoHitCheck(float damage, float radius = -1f)
+    void DoHitCheck(float damage, float radius = -1f, float forward = -1f)
     {
-        Vector3 center = transform.position + transform.forward * hitForwardOffset;
+        Vector3 center = transform.position + transform.forward * (forward >= 0f ? forward : hitForwardOffset);
         int count = Physics.OverlapSphereNonAlloc(center, radius > 0f ? radius : hitRadius, overlap, ~0, QueryTriggerInteraction.Collide);
         for (int i = 0; i < count; i++)
         {
