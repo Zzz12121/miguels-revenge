@@ -3426,6 +3426,97 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1088742594}
   m_LocalEulerAnglesHint: {x: -0.0000029882074, y: 0.0000022411566, z: -0.000032069867}
+--- !u!1001 &1167509079
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 5.2592173
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 5.2592173
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 5.2592173
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -10
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.5358974
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -4
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.8189359
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.57388514
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7385428661056437523, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7869337281120806825, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      propertyPath: m_Name
+      value: SkeletonCentipede_AnimTest
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7869337281120806825, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1167509081}
+  m_SourcePrefab: {fileID: 100100000, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+--- !u!1 &1167509080 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7869337281120806825, guid: 4d2d79af6d7fa43bda7b579604c9108a, type: 3}
+  m_PrefabInstance: {fileID: 1167509079}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1167509081
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1167509080}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2d70e57eeb714899bdde7446ed4e21a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SkeletonCentipedeAnimationPreview
+  dashDistanceInBodyLengths: 2.5
+  dashDuration: 0.78
 --- !u!1 &1172802076
 GameObject:
   m_ObjectHideFlags: 0
@@ -6685,4 +6776,5 @@ SceneRoots:
   - {fileID: 1327458989}
   - {fileID: 776214609}
   - {fileID: 1401178071}
+  - {fileID: 1167509079}
   - {fileID: 1790122846}
