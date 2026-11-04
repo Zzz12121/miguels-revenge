@@ -24,6 +24,7 @@ public class EnemyCombat : MeleeCombat
     int hitsLeft;
 
     protected override float PitchScale => 0.85f; // 小怪的揮劍聲比較低沉
+    protected override bool AllowAirAttacks => false; // 小怪不做空中攻擊
 
     /// <summary>開始一輪連擊，打 hits 下（1 ~ 連擊段數）。已經在攻擊中就回傳 false</summary>
     public bool StartCombo(int hits)
@@ -54,6 +55,17 @@ public class EnemyCombat : MeleeCombat
 
     protected override bool TryDamage(Collider c, float damage, Vector3 hitPoint, HashSet<object> alreadyHit)
     {
+        // 玩家的幻影分身：打一下就消散
+        var decoy = c.GetComponentInParent<PhantomDecoy>();
+        if (decoy != null)
+        {
+            if (!decoy.IsLure || alreadyHit.Contains(decoy)) return false;
+            alreadyHit.Add(decoy);
+            decoy.Break();
+            if (attackVfx) CombatVFX.Impact(hitPoint, attackVfxColor);
+            return true;
+        }
+
         // 場景裡的木桶、火把：小怪不會特地去打，但揮劍時掃到一樣會打翻
         var prop = c.GetComponentInParent<Knockable>();
         if (prop != null)

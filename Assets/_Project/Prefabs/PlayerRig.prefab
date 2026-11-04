@@ -311,7 +311,7 @@ MonoBehaviour:
   comboDamage:
   - 12
   - 12
-  - 25
+  - 32
   windupTime: 0.08
   swingTime: 0.12
   recoveryTime: 0.22

@@ -3465,6 +3465,7 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  groundSnapDistance: 0.6
   doubleJumpEnabled: 0
   doubleJumpHeight: 1.4
   inputEnabled: 1
@@ -3627,6 +3628,7 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  groundSnapDistance: 0.6
   doubleJumpEnabled: 0
   doubleJumpHeight: 1.4
   inputEnabled: 1
@@ -3831,6 +3833,7 @@ GameObject:
   - component: {fileID: 806908300}
   - component: {fileID: 806908299}
   - component: {fileID: 806908301}
+  - component: {fileID: 4815162342}
   m_Layer: 0
   m_Name: DarkSoul
   m_TagString: Untagged
@@ -3964,6 +3967,9 @@ MonoBehaviour:
   dashHeightOffset: 0
   shockwaveForce: 30
   shieldClockOffset: 2.5
+  shieldClockDelay: 0.8
+  shieldClockClearance: 2.2
+  phaseTwoTransformTime: 5.3
   dashTelegraphTime: 0.5
   telegraphPulses: 3
   telegraphPulseAmount: 0.35
@@ -3975,6 +3981,8 @@ MonoBehaviour:
   raiseSandWall: 1
   sandWallMin: {x: 596, y: 477}
   sandWallMax: {x: 704, y: 594}
+  battleMusic: {fileID: 0}
+  battleMusicVolume: 0.5
   fightCheckpoint: {fileID: 900000003}
 --- !u!143 &806908300
 CharacterController:
@@ -5188,14 +5196,19 @@ MonoBehaviour:
   hintTime: {x: 0.9, y: 0.55}
   hintGap: 0.25
   prepareTime: 1.5
-  waveWarnTime: 1.3
+  waveWarnTime: 2
   rumbleLead: 0.4
-  waveInterval: 1.1
+  waveInterval: 1.7
   restBetweenRounds: 2.5
   damage: 25
   knockback: 6
   wormHeight: 7
   attackWormScale: 2
+  battleMusic: {fileID: 0}
+  battleMusicVolume: 0.5
+  tailHits: 5
+  tailTime: 2.4
+  lastHitAngle: 45
   rewardPlant: {fileID: 940000004}
   lineColor: {r: 1, g: 0.85, b: 0.5, a: 0.55}
   hintColor: {r: 1, g: 0.85, b: 0.2, a: 0.7}
@@ -5386,6 +5399,82 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 950729964}
   m_CullTransparentMesh: 1
+--- !u!1 &960000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 960000002}
+  - component: {fileID: 960000003}
+  - component: {fileID: 960000004}
+  m_Layer: 0
+  m_Name: SandWormCheckpoint_StoneStele
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &960000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 960000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0.9396926, z: 0, w: -0.34202015}
+  m_LocalPosition: {x: 486.33, y: 33.75, z: 268.25}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 220, z: 0}
+--- !u!114 &960000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 960000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dd1678855fede2b44a75aaaa57f4c68f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::Checkpoint
+  respawnPoint: {fileID: 0}
+  activateRadius: 2.5
+  healOnTouch: 1
+  glow: {fileID: 0}
+  inactiveColor: {r: 0.3, g: 0.25, b: 0.15, a: 1}
+  activeColor: {r: 1, g: 0.8, b: 0.3, a: 1}
+  ringOnActivate: 0
+  buildStoneStele: 1
+  steleHeight: 2.6
+  runeColor: {r: 1, g: 0.12, b: 0.08, a: 1}
+  revealTime: 1.5
+  snapToGround: 1
+  respawnDistance: 2.2
+--- !u!114 &960000004
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 960000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f2d8a41c9b34e7d8a05e13b7c9d4f26, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SteleInscription
+  title: "\u6C99\u8C37\u53F2\u7891"
+  text: "\u6C99\u8C37\u4E4B\u4E0B\u68F2\u6C99\u87F2\uFF0C\n\u9047\u5149\u96A8\u4E4B\u907F\u87F2\u64CA\u3002\n\u87F2\u9996\u5147\u72E0\u87F2\u5C3E\u865B\uFF0C\n\u7834\u4E4B\u4E94\u8F09\u65B9\u53EF\u96E2\u3002\n\n\u2014\u2014\u6D41\u6D6A\u5546\u4EBA"
+  readRadius: 3.2
+  promptText: "\u95B1\u8B80\u77F3\u7891"
+  font: {fileID: 0}
+  paperTexture: {fileID: 0}
 --- !u!1001 &972213769
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -13212,6 +13301,7 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  groundSnapDistance: 0.6
   doubleJumpEnabled: 0
   doubleJumpHeight: 1.4
   inputEnabled: 1
@@ -13467,6 +13557,46 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2100457493}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &4815162342
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 806908293}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2a4d2f85a6e42a1b560293aa3f56eac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ClockBossBananaForm
+  bananaModel: {fileID: 919132149155446097, guid: 81bb9eea30387e442899949a80011e55, type: 3}
+  bodyHeight: 3.12
+  modelYaw: 0
+  hat: {fileID: 0}
+  colliderRadiusScale: 1.3
+  bodyClockSize: 0.55
+  trueFormLine: "\u9918\u8208\u6642\u9593\u5373\u5C07\u7D50\u675F\uFF0C\u771F\u5BE6\u7684\u6642\u9593\u5C07\u8981\u8F49\u52D5\uFF01"
+  hatSize: 2
+  clockSize: 1
+  transformDelay: 0.15
+  chargeTime: 1.8
+  growTime: 0.9
+  thinkTime: 1.4
+  pointHoldTime: 0.8
+  dimTo: 0.3
+  dimTime: 0.6
+  transformColor: {r: 1, g: 0.82, b: 0.35, a: 1}
+  pointTime: 0.9
+  dashLift: 0.9
+  dashHopTime: 0.45
+  dashPitch: 35
+  focusCamera: 1
+  cameraDistance: 8
+  cameraHeight: 2.2
+  cameraTime: 5.6
+  closeUpDistance: 1.3
+  closeUpTime: 0.8
+  clockRedColor: {r: 1, g: 0.12, b: 0.08, a: 1}
 --- !u!1001 &3551345002594517385
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -13602,6 +13732,7 @@ PrefabInstance:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 960000002}
   - {fileID: 940000002}
   - {fileID: 940000005}
   - {fileID: 910000002}

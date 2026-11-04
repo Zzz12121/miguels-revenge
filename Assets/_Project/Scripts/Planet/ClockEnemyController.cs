@@ -37,6 +37,19 @@ public class ClockEnemyController : MonoBehaviour
     public float shieldClockDelay = 0.8f;
     [Tooltip("保護時鐘出現時，玩家離時鐘這個距離內的那一個就不生成（不會一出現就踩到）")]
     public float shieldClockClearance = 2.2f;
+    [Tooltip("震飛玩家後的變身時間 (秒)：這段時間不衝刺、不放時鐘，變完才長出保護時鐘")]
+    public float phaseTwoTransformTime = 5.3f;
+    float actionsHeldUntil = -1f;
+    bool ActionsHeld => Time.time < actionsHeldUntil;
+
+    /// <summary>給外觀用（ClockBossBananaForm）：二階段震飛玩家之後</summary>
+    public event System.Action PhaseTwoBurst;
+    /// <summary>給外觀用：放出任何時鐘陷阱（位置）</summary>
+    public event System.Action<Vector3> TrapCast;
+    /// <summary>給外觀用：開始衝刺（方向）</summary>
+    public event System.Action<Vector3> DashStarted;
+    /// <summary>給外觀用：玩家死掉、戰鬥重來</summary>
+    public event System.Action FightReset;
 
     [Header("衝刺預兆")]
     [Tooltip("衝刺前面向玩家、臉上時鐘忽大忽小的時間 (秒)")]
@@ -67,8 +80,14 @@ public class ClockEnemyController : MonoBehaviour
     public Vector2 sandWallMax = new Vector2(704f, 594f);
     BossSandWall sandWall;
 
+    [Header("音樂")]
+    [Tooltip("Boss 戰音樂（不填 = Resources/Audio/Music/bgm_battle_clock）。開戰時換上，打倒 / 玩家死掉重來時換回關卡音樂")]
+    public AudioClip battleMusic;
+    [Range(0f, 1f)] public float battleMusicVolume = 0.5f;
+
     void OnBossDied()
     {
+        BattleMusic.End();
         if (sandWall != null) { sandWall.Collapse(); sandWall = null; }
     }
 
@@ -144,6 +163,7 @@ public class ClockEnemyController : MonoBehaviour
     {
         var clock = Instantiate(clockPrefab, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
         spawnedClocks.Add(clock);
+        TrapCast?.Invoke(pos);
     }
 
     /// <summary>玩家死在 Boss 戰中重生：Boss 還活著的話回滿血、回到原位、清掉召喚出來的時鐘，等玩家再走進區域重新開戰</summary>
@@ -158,6 +178,9 @@ public class ClockEnemyController : MonoBehaviour
         isActing = false;
         hasActivated = false;
         phaseTwoTriggered = false;
+        actionsHeldUntil = -1f;
+        FightReset?.Invoke();
+        BattleMusic.End();
         enemyHealth.HealFull();
         if (faceClock != null) faceClock.localScale = faceClockScale; // 預兆做到一半被中斷
         enemyHealth.ShowBar = false;
@@ -179,6 +202,7 @@ public class ClockEnemyController : MonoBehaviour
                 if (fightCheckpoint != null) fightCheckpoint.Activate();
                 if (raiseSandWall) sandWall = BossSandWall.Raise(sandWallMin, sandWallMax);
                 enemyHealth.ShowBar = true;
+                BattleMusic.Begin(battleMusic, battleMusicVolume, 1.5f, "Music/bgm_battle_clock");
                 Debug.Log("玩家已進入指定區域，時鐘 Boss 戰開始！");
                 StartCoroutine(SummonClockRoutine());
                 StartCoroutine(CombatLoopRoutine());
@@ -200,7 +224,7 @@ public class ClockEnemyController : MonoBehaviour
             float currentInterval = enemyHealth.IsPhaseTwo ? phaseTwoSummonInterval : summonInterval;
             yield return new WaitForSeconds(currentInterval);
 
-            if (!enemyHealth.IsDead && clockPrefab != null)
+            if (!enemyHealth.IsDead && clockPrefab != null && !ActionsHeld)
             {
                 Vector2 randomCircle = Random.insideUnitCircle * summonRange;
                 Vector3 spawnPos = transform.position + new Vector3(randomCircle.x, 0f, randomCircle.y);
@@ -224,14 +248,18 @@ public class ClockEnemyController : MonoBehaviour
             playerController.AddImpulse(pushDir * shockwaveForce + Vector3.up * 4f);
         }
 
-        // 2. 等玩家被震飛出去之後，才在自身四周（前後左右四個方向）生成保護時鐘
+        // 2. 變身（外觀由 ClockBossBananaForm 接手），變身期間不出招
+        actionsHeldUntil = Time.time + phaseTwoTransformTime;
+        PhaseTwoBurst?.Invoke();
+
+        // 3. 等玩家被震飛出去、變身完，才在自身四周（前後左右四個方向）生成保護時鐘
         StartCoroutine(SpawnShieldClocksDelayed());
         Debug.Log("【二階段爆發】Boss 釋放震波，並在身邊展開四方向保護時鐘！");
     }
 
     IEnumerator SpawnShieldClocksDelayed()
     {
-        yield return new WaitForSeconds(shieldClockDelay);
+        yield return new WaitForSeconds(Mathf.Max(shieldClockDelay, phaseTwoTransformTime));
         if (enemyHealth.IsDead) yield break;
         SpawnShieldClocks();
     }
@@ -274,7 +302,7 @@ public class ClockEnemyController : MonoBehaviour
         {
             yield return new WaitForSeconds(4.0f); // 衝刺冷卻
 
-            if (!enemyHealth.IsDead && player != null && !isActing)
+            if (!enemyHealth.IsDead && player != null && !isActing && !ActionsHeld)
             {
                 yield return StartCoroutine(PerformDashAndRetreat());
             }
@@ -316,12 +344,13 @@ public class ClockEnemyController : MonoBehaviour
             if (interval <= 0f) yield break;
             yield return new WaitForSeconds(interval);
 
-            if (enemyHealth.IsDead || clockPrefab == null || player == null) continue;
+            if (enemyHealth.IsDead || clockPrefab == null || player == null || ActionsHeld) continue;
             if (playerHealth != null && playerHealth.IsDead) continue;
             float countdown = Random.Range(floorTrapCountdown.x, floorTrapCountdown.y);
             float radius = floorTrapRadius * Random.Range(floorTrapScale.x, floorTrapScale.y);
             var trap = ClockTrap.SpawnFloorTrap(clockPrefab, player.position, radius, countdown);
             spawnedClocks.Add(trap.gameObject);
+            TrapCast?.Invoke(player.position);
         }
     }
 
@@ -342,6 +371,7 @@ public class ClockEnemyController : MonoBehaviour
         {
             transform.rotation = Quaternion.LookRotation(new Vector3(dashDir.x, 0f, dashDir.z));
         }
+        DashStarted?.Invoke(dashDir);
 
         float timer = 0f;
         while (timer < dashDuration)

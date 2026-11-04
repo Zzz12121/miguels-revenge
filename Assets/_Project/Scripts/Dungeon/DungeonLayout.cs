@@ -8,6 +8,8 @@ using System.Collections.Generic;
 ///   - 主線：從 (0, 0) 開始隨機往左 / 右 / 遠離 Boss 的方向走，不會繞回 Boss 那一側，也不會走到重複的格子
 ///     主線的最後一間是起點房間（玩家出生的地方）
 ///   - 岔路：在主線的房間旁邊隨機多接一兩間死路房間
+///   - 跑酷房（可選）：主線中間挑一間，前後的房間一定在它的正對面（從一個門進、從對面的門出），
+///     不會接岔路，大小用 parkourHalf（比一般房間大）
 /// 同一個亂數種子一定排出一樣的地圖。
 /// </summary>
 public static class DungeonLayout
@@ -21,6 +23,8 @@ public static class DungeonLayout
         /// <summary>在主線上的第幾間（0 = 最靠近 Boss）；岔路房間是 -1</summary>
         public int mainIndex = -1;
         public bool isStart;
+        /// <summary>跑酷房：沒有地板、只有浮空的石頭，門不會關</summary>
+        public bool isParkour;
         /// <summary>相連的房間（rooms 清單裡的編號）</summary>
         public readonly List<int> links = new List<int>();
     }
@@ -32,7 +36,9 @@ public static class DungeonLayout
     /// <param name="totalMax">房間總數的上限</param>
     /// <param name="maxSideRooms">最多幾間岔路房間</param>
     /// <param name="halfSizes">房間半邊長的選項 (m)，例如 { 10, 14 } = 20m 或 28m 的房間</param>
-    public static List<Room> Generate(System.Random rng, int totalMin, int totalMax, int maxSideRooms, int[] halfSizes)
+    /// <param name="parkourHalf">跑酷房的半邊長 (m)；0 = 不要跑酷房</param>
+    public static List<Room> Generate(System.Random rng, int totalMin, int totalMax, int maxSideRooms, int[] halfSizes,
+                                      int parkourHalf = 0)
     {
         if (totalMin < 2) totalMin = 2;
         if (totalMax < totalMin) totalMax = totalMin;
@@ -47,7 +53,9 @@ public static class DungeonLayout
             var used = new HashSet<long>();
 
             // ---- 主線：不走回頭路的隨機漫步 ----
-            int x = 0, z = 0;
+            // 跑酷房放在主線中間（不是最靠近 Boss 的第 0 間、也不是起點），進來和出去的方向要一樣（正對面的兩個門）
+            int parkourIndex = parkourHalf > 0 && main >= 3 ? rng.Next(1, main - 1) : -1;
+            int x = 0, z = 0, lastDir = -1;
             rooms.Add(NewRoom(rng, x, z, halfSizes, 0));
             used.Add(Key(x, z));
             bool stuck = false;
@@ -56,8 +64,11 @@ public static class DungeonLayout
                 var options = new List<int>();
                 for (int d = 0; d < 3; d++) // 左、右、遠離 Boss
                     if (!used.Contains(Key(x + DX[d], z + DZ[d]))) options.Add(d);
+                // 離開跑酷房：只能繼續往同一個方向走（才會從對面的門出去）
+                if (i == parkourIndex + 1 && parkourIndex >= 0) options.RemoveAll(d => d != lastDir);
                 if (options.Count == 0) { stuck = true; break; }
                 int dir = options[rng.Next(options.Count)];
+                lastDir = dir;
                 x += DX[dir];
                 z += DZ[dir];
                 rooms.Add(NewRoom(rng, x, z, halfSizes, i));
@@ -66,6 +77,12 @@ public static class DungeonLayout
                 rooms[i].links.Add(i - 1);
             }
             if (stuck) continue;
+            if (parkourIndex >= 0)
+            {
+                var pr = rooms[parkourIndex];
+                pr.isParkour = true;
+                pr.halfX = pr.halfZ = parkourHalf;
+            }
 
             var start = rooms[main - 1];
             start.isStart = true;
@@ -77,6 +94,7 @@ public static class DungeonLayout
                 var spots = new List<int[]>();
                 for (int i = 0; i < main; i++)
                 {
+                    if (rooms[i].isParkour) continue; // 跑酷房只有進出兩個門，不接岔路
                     for (int d = 0; d < 4; d++)
                     {
                         int nx = rooms[i].cx + DX[d], nz = rooms[i].cz + DZ[d];

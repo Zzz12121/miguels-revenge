@@ -28,9 +28,10 @@ public class DungeonKit
 /// <summary>
 /// 隨機地城：每次按 Play 都重新排一次房間（類似元氣騎士的關卡）。
 ///
-///   起點房間 → 戰鬥房間 ×N（偶爾有岔路）→ Boss 門前的小房間（檢查點）→ Boss 房大門
+///   起點房間 → 戰鬥房間 ×N（偶爾有岔路、中間可能有一間跑酷房）→ Boss 門前的小房間（檢查點）→ Boss 房大門
 ///
-/// - 房間排在 36m 一格的格子上，大小是 20m 或 28m，中間用短通道連起來，通道中間有一道門
+/// - 房間排在 40m 一格的格子上，大小是 20m 或 28m，中間用短通道連起來，通道中間有一道門
+/// - 跑酷房（36m）：沒有地板，只有浮空的石頭，從一個門跳到對面的門；門不會關、沒有小怪（邏輯在 ParkourRoom）
 /// - 走進戰鬥房間 → 門全部關上、小怪從地底鑽出來；殺光 → 門打開（邏輯在 DungeonRoom）
 /// - 玩家死掉：地圖不變，從起點（或已經碰過的檢查點）重生，清過的房間不用重打
 ///
@@ -58,6 +59,12 @@ public class DungeonGenerator : MonoBehaviour
     public float extraEnemiesPerDepth = 0.5f;
     [Range(0f, 1f)] public float ambusherChance = 0.3f;
 
+    [Header("跑酷房")]
+    [Tooltip("產生地城時放一間跑酷房的機率（0 = 不要、1 = 每次都有）。主線至少要有 3 間房間才放得下")]
+    [Range(0f, 1f)] public float parkourChance = 1f;
+    [Tooltip("掉下去扣多少血（只會扣到剩 1 滴）")]
+    public float parkourFallDamage = 10f;
+
     [Header("補血道具")]
     [Tooltip("每間戰鬥房間和 Boss 門前的小房間各放一個（選單 GeminiGrowUp > 放置補血道具 會自動填）。留空 = 不放")]
     public GameObject healthPickupPrefab;
@@ -84,8 +91,11 @@ public class DungeonGenerator : MonoBehaviour
 
     // ---- 尺寸（都是 4m 的倍數，城堡零件才對得上） ----
     const float U = 4f;                 // 一個城堡零件的大小
-    const float Pitch = 36f;            // 格子的間距（房間中心到隔壁房間中心）
+    const float Pitch = 40f;            // 格子的間距（房間中心到隔壁房間中心）：跑酷房 18 + 隔壁最大 14 + 通道 8
     static readonly int[] HalfSizes = { 10, 14 };   // 房間內部的半邊長：20m 或 28m
+    const int ParkourHalf = 18;         // 跑酷房的半邊長：36m（比一般房間大）
+    const float ParkourLedge = 4f;      // 跑酷房兩端門口前平台的深度
+    const float PitDepth = 12f;         // 跑酷房的深坑有多深（看起來的，掉到 3m 以下就會被傳回平台）
     const float GateRoomHalf = 6f;      // Boss 門前小房間的半邊長（12m）
     const float GateRoomCenterZ = -9f;  // 它的中心在大門後方多遠（大門的本地座標，-Z = 往外）
     const float WallHeight = 8f;        // 兩層樓高
@@ -157,8 +167,10 @@ public class DungeonGenerator : MonoBehaviour
         torchParent = Child("Torches");
         colliderParent = Child("Colliders");
         MeasureKit();
+        FindParkourMaterials();
 
-        var layout = DungeonLayout.Generate(rng, roomCount.x, roomCount.y, maxSideRooms, HalfSizes);
+        bool wantParkour = parkourChance > 0f && rng.NextDouble() < parkourChance;
+        var layout = DungeonLayout.Generate(rng, roomCount.x, roomCount.y, maxSideRooms, HalfSizes, wantParkour ? ParkourHalf : 0);
 
         // ---- 每間房間的位置 ----
         float z0 = GateRoomCenterZ - GateRoomHalf - 2f * U - layout[0].halfZ; // 第 0 間：跟門前小房間背靠背
@@ -178,9 +190,16 @@ public class DungeonGenerator : MonoBehaviour
         for (int i = 0; i < layout.Count; i++)
         {
             var info = layout[i];
-            var room = BuildRoom($"Room_{i:00}" + (info.isStart ? "_Start" : info.mainIndex < 0 ? "_Side" : ""),
-                                 centers[i], info.halfX, info.halfZ, doorSides[i], true);
-            if (!info.isStart)
+            var room = BuildRoom($"Room_{i:00}" + (info.isStart ? "_Start" : info.isParkour ? "_Parkour" : info.mainIndex < 0 ? "_Side" : ""),
+                                 centers[i], info.halfX, info.halfZ, doorSides[i], true, info.isParkour);
+            if (info.isParkour)
+            {
+                // 沒有小怪（enemyCount = 0）→ 一開始就是「清空」的房間，門不會關
+                Vector3 axis = doorSides[i][0] || doorSides[i][1] ? Vector3.forward : Vector3.right;
+                var parkour = ParkourRoom.Build(room.gameObject, axis, info.halfX, ParkourLedge, rng, stoneMaterial, rockMaterial);
+                parkour.fallDamage = parkourFallDamage;
+            }
+            else if (!info.isStart)
             {
                 int count = rng.Next(Mathf.Min(enemiesPerRoom.x, enemiesPerRoom.y), Mathf.Max(enemiesPerRoom.x, enemiesPerRoom.y) + 1);
                 if (info.halfX > HalfSizes[0] && info.halfZ > HalfSizes[0]) count += extraEnemiesInBigRoom;
@@ -229,7 +248,7 @@ public class DungeonGenerator : MonoBehaviour
         var parent = Child("HealthPickups");
         for (int i = 0; i < layout.Count; i++)
         {
-            if (layout[i].isStart) continue;
+            if (layout[i].isStart || layout[i].isParkour) continue; // 跑酷房沒有地板
             // 房間中心往隨機一個角落走一半的距離
             float sx = rng.Next(2) == 0 ? -1f : 1f, sz = rng.Next(2) == 0 ? -1f : 1f;
             var offset = new Vector3(sx * layout[i].halfX * 0.5f, 0f, sz * layout[i].halfZ * 0.5f);
@@ -278,7 +297,7 @@ public class DungeonGenerator : MonoBehaviour
     /// 蓋一間房間：地板、四面兩層樓高的城牆（有門的那一面中間留一個 4m 的開口）、火把、靠牆的雜物。
     /// center：房間中心（大門的本地座標）。doors：四個方向有沒有開口。
     /// </summary>
-    DungeonRoom BuildRoom(string roomName, Vector3 center, int halfX, int halfZ, bool[] doors, bool decorate)
+    DungeonRoom BuildRoom(string roomName, Vector3 center, int halfX, int halfZ, bool[] doors, bool decorate, bool parkour = false)
     {
         var go = new GameObject(roomName);
         go.transform.SetParent(root, false);
@@ -286,13 +305,17 @@ public class DungeonGenerator : MonoBehaviour
         var room = go.AddComponent<DungeonRoom>();
         room.halfSize = new Vector2(halfX, halfZ);
 
-        // 地板：4m 一塊，隨機轉向避免看起來重複
         int nx = Mathf.RoundToInt(halfX * 2f / U), nz = Mathf.RoundToInt(halfZ * 2f / U);
-        for (int ix = 0; ix < nx; ix++)
-            for (int iz = 0; iz < nz; iz++)
-                FloorTileAt(center + new Vector3(-halfX + U * (ix + 0.5f), 0f, -halfZ + U * (iz + 0.5f)));
-        // 地板的碰撞連牆的正下方一起包進去
-        AddBox("Floor_" + roomName, center + Vector3.down * 0.5f, new Vector3(halfX * 2f + U * 2f, 1f, halfZ * 2f + U * 2f));
+        if (parkour) BuildPit(roomName, center, halfX, halfZ, doors);
+        else
+        {
+            // 地板：4m 一塊，隨機轉向避免看起來重複
+            for (int ix = 0; ix < nx; ix++)
+                for (int iz = 0; iz < nz; iz++)
+                    FloorTileAt(center + new Vector3(-halfX + U * (ix + 0.5f), 0f, -halfZ + U * (iz + 0.5f)));
+            // 地板的碰撞連牆的正下方一起包進去
+            AddBox("Floor_" + roomName, center + Vector3.down * 0.5f, new Vector3(halfX * 2f + U * 2f, 1f, halfZ * 2f + U * 2f));
+        }
 
         // 四面牆：每一面從中間往兩邊排（房間的邊長是 4m 的奇數倍，所以正中間剛好是一整塊，拿掉它就是門口）
         for (int side = 0; side < 4; side++)
@@ -322,8 +345,93 @@ public class DungeonGenerator : MonoBehaviour
             for (int sz = -1; sz <= 1; sz += 2)
                 WallBlock(center + new Vector3(sx * (halfX + U * 0.5f), 0f, sz * (halfZ + U * 0.5f)), new Vector3(0f, 0f, -sz), true);
 
-        if (decorate) PlaceProps(center, halfX, halfZ, doors);
+        if (decorate && !parkour) PlaceProps(center, halfX, halfZ, doors);
         return room;
+    }
+
+    /// <summary>
+    /// 跑酷房的地面：沒有地板，是一個深坑。只有兩個門口前面各一條平台（整面牆寬、4m 深）；
+    /// 坑的四周是往下延伸的城牆，坑底是黑的。
+    /// </summary>
+    void BuildPit(string roomName, Vector3 center, int halfX, int halfZ, bool[] doors)
+    {
+        bool alongZ = doors[0] || doors[1];
+        Vector3 axis = alongZ ? Vector3.forward : Vector3.right;
+        Vector3 lateral = alongZ ? Vector3.right : Vector3.forward;
+        float half = alongZ ? halfZ : halfX;
+        float halfW = alongZ ? halfX : halfZ;
+        int nw = Mathf.RoundToInt(halfW * 2f / U);
+
+        // 兩端的平台
+        foreach (float sign in new[] { -1f, 1f })
+        {
+            Vector3 ledgeCenter = center + axis * (sign * (half - ParkourLedge * 0.5f));
+            for (int i = 0; i < nw; i++)
+                FloorTileAt(ledgeCenter + lateral * (-halfW + U * (i + 0.5f)));
+            // 平台的碰撞也包到牆的正下方（跟一般地板一樣）
+            Vector3 size = alongZ ? new Vector3(halfW * 2f + U * 2f, 1f, ParkourLedge + U) : new Vector3(ParkourLedge + U, 1f, halfW * 2f + U * 2f);
+            AddBox("Ledge_" + roomName, ledgeCenter + axis * (sign * U * 0.5f) + Vector3.down * 0.5f, size);
+            // 平台邊緣往下的石壁（從坑裡往上看才不會看到平台是一片紙）
+            var edge = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            edge.name = "LedgeFace";
+            Destroy(edge.GetComponent<Collider>());
+            edge.transform.SetParent(floorParent, false);
+            edge.transform.localPosition = ledgeCenter - axis * (sign * (ParkourLedge * 0.5f - 0.25f)) + Vector3.down * 1.5f;
+            edge.transform.localScale = alongZ ? new Vector3(halfW * 2f, 3f, 0.5f) : new Vector3(0.5f, 3f, halfW * 2f);
+            var faceMat = stoneMaterial != null ? stoneMaterial : pitMaterial;
+            if (faceMat != null) edge.GetComponent<Renderer>().sharedMaterial = faceMat;
+        }
+
+        // 坑的四周：城牆往下延伸（外觀）＋碰撞
+        for (int side = 0; side < 4; side++)
+        {
+            Vector3 outward = Dirs[side];
+            Vector3 along = side < 2 ? Vector3.right : Vector3.forward;
+            float depth = side < 2 ? halfZ : halfX;
+            float halfLen = side < 2 ? halfX : halfZ;
+            int n = Mathf.RoundToInt((halfLen * 2f / U - 1f) * 0.5f);
+            Vector3 wallCenter = center + outward * (depth + U * 0.5f);
+            for (int k = -n - 1; k <= n + 1; k++)
+                for (float y = -U; y >= -PitDepth; y -= U)
+                    Piece(kit.wall, wallParent, wallCenter + along * (k * U) + Vector3.up * y, outward, new Vector3(U, U, U));
+            AddBox("PitWall", wallCenter + Vector3.up * (-PitDepth * 0.5f - 0.5f),
+                   side < 2 ? new Vector3(halfLen * 2f + U * 2f, PitDepth + 1f, U) : new Vector3(U, PitDepth + 1f, halfLen * 2f + U * 2f));
+        }
+
+        // 坑底：一片黑
+        var bottom = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        bottom.name = "PitBottom";
+        bottom.transform.SetParent(floorParent, false);
+        bottom.transform.localPosition = center + Vector3.down * (PitDepth + 0.5f);
+        bottom.transform.localScale = new Vector3(halfX * 2f + U * 2f, 1f, halfZ * 2f + U * 2f);
+        if (pitMaterial != null) bottom.GetComponent<Renderer>().sharedMaterial = pitMaterial;
+    }
+
+    // 跑酷房用的材質：石頭用 Boss 競技場地板的，坑底用黑色
+    Material stoneMaterial, rockMaterial, pitMaterial;
+
+    void FindParkourMaterials()
+    {
+        var arena = FindInScene<ArenaFloor>();
+        if (arena == null) arena = FindAnyObjectByType<ArenaFloor>(FindObjectsInactive.Include);
+        if (arena != null)
+        {
+            stoneMaterial = arena.tileMaterial;
+            rockMaterial = arena.rockMaterial != null ? arena.rockMaterial : arena.tileMaterial;
+        }
+        var lit = Shader.Find("Universal Render Pipeline/Lit");
+        if (stoneMaterial == null && lit != null)
+        {
+            stoneMaterial = new Material(lit) { name = "ParkourStone" };
+            stoneMaterial.SetColor("_BaseColor", new Color(0.45f, 0.43f, 0.4f));
+        }
+        if (rockMaterial == null) rockMaterial = stoneMaterial;
+        var unlit = Shader.Find("Universal Render Pipeline/Unlit");
+        if (unlit != null)
+        {
+            pitMaterial = new Material(unlit) { name = "ParkourPit" };
+            pitMaterial.SetColor("_BaseColor", new Color(0.01f, 0.01f, 0.015f));
+        }
     }
 
     /// <summary>靠牆隨機擺幾個木桶、木箱（有碰撞、可以打飛；不放在門口前面，離牆很近不擋路）</summary>
@@ -347,6 +455,7 @@ public class DungeonGenerator : MonoBehaviour
             go.transform.rotation = root.rotation * Quaternion.Euler(0f, 90f * rng.Next(4) + (float)rng.NextDouble() * 20f - 10f, 0f);
             // 可以被打飛 / 用走的頂開（沒被碰過之前固定不動）
             var prop = KnockableProp.Setup(go);
+            prop.dropPrefab = healthPickupPrefab; // 被打碎時掉出來的補血道具
             // 離牆的距離依照它轉向之後實際有多「厚」來算，再留 10cm：不管怎麼轉都不會卡進牆裡
             float reach = prop.HalfExtentAlong(root.TransformDirection(outward));
             Vector3 pos = center + outward * (depth - reach - 0.1f) + along * t;

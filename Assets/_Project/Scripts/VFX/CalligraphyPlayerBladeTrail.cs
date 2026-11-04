@@ -14,7 +14,7 @@ public sealed class CalligraphyPlayerBladeTrail : MonoBehaviour
         if(!trail)
         {
             var go=new GameObject("Blade arc - ARPG Lunge material");go.transform.SetParent(transform,false);
-            trail=go.AddComponent<TrailRenderer>();trail.sharedMaterial=lib.bladeTrail;trail.time=.13f;trail.minVertexDistance=.025f;
+            trail=go.AddComponent<TrailRenderer>();trail.sharedMaterial=lib.bladeTrail;trail.time=.2f;trail.minVertexDistance=.025f;
             trail.widthCurve=AnimationCurve.EaseInOut(0,.32f,1,0);trail.numCornerVertices=2;trail.numCapVertices=2;
             trail.startColor=new Color(1,1,1,.8f);trail.endColor=new Color(1,1,1,0);trail.emitting=false;
         }

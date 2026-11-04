@@ -5,6 +5,7 @@ using UnityEngine;
 ///   - 血是滿的時候不會被撿走（留著之後再用），走近會顯示「HP 已滿」
 ///   - 撿起時：音效、綠色光點往上飄、畫面上跳出「+30 HP」
 /// 用選單 GeminiGrowUp > 放置補血道具 自動散佈到每個關卡（Prefab：Prefabs/HealthPickup.prefab）。
+/// 木桶、木箱被打碎時也會用 HealthPickup.Spawn 掉出一個（會從地上彈出來）。
 /// </summary>
 public class HealthPickup : MonoBehaviour
 {
@@ -28,8 +29,81 @@ public class HealthPickup : MonoBehaviour
     float pickedTime;
     Vector3 popupWorldPos;
 
+    /// <summary>
+    /// 在 groundPos（地面上）生成一個補血道具，從地上彈出來。
+    /// prefab 留空 = 用程式做一個跟 Prefabs/HealthPickup 一樣的紅十字（紅光、會漂浮旋轉）。
+    /// </summary>
+    public static HealthPickup Spawn(Vector3 groundPos, GameObject prefab = null, float healAmount = 30f)
+    {
+        HealthPickup pickup;
+        if (prefab != null)
+        {
+            var go = Instantiate(prefab, groundPos, Quaternion.identity);
+            go.name = prefab.name;
+            pickup = go.GetComponent<HealthPickup>();
+            if (pickup == null) pickup = go.AddComponent<HealthPickup>();
+        }
+        else pickup = BuildDefault(groundPos, healAmount);
+        pickup.popIn = true;
+        return pickup;
+    }
+
+    static Material sharedMat;
+
+    static HealthPickup BuildDefault(Vector3 pos, float healAmount)
+    {
+        var root = new GameObject("HealthPickup");
+        root.transform.position = pos;
+        var pickup = root.AddComponent<HealthPickup>();
+        pickup.healAmount = healAmount;
+        var visual = new GameObject("Visual").transform;
+        visual.SetParent(root.transform, false);
+        visual.localPosition = new Vector3(0f, 0.9f, 0f);
+
+        if (sharedMat == null)
+        {
+            var sh = Shader.Find("Universal Render Pipeline/Lit");
+            if (sh == null) sh = Shader.Find("Standard");
+            if (sh != null)
+            {
+                sharedMat = new Material(sh) { name = "M_HealthPickup_Runtime" };
+                Color red = new Color(0.9f, 0.1f, 0.1f);
+                sharedMat.SetColor("_BaseColor", red);
+                sharedMat.SetColor("_Color", red);
+                sharedMat.EnableKeyword("_EMISSION");
+                sharedMat.SetColor("_EmissionColor", new Color(1f, 0.15f, 0.15f) * 2f);
+            }
+        }
+        foreach (var (n, scale) in new[] { ("Vertical", new Vector3(0.18f, 0.6f, 0.18f)), ("Horizontal", new Vector3(0.6f, 0.18f, 0.18f)) })
+        {
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.name = n;
+            part.transform.SetParent(visual, false);
+            part.transform.localScale = scale;
+            Destroy(part.GetComponent<Collider>());
+            var r = part.GetComponent<Renderer>();
+            if (sharedMat != null) r.sharedMaterial = sharedMat;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        var light = new GameObject("Glow").AddComponent<Light>();
+        light.transform.SetParent(visual, false);
+        light.type = LightType.Point;
+        light.color = new Color(1f, 0.3f, 0.3f);
+        light.range = 3.5f;
+        light.intensity = 2f;
+        light.shadows = LightShadows.None;
+        pickup.visual = visual;
+        return pickup;
+    }
+
+    // 從地上彈出來（木桶碎掉時）：一開始很小、往上跳一下再落回漂浮的高度
+    bool popIn;
+    float popTime;
+    const float PopDuration = 0.45f;
+
     void Start()
     {
+        popTime = Time.time;
         var p = GameObject.FindWithTag("Player");
         if (p != null)
         {
@@ -47,6 +121,20 @@ public class HealthPickup : MonoBehaviour
         {
             if (Time.time - pickedTime > 1.2f) Destroy(gameObject);
             return;
+        }
+
+        if (popIn && visual != null)
+        {
+            float k = (Time.time - popTime) / PopDuration;
+            if (k < 1f)
+            {
+                visual.localScale = Vector3.one * Mathf.SmoothStep(0.2f, 1f, Mathf.Clamp01(k * 1.5f));
+                visual.localPosition = visualBase + Vector3.up * (Mathf.Sin(k * Mathf.PI) * 0.9f - (1f - k) * 0.6f);
+                visual.Rotate(0f, spinSpeed * 3f * Time.deltaTime, 0f, Space.World);
+                return; // 彈出來的這段時間還不能撿
+            }
+            popIn = false;
+            visual.localScale = Vector3.one;
         }
 
         if (visual != null)

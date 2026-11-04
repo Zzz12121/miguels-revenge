@@ -75,9 +75,65 @@ public class ThirdPersonController : MonoBehaviour
     [Min(0f)] public float rollCooldown = 0.18f;
     public bool IsRolling { get; private set; }
     public float RollNormalizedTime => IsRolling ? Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration)) : 0f;
-    public bool IsControlImmune => IsRolling;
+    public bool IsControlImmune => IsRolling || IsAirDashing || IsScriptedMoving;
     public event System.Action OnRollStarted;
     public event System.Action OnRollEnded;
+
+    [Header("空中側閃（跳起來後按翻滾）")]
+    [Tooltip("在空中按翻滾：往移動方向（沒按方向就往前）快速滑出一段（不攻擊）；側閃中按左鍵 = 幻影分身突進。每次離地只能用一次")]
+    public bool airDashEnabled = true;
+    [Tooltip("側閃的時間 (秒)；這段時間不受重力、無敵")]
+    [Min(.1f)] public float airDashDuration = .3f;
+    [Tooltip("側閃的距離 (m)")]
+    [Min(.5f)] public float airDashDistance = 4.2f;
+    [Tooltip("側閃結束時往上的速度：讓人在空中多停一下，好接空中攻擊 / 跳劈")]
+    [Min(0f)] public float airDashEndLift = 2.5f;
+    /// <summary>正在空中側閃</summary>
+    public bool IsAirDashing { get; private set; }
+    /// <summary>側閃的方向（世界座標、水平）</summary>
+    public Vector3 AirDashDirection { get; private set; }
+    public float AirDashNormalizedTime => IsAirDashing ? Mathf.Clamp01((Time.time - airDashStartedAt) / Mathf.Max(.01f, airDashDuration)) : 0f;
+    public event System.Action OnAirDashStarted;
+    public event System.Action OnAirDashEnded;
+    /// <summary>上一次側閃結束的時間（側閃剛結束的一小段時間內按左鍵也能接幻影分身突進）</summary>
+    public float LastAirDashEndTime { get; private set; } = float.NegativeInfinity;
+    bool airDashUsed;
+    float airDashStartedAt;
+
+    /// <summary>由技能（幻影分身突進）直接控制位置中：不吃輸入、不受重力、無敵</summary>
+    public bool IsScriptedMoving { get; private set; }
+    /// <summary>技能控制移動時正在往哪個方向衝（動畫用，停住時是 0）</summary>
+    public Vector3 ScriptedMoveDirection { get; set; }
+    /// <summary>開始由技能控制位置（會中斷翻滾 / 側閃、清掉速度）</summary>
+    public void BeginScriptedMove()
+    {
+        EndRoll();
+        EndAirDash(false);
+        IsScriptedMoving = true;
+        ScriptedMoveDirection = Vector3.zero;
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+        ballistic = false;
+    }
+    /// <summary>技能控制中：照 delta 移動（會被牆擋住）</summary>
+    public CollisionFlags ScriptedMove(Vector3 delta)
+    {
+        if (controller == null || !controller.enabled) return CollisionFlags.None;
+        float savedStepOffset = controller.stepOffset;
+        try { controller.stepOffset = 0f; return controller.Move(delta); }
+        finally { controller.stepOffset = savedStepOffset; }
+    }
+    /// <summary>結束技能控制，留下 velocity 的慣性</summary>
+    public void EndScriptedMove(Vector3 velocity)
+    {
+        if (!IsScriptedMoving) return;
+        IsScriptedMoving = false;
+        ScriptedMoveDirection = Vector3.zero;
+        horizontalVelocity = new Vector3(velocity.x, 0f, velocity.z);
+        verticalVelocity = velocity.y;
+    }
+    /// <summary>中斷空中側閃（接幻影分身突進時用）</summary>
+    public void CancelAirDash() => EndAirDash(false);
 
     [Header("參考")]
     [Tooltip("用來決定「前方」的鏡頭，留空會自動抓 Main Camera")]
@@ -265,6 +321,8 @@ public class ThirdPersonController : MonoBehaviour
     void OnDisable()
     {
         EndRoll();
+        EndAirDash(false);
+        IsScriptedMoving = false;
         ClearTemporarySpeedEffects();
     }
 
@@ -299,6 +357,8 @@ public class ThirdPersonController : MonoBehaviour
     public void ResetMotion()
     {
         EndRoll();
+        EndAirDash(false);
+        IsScriptedMoving = false;
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
         ballistic = false;
@@ -358,6 +418,7 @@ public class ThirdPersonController : MonoBehaviour
     {
         if (RangeInputSettings.IsRange(this) && RangeInputSettings.InputBlocked) return;
         if (controller == null || !controller.enabled) return;
+        if (IsScriptedMoving) return; // 技能（幻影分身突進）在控制位置
         float dt = Time.deltaTime;
         Vector3 moveDir;
         bool sprint, jumpPressed, rollPressed = false;
@@ -387,10 +448,16 @@ public class ThirdPersonController : MonoBehaviour
 
         // 動作鎖定中（對話、喝藥水）或剛結束對話：這一下空白鍵不算跳躍
         if (ActionsLocked || Time.unscaledTime < suppressJumpUntil) jumpPressed = false;
-        if (rollPressed) TryStartRoll(moveDir);
+        // 翻滾鍵：在地上 = 翻滾；在空中 = 空中側閃斬
+        if (rollPressed && !TryStartAirDash(moveDir)) TryStartRoll(moveDir);
         if (IsRolling || rollPending)
         {
             UpdateRoll(dt);
+            return;
+        }
+        if (IsAirDashing)
+        {
+            UpdateAirDash(dt);
             return;
         }
 
@@ -459,7 +526,7 @@ public class ThirdPersonController : MonoBehaviour
             GameAudio.Play("SFX/RPG/cloth3", transform.position, 0.7f, 1.3f, 0.08f, 0.3f);
             OnDoubleJump?.Invoke();
         }
-        if (controller.isGrounded && verticalVelocity <= 0f) airJumpUsed = false;
+        if (controller.isGrounded && verticalVelocity <= 0f) { airJumpUsed = false; airDashUsed = false; }
 
         verticalVelocity += gravity * dt;
 
@@ -578,6 +645,56 @@ public class ThirdPersonController : MonoBehaviour
         rollStartedAt = Time.unscaledTime;
         rollCommitted=false;rollTravel=0;
         rollPending = true;
+    }
+
+    // ---------------- 空中側閃斬 ----------------
+
+    /// <summary>空中按翻滾：開始側閃。不在空中（交給翻滾）或不能用時回傳 false</summary>
+    bool TryStartAirDash(Vector3 requestedDirection)
+    {
+        if (!airDashEnabled || aiControlled || IsAirDashing || IsRolling || rollPending || !controller || !controller.enabled
+            || controller.isGrounded || Time.time - lastGroundedTime <= coyoteTime && verticalVelocity <= 0f) return false;
+        // 在空中但現在不能用（用過了、被打、對話中…）：這次按鍵作廢，也不要變成翻滾
+        if (airDashUsed || !isActiveAndEnabled || !inputEnabled || ActionsLocked || IsStunned || ballistic || Time.timeScale <= 0
+            || GameUI.OverlayOpen || (GetComponent<PlayerHealth>()?.IsDead ?? false)) return true;
+        if (Stamina != null && !Stamina.TrySpendRoll()) return true; // 精力不夠（精力條會提示）
+        requestedDirection.y = 0f;
+        AirDashDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
+        GetComponent<PlayerCombat>()?.CancelTransientActions();
+        airDashUsed = true;
+        IsAirDashing = true;
+        airDashStartedAt = Time.time;
+        horizontalVelocity = Vector3.zero;
+        verticalVelocity = 0f;
+        GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(airDashDuration + .05f);
+        CombatVFX.Puff(transform.position, -AirDashDirection, new Color(.85f, .9f, 1f, .55f));
+        GameAudio.Play("SFX/RPG/cloth3", transform.position, .8f, 1.5f, .05f, .3f);
+        OnAirDashStarted?.Invoke();
+        return true;
+    }
+
+    void UpdateAirDash(float dt)
+    {
+        if (dt <= 0f) return;
+        if (!inputEnabled || ActionsLocked || IsStunned) { EndAirDash(false); return; }
+        float u = Mathf.Clamp01((Time.time - airDashStartedAt) / Mathf.Max(.01f, airDashDuration));
+        // 一開始最快、慢慢收（cos 曲線，整段積分剛好等於 airDashDistance）；不受重力
+        float speed = airDashDistance / Mathf.Max(.01f, airDashDuration) * (Mathf.PI * .5f) * Mathf.Cos(u * Mathf.PI * .5f);
+        float savedStepOffset = controller.stepOffset;
+        try { controller.stepOffset = 0f; controller.Move(AirDashDirection * speed * dt); }
+        finally { controller.stepOffset = savedStepOffset; }
+        if (u >= 1f || controller.isGrounded) EndAirDash(true);
+    }
+
+    void EndAirDash(bool finished)
+    {
+        if (!IsAirDashing) return;
+        IsAirDashing = false;
+        LastAirDashEndTime = Time.time;
+        // 留一點往前的慣性，再往上輕輕一推（在空中多停一下）
+        horizontalVelocity = AirDashDirection * Mathf.Min(walkSpeed, airDashDistance / Mathf.Max(.01f, airDashDuration)) * .35f;
+        if (finished && controller != null && !controller.isGrounded) verticalVelocity = airDashEndLift;
+        OnAirDashEnded?.Invoke();
     }
 
     void UpdateRoll(float dt)

@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 /// <summary>
 /// 第一關（Planet）的劇情：
 ///   - 開場：玩家頭暈醒來（原本應該要去地下城），遠處的商人出聲叫玩家過去，商人頭上出現指引標記
-///   - 沙蟲低谷：沙蟲先開口要玩家接受考驗，中間穿插商人大喊忘了提醒（由 SandWormArena 呼叫 PlayWormIntro）
+///   - 沙蟲低谷：沙蟲開口要玩家接受考驗（由 SandWormArena 呼叫 PlayWormIntro）；怎麼打寫在低谷前的石碑上（SteleInscription）
 ///   - 沙蟲被打倒：沙蟲說玩家逃不出這循環，玩家疑惑世界的秘密（由 SandWormArena 呼叫 PlayWormDefeat）
 ///   - Boss 房：玩家疑惑「這不是商人嗎？」，Boss 說商人只是棋子、自己的目標是時間的運行、要重回那個夜晚
 ///   - Boss 倒下：時間不會停止流動，總有一天會再奪回大權
@@ -102,7 +102,7 @@ public class PlanetStory : MonoBehaviour
 
     // ---------------- 沙蟲低谷 ----------------
 
-    /// <summary>沙蟲低谷開戰前：沙蟲要玩家接受考驗，商人在遠處大喊（worm = 冒出來說話的沙蟲）</summary>
+    /// <summary>沙蟲低谷開戰前：沙蟲要玩家接受考驗（worm = 冒出來說話的沙蟲）</summary>
     public static void PlayWormIntro(Transform worm, System.Action onDone)
     {
         if (instance == null) { onDone?.Invoke(); return; }
@@ -134,10 +134,7 @@ public class PlanetStory : MonoBehaviour
             Worm("何人……膽敢踏入吾之沙穴……"),
             Me("什、什麼東西！？地底下有聲音！"),
             Worm("欲過此地，必先接受吾之考驗。記住大地的脈動——走錯一步，便葬身沙海。"),
-            Merchant("糟——糟了！旅人——！我忘了告訴你，那片低谷住著沙蟲啊——！"),
-            Merchant("看地面亮起的順序！第一波站第一個亮的地方、第二波站第二個……照著順序站就不會被吞下去！"),
-            Merchant("還有！安全的地方會冒出牠的尾巴——那是牠的弱點！趁機狠狠砍下去，多砍幾下牠就會退了！"),
-            Worm("聒噪的商人……考驗，開始。"),
+            Worm("考驗，開始。"),
         }, onDone);
     }
 

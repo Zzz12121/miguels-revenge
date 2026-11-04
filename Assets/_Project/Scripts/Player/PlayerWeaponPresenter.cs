@@ -59,11 +59,14 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     bool skillDrawActive;
     bool drawn;
     bool pendingReveal;
-    Vector3 slashBladeDirection;
+    Vector3 slashBladeDirection, slashBladeUp;
     int slashPoseFrame = -1;
-    public void AimSlashBlade(Vector3 direction)
+    /// <summary>揮刀時劍指的方向；edgeUp = 劍身的「上方」朝哪裡（不給 = 角色的上方）。
+    /// 劍幾乎直立時（例如挑斬）一定要給，不然角色上方和劍同方向，刀鋒會亂轉</summary>
+    public void AimSlashBlade(Vector3 direction, Vector3 edgeUp = default)
     {
         slashBladeDirection = direction.normalized;
+        slashBladeUp = edgeUp;
         slashPoseFrame = Time.frameCount;
     }
 
@@ -110,7 +113,8 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
             if (slashPoseFrame == Time.frameCount && animator != null)
             {
                 Vector3 localAxis = LocalWeaponTip().normalized;
-                weaponPivot.rotation = Quaternion.LookRotation(slashBladeDirection, animator.transform.up)
+                Vector3 up = slashBladeUp.sqrMagnitude > .0001f ? slashBladeUp : animator.transform.up;
+                weaponPivot.rotation = Quaternion.LookRotation(slashBladeDirection, up)
                     * Quaternion.FromToRotation(localAxis, Vector3.forward);
             }
         }

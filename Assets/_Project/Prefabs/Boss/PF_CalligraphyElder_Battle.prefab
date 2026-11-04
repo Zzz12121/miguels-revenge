@@ -1972,7 +1972,7 @@ MonoBehaviour:
   paintingCooldown: 32
   dragonCooldown: 22
   paintingRadius: 96
-  disturbanceRadius: 5
+  disturbanceRadius: 4
   disturbanceStrength: 0.8
   giantDragonScale: 2.2
   giantDragonDamage: 35
@@ -2051,7 +2051,7 @@ MonoBehaviour:
     centerRadius: 0.85
     stunSeconds: 1
     warningTimelineEnd: -1
-    fallTimelineStart: 0.75
+    fallTimelineStart: 0
     residueRadius: 2.2
     residueLifetime: 6
     slowSeconds: 2.5
@@ -2088,7 +2088,7 @@ MonoBehaviour:
     entrySeconds: 4
     containedSeconds: 20
     exitSeconds: 2.5
-    dragonCount: 5
+    dragonCount: 4
     pulseScale: 0.35
     pulseInterval: 0.3
     pulseFade: 1.5

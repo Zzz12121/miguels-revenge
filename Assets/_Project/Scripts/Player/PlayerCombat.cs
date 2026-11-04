@@ -87,11 +87,23 @@ public class PlayerCombat : MeleeCombat
     {
         base.Awake();
         health = GetComponent<PlayerHealth>();
+        // 跳劈落地：地面衝擊 + 鏡頭震動
+        OnPlungeLanded += p =>
+        {
+            CombatVFX.Impact(p + transform.forward * hitForwardOffset + Vector3.up * .1f, new Color(1f, .85f, .55f));
+            ThirdPersonCamera.ShakeMain(.28f, .22f);
+            GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), p, soundVolume, .7f, 1f, 30f);
+        };
         // 所有場景都共用同一個玩家物件；缺少時自動補上雙極牽引技能，
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)
             gameObject.AddComponent<EnergyTetherSkill>();
+        // 幻影分身突進（空中側閃時按左鍵）/ 剪刀斬：自動補上
+        phantom = GetComponent<PhantomStrike>();
+        if (phantom == null) phantom = gameObject.AddComponent<PhantomStrike>();
     }
+
+    PhantomStrike phantom;
 
     void Update()
     {
@@ -127,6 +139,13 @@ public class PlayerCombat : MeleeCombat
             attackQueued = false;
             if (IsBlocking) SetBlocking(false, !rightHeld);
             return;
+        }
+
+        // 幻影分身突進進行中：交給它；空中側閃時按左鍵 = 分身突進、分身還在時按左鍵 = 剪刀斬
+        if (phantom != null)
+        {
+            if (phantom.Busy) return;
+            if (leftClick && !ShieldUp && (phantom.TryStartFromDash() || phantom.TryScissor())) return;
         }
 
         // 右鍵按一下：舉盾衝撞（揮劍連擊中、破防中不能用）

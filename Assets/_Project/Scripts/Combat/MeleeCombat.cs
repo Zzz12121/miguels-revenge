@@ -17,7 +17,7 @@ public abstract class MeleeCombat : MonoBehaviour
 {
     [Header("連擊")]
     [Tooltip("每一段的傷害，數量 = 連擊段數")]
-    public float[] comboDamage = { 12f, 12f, 25f };
+    public float[] comboDamage = { 12f, 12f, 32f };
     [Tooltip("抬手時間 (秒)")]
     public float windupTime = 0.1f;
     [Tooltip("揮劍、有傷害判定的時間 (秒)")]
@@ -35,6 +35,8 @@ public abstract class MeleeCombat : MonoBehaviour
     [System.NonSerialized] public float[] stepWindup, stepSwing, stepRecovery;
     /// <summary>硬直過了多少比例之後，有預約下一段就可以提早接（玩家設成接近 1，讓動畫播完整）</summary>
     [System.NonSerialized] public float chainAfter = 0.4f;
+    /// <summary>硬直結束後再等多久 (秒) 讓玩家按下一段（接招容錯）；等待中可以正常移動</summary>
+    [System.NonSerialized] public float comboGraceTime = 0f;
 
     float StepValue(float[] arr, int index, float fallback) =>
         arr != null && index >= 0 && index < arr.Length && arr[index] > 0f ? arr[index] : fallback;
@@ -60,7 +62,33 @@ public abstract class MeleeCombat : MonoBehaviour
     [Tooltip("沒有指定武器時，自動產生的劍的顏色")]
     public Color weaponColor = new Color(0.8f, 0.85f, 0.95f);
 
+    [Header("空中攻擊（只有玩家會用到）")]
+    [Tooltip("跳起來時按攻擊：單手由上往下輕砍。傷害 = 第一段傷害 × 這個倍率")]
+    public float airSlashDamageScale = 0.5f;
+    [Tooltip("空中輕砍的抬手 / 判定 / 硬直時間 (秒)")]
+    public float airSlashWindup = 0.12f, airSlashSwing = 0.2f, airSlashRecovery = 0.18f;
+    [Tooltip("最後一刀蓄力時跳起來：變成一路劈到落地的跳劈。傷害 = 最後一段傷害 × 這個倍率")]
+    public float plungeDamageScale = 1.6f;
+    [Tooltip("跳劈最多在空中維持多久 (秒)，超過就直接收刀（掉下懸崖時不會一直卡著）")]
+    public float plungeMaxAirTime = 2.5f;
+    [Tooltip("跳劈落地時的衝擊判定半徑倍率（× hitRadius）")]
+    public float plungeLandingRadiusScale = 1.4f;
+    [Tooltip("空中攻擊時的移動速度倍率")]
+    [Range(0f, 1f)] public float airAttackMoveMultiplier = 0.6f;
+    [Tooltip("突進斬（幻影分身突進 / 剪刀斬）的判定半徑倍率（× hitRadius）；人在衝刺，判定球放在身體前面一點、大一點")]
+    public float dashSlashRadiusScale = 1.15f;
+
     public bool IsAttacking { get; private set; }
+    /// <summary>這一刀是空中單手輕砍（OnSwing 之前就設好，動畫用）</summary>
+    public bool IsAirSlash { get; private set; }
+    /// <summary>這一刀是突進斬（幻影分身突進 / 剪刀斬；OnSwing 之前就設好，動畫用）</summary>
+    public bool IsDashSlash { get; private set; }
+    /// <summary>最後一刀蓄力時跳起來，正在一路劈到落地（動畫用：揮到一半停住，落地才砍完）</summary>
+    public bool IsPlunging { get; private set; }
+    /// <summary>跳劈落地的那一刻（位置）通知外面（特效 / 鏡頭用）</summary>
+    public event System.Action<Vector3> OnPlungeLanded;
+    /// <summary>子類別可以關掉空中攻擊（小怪不會跳）</summary>
+    protected virtual bool AllowAirAttacks => true;
 
     protected ThirdPersonController controller;
     readonly HashSet<object> hitThisSwing = new HashSet<object>();
@@ -128,6 +156,79 @@ public abstract class MeleeCombat : MonoBehaviour
             controller.lockRotation = false;
         }
         IsAttacking = false;
+        IsAirSlash = false;
+        IsDashSlash = false;
+        IsPlunging = false;
+    }
+
+    /// <summary>
+    /// 突進斬（幻影分身突進 / 剪刀斬用）：一刀由右往左的水平橫斬，duration 秒內揮完。
+    /// face = 要面向的方向（零向量 = 照 GetAimDirection）；damageScale = 第一段傷害的倍率
+    /// </summary>
+    public void BeginDashSlash(float duration, Vector3 face, float damageScale)
+    {
+        if (!isActiveAndEnabled) return;
+        CancelAttack();
+        chain = StartCoroutine(DashSlashRoutine(duration, face, damageScale));
+    }
+
+    /// <summary>在 center 附近 radius 內打一下（分身的刀用；hitSet 用來避免同一刀打同一個目標兩次）</summary>
+    public int StrikeArea(Vector3 center, float radius, float damage, HashSet<object> hitSet)
+    {
+        int hits = 0;
+        int count = Physics.OverlapSphereNonAlloc(center, radius, overlap, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < count; i++)
+        {
+            var c = overlap[i];
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            bool supportsClosestPoint = c is BoxCollider || c is SphereCollider || c is CapsuleCollider
+                || (c is MeshCollider meshCollider && meshCollider.convex);
+            Vector3 hitPoint = supportsClosestPoint ? c.ClosestPoint(center) : c.bounds.ClosestPoint(center);
+            if (TryDamage(c, damage, hitPoint, hitSet))
+            {
+                hits++;
+                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), hitPoint, soundVolume,
+                                 soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
+            }
+        }
+        return hits;
+    }
+
+    IEnumerator DashSlashRoutine(float duration, Vector3 face, float damageScale)
+    {
+        IsAttacking = true;
+        IsDashSlash = true;
+        controller.lockRotation = true;
+        controller.speedMultiplier = airAttackMoveMultiplier;
+        controller.FaceDirection(face.sqrMagnitude > .0001f ? face : GetAimDirection());
+        OnSwingStart(0);
+        OnSwing?.Invoke(0);
+
+        // 由右往左一刀水平橫斬，劍掃過身體前方（衝過去的時候，經過的敵人都會被砍到）
+        Vector3 from = new Vector3(10f, 120f, 0f), to = new Vector3(10f, -120f, 0f);
+        float prep = Mathf.Min(.06f, duration * .2f), cut = Mathf.Max(.08f, duration * .7f);
+        yield return RotateWeapon(weaponPivot.localEulerAngles, from, prep);
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+                         transform.position + Vector3.up, soundVolume * 0.8f,
+                         soundPitch * PitchScale * Random.Range(1.1f, 1.25f), 1f, 30f);
+        hitThisSwing.Clear();
+        float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * damageScale;
+        float t = 0f;
+        while (t < cut)
+        {
+            t += Time.deltaTime;
+            weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / cut)));
+            DoHitCheck(damage, hitRadius * dashSlashRadiusScale, hitForwardOffset * .45f);
+            yield return null;
+        }
+        float r = 0f;
+        while (r < airSlashRecovery) { r += Time.deltaTime; yield return null; }
+        yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.1f);
+        IsDashSlash = false;
+        controller.speedMultiplier = 1f;
+        controller.lockRotation = false;
+        IsAttacking = false;
+        chain = null;
     }
 
     // ---------------- 連擊流程 ----------------
@@ -135,8 +236,25 @@ public abstract class MeleeCombat : MonoBehaviour
     IEnumerator AttackChain()
     {
         IsAttacking = true;
-        controller.speedMultiplier = attackMoveMultiplier;
         controller.lockRotation = true;
+
+        // 跳起來時按攻擊：只砍一刀單手輕砍，不接連擊
+        if (AllowAirAttacks && !controller.IsGrounded)
+        {
+            controller.speedMultiplier = airAttackMoveMultiplier;
+            yield return AirSlash();
+            float r = 0f;
+            while (r < airSlashRecovery) { r += Time.deltaTime; yield return null; }
+            yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.1f);
+            IsAirSlash = false;
+            controller.speedMultiplier = 1f;
+            controller.lockRotation = false;
+            IsAttacking = false;
+            chain = null;
+            yield break;
+        }
+
+        controller.speedMultiplier = attackMoveMultiplier;
 
         int index = 0;
         while (true)
@@ -154,6 +272,20 @@ public abstract class MeleeCombat : MonoBehaviour
                 yield return null;
             }
 
+            // 接招容錯：硬直結束了還沒按，再多等一下；這段時間先把移動還給玩家
+            if (!last && !WantsNextHit() && comboGraceTime > 0f)
+            {
+                controller.speedMultiplier = 1f;
+                controller.lockRotation = false;
+                float g = 0f;
+                while (g < comboGraceTime && !WantsNextHit() && controller.IsGrounded)
+                {
+                    g += Time.deltaTime;
+                    yield return null;
+                }
+                controller.speedMultiplier = attackMoveMultiplier;
+                controller.lockRotation = true;
+            }
             if (!last && WantsNextHit()) { index++; continue; }
             break;
         }
@@ -181,8 +313,20 @@ public abstract class MeleeCombat : MonoBehaviour
             default: from = new Vector3(-80f, 0f, 0f); to = new Vector3(80f, 0f, 0f); break;
         }
 
-        // 抬手
-        yield return RotateWeapon(weaponPivot.localEulerAngles, from, WindupFor(index));
+        // 抬手（最後一刀蓄力時如果跳起來，就變成跳劈）
+        bool last = index >= comboDamage.Length - 1;
+        Vector3 startPose = weaponPivot.localEulerAngles;
+        float windup = WindupFor(index);
+        float w = 0f;
+        while (w < windup)
+        {
+            w += Time.deltaTime;
+            weaponPivot.localRotation = Quaternion.Euler(LerpAngles(startPose, from, Mathf.SmoothStep(0f, 1f, w / windup)));
+            if (last && AllowAirAttacks && !IsPlunging && controller.VerticalVelocity > 0.5f && !controller.IsGrounded)
+                IsPlunging = true;
+            yield return null;
+        }
+        weaponPivot.localRotation = Quaternion.Euler(from);
 
         // 揮下去 + 往前踏步 + 判定
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
@@ -191,23 +335,72 @@ public abstract class MeleeCombat : MonoBehaviour
         hitThisSwing.Clear();
         controller.AddImpulse(transform.forward * lungeForce);
         float damage = comboDamage[Mathf.Clamp(index, 0, comboDamage.Length - 1)];
+        if (IsPlunging) damage *= plungeDamageScale;
         float t = 0f;
         float swing = SwingFor(index);
+        bool plungeHeld = false;
         while (t < swing)
         {
             t += Time.deltaTime;
+            // 跳劈：揮到一半停住，一路往下劈到落地（中途碰到的也算），落地才把後半刀砍完
+            if (IsPlunging && !plungeHeld && t >= swing * 0.5f)
+            {
+                plungeHeld = true;
+                t = swing * 0.5f;
+                float air = 0f;
+                while (!controller.IsGrounded && air < plungeMaxAirTime)
+                {
+                    air += Time.deltaTime;
+                    DoHitCheck(damage);
+                    yield return null;
+                }
+                IsPlunging = false;
+                if (controller.IsGrounded)
+                {
+                    // 落地衝擊：範圍大一點
+                    DoHitCheck(damage, hitRadius * plungeLandingRadiusScale);
+                    OnPlungeLanded?.Invoke(transform.position);
+                }
+            }
             float k = Mathf.Clamp01(t / swing);
             // 用一般 Lerp（不是 LerpAngle），揮劍才會經過前方而不是從背後繞
             weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, k));
             DoHitCheck(damage);
             yield return null;
         }
+        IsPlunging = false;
     }
 
-    void DoHitCheck(float damage)
+    /// <summary>空中單手輕砍：由上往下一刀，傷害較低</summary>
+    IEnumerator AirSlash()
     {
-        Vector3 center = transform.position + transform.forward * hitForwardOffset;
-        int count = Physics.OverlapSphereNonAlloc(center, hitRadius, overlap, ~0, QueryTriggerInteraction.Collide);
+        IsAirSlash = true;
+        controller.FaceDirection(GetAimDirection());
+        OnSwingStart(0);
+        OnSwing?.Invoke(0);
+
+        Vector3 from = new Vector3(-70f, 10f, 0f), to = new Vector3(70f, -10f, 0f);
+        yield return RotateWeapon(weaponPivot.localEulerAngles, from, airSlashWindup);
+
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+                         transform.position + Vector3.up, soundVolume * 0.6f,
+                         soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
+        hitThisSwing.Clear();
+        float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * airSlashDamageScale;
+        float t = 0f;
+        while (t < airSlashSwing)
+        {
+            t += Time.deltaTime;
+            weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / airSlashSwing)));
+            DoHitCheck(damage);
+            yield return null;
+        }
+    }
+
+    void DoHitCheck(float damage, float radius = -1f, float forward = -1f)
+    {
+        Vector3 center = transform.position + transform.forward * (forward >= 0f ? forward : hitForwardOffset);
+        int count = Physics.OverlapSphereNonAlloc(center, radius > 0f ? radius : hitRadius, overlap, ~0, QueryTriggerInteraction.Collide);
         for (int i = 0; i < count; i++)
         {
             var c = overlap[i];
