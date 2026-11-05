@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -6,6 +7,7 @@ using UnityEngine;
 /// 百足駭骨遠程攻擊的特效：
 ///   RangedCharge            → 嘴前聚出幾顆能量彈，跟著頭移動、慢慢變大
 ///   AttackImpact("Ranged")  → 發射口閃光，能量彈扇形射向 driver.RangedTargetPoint（沒有就往正前方）
+///                             launchInterval > 0 時一顆一顆依序射出，每顆射出時重新讀瞄準點
 ///   能量彈撞到東西或飛到最遠距離 → 爆炸特效，並發出 ProjectileHit 事件
 ///
 /// 這裡只有畫面和碰撞位置，不扣血。隊友要做傷害時訂閱 ProjectileHit 就好（參數：爆炸位置、撞到的 Collider，可能是 null）。
@@ -43,6 +45,17 @@ public class SkeletonCentipedeRangedVfx : MonoBehaviour
 
     /// <summary>能量彈爆炸：位置、撞到的 Collider（飛到最遠距離自爆時是 null）。</summary>
     public event Action<Vector3, Collider> ProjectileHit;
+
+    [Header("追蹤（Boss AI 設定；沒有目標就直線飛向發射時的瞄準點）")]
+    [Tooltip("能量彈飛行中落點會慢慢修正到這個目標")]
+    public Transform homingTarget;
+    public Vector3 homingOffset = new Vector3(0f, 1f, 0f);
+    [Tooltip("落點每秒最多移動幾公尺（0 = 不追蹤）")]
+    public float homingRate = 0f;
+    [Tooltip("飛到全程的多少比例之後就不再修正（留給玩家最後閃避的空間）")]
+    [Range(0f, 1f)] public float homingUntil = 0.75f;
+    [Tooltip("每顆能量彈之間的發射間隔（秒）。0 = 全部同時射出；大於玩家受傷無敵時間，後面的能量彈才打得到")]
+    public float launchInterval = 0f;
 
     SkeletonCentipedeAnimationDriver driver;
     Transform head;
@@ -137,26 +150,49 @@ public class SkeletonCentipedeRangedVfx : MonoBehaviour
 
         Vector3 target = driver.RangedTargetPoint ?? mouth.position + transform.forward * maxDistance * 0.6f;
         Vector3 toTarget = target - mouth.position;
-        Vector3 flat = new Vector3(toTarget.x, 0f, toTarget.z);
-        if (flat.sqrMagnitude < 0.01f) flat = transform.forward;
-
         Spawn(muzzlePrefab, mouth.position, Quaternion.LookRotation(toTarget.sqrMagnitude > 0.01f ? toTarget : transform.forward), bodyLength * 0.15f * muzzleScale);
 
         if (charging.Count == 0) OnCharge(); // 沒經過聚能（例如動畫被切掉一半）也照樣射
+        if (volley != null) StopCoroutine(volley);
+        volley = StartCoroutine(LaunchVolley());
+    }
+
+    Coroutine volley;
+
+    /// <summary>
+    /// 扇形依序射出（launchInterval = 0 就同一幀全部射出）。每一顆射出時都重新讀 RangedTargetPoint，
+    /// 所以前一顆把玩家擊退之後，後面的仍會瞄準玩家當下的位置。還沒射出的能量彈留在嘴前繞圈。
+    /// </summary>
+    IEnumerator LaunchVolley()
+    {
         int n = charging.Count;
         for (int i = 0; i < n; i++)
         {
-            var p = charging[i];
-            if (p == null) continue;
-            float yaw = n > 1 ? Mathf.Lerp(-spreadAngle * 0.5f, spreadAngle * 0.5f, i / (float)(n - 1)) : 0f;
-            Vector3 dir = Quaternion.AngleAxis(yaw, Vector3.up) * flat.normalized;
-            float distance = Mathf.Min(flat.magnitude, maxDistance);
-            Vector3 end = mouth.position + dir * distance;
-            end.y = target.y;
-            p.SetSize(ProjectileSize);
-            p.Launch(mouth.position, end, projectileSpeed, arcHeight, maxDistance, transform, OnProjectileExplode);
+            if (charging.Count == 0) yield break;
+            var p = charging[0];
+            charging.RemoveAt(0);
+            if (p != null) LaunchOne(p, i, n);
+            if (launchInterval > 0f && i < n - 1) yield return new WaitForSeconds(launchInterval);
         }
-        charging.Clear();
+        volley = null;
+    }
+
+    void LaunchOne(Projectile p, int i, int n)
+    {
+        UpdateMouth();
+        Vector3 target = driver.RangedTargetPoint ?? mouth.position + transform.forward * maxDistance * 0.6f;
+        Vector3 toTarget = target - mouth.position;
+        Vector3 flat = new Vector3(toTarget.x, 0f, toTarget.z);
+        if (flat.sqrMagnitude < 0.01f) flat = transform.forward;
+
+        float yaw = n > 1 ? Mathf.Lerp(-spreadAngle * 0.5f, spreadAngle * 0.5f, i / (float)(n - 1)) : 0f;
+        Vector3 dir = Quaternion.AngleAxis(yaw, Vector3.up) * flat.normalized;
+        float distance = Mathf.Min(flat.magnitude, maxDistance);
+        Vector3 end = mouth.position + dir * distance;
+        end.y = target.y;
+        p.SetSize(ProjectileSize);
+        p.Launch(mouth.position, end, projectileSpeed, arcHeight, maxDistance, transform, OnProjectileExplode);
+        if (homingTarget != null && homingRate > 0f) p.SetHoming(homingTarget, homingOffset, homingRate, homingUntil);
     }
 
     void OnProjectileExplode(Vector3 position, Collider hit)
@@ -188,6 +224,17 @@ public class SkeletonCentipedeRangedVfx : MonoBehaviour
         float speed, arc, traveled, total, maxDistance;
         Transform owner;
         Action<Vector3, Collider> onExplode;
+        Transform homing;
+        Vector3 homingOffset;
+        float homingRate, homingUntil;
+
+        public void SetHoming(Transform target, Vector3 offset, float rate, float until)
+        {
+            homing = target;
+            homingOffset = offset;
+            homingRate = rate;
+            homingUntil = until;
+        }
         bool flying;
 
         public static Projectile Create(Vector3 position, float size, Material glow, Material trailMat, Color color)
@@ -267,6 +314,12 @@ public class SkeletonCentipedeRangedVfx : MonoBehaviour
             if (!flying) return;
             Vector3 prev = transform.position;
             traveled += speed * Time.deltaTime;
+            if (homing != null && traveled / total < homingUntil)
+            {
+                // 落點慢慢往目標修正（保留一點偏差，玩家翻滾 / 衝刺還是躲得掉）
+                end = Vector3.MoveTowards(end, homing.position + homingOffset, homingRate * Time.deltaTime);
+                total = Mathf.Max(0.1f, Vector3.Distance(start, end));
+            }
             float u = traveled / total;
             Vector3 next = Vector3.Lerp(start, end, u) + Vector3.up * (4f * arc * u * (1f - u));
             // 到了目標點還沒撞到東西就繼續直線往前，直到最遠距離
