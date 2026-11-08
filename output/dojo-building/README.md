@@ -8,9 +8,11 @@
 - `FinalDojoArena_Architecture.unitypackage`：提供 Unity 原生場景、Prefab、Mesh、材質、貼圖與靜態碰撞；接收專案需有 URP。未打包或安裝任何套件程式碼。
 - 編號 01～05 PNG：實際 Unity 相機渲染，包含外觀、全院、室內、移除屋頂後的配置與庭院平視。
 
-這是完整靜態建築第一版。室內有實際地板、牆面、門洞、木天花板與基本家具。門扇固定開啟，植物與家具為基礎模型；玩家、Boss 和戰鬥流程尚未整合到這個獨立預覽場景。
+這是完整靜態建築第一版。室內有實際地板、牆面、門洞、木天花板與基本家具。門扇固定開啟，植物與家具為基礎模型。儲存的 Unity 場景已加入現有貓耳玩家 PlayerRig；Boss 與戰鬥流程尚未接入。
 
-開啟場景按 Play，點 Game 後按住右鍵轉視角、WASD 移動、Q/E 升降、Shift 加速、Ctrl 慢速。F2 回入口、F3 進大廳、F1 看總覽、F4 去茶室；H 切換屋頂剖視，Esc 放開滑鼠，Tab 切換中文提示。`06-free-tour-controls.png` 是參觀模式實際 Game 畫面。
+現在開啟場景按 Play，點 Game 後可操作玩家：WASD 移動、滑鼠轉視角、Shift 衝刺、Space 跳躍、V 翻滾；Esc 釋放滑鼠，點畫面重新鎖定。玩家從庭院 X0/Z65 面向主殿開始，可以走上階梯進屋。`07-player-in-courtyard.png` 是實測畫面，`player-checks.json` 記錄 7 項角色與相機檢查。
+
+原自由飛行相機保留但預設停用。需要恢復飛行參觀時，先停止 Play，停用場景的 PlayerRig，再啟用 PreviewLightingAndCameras/Main Camera。原右鍵轉向、WASD 飛行、Q/E 升降、F1～F4 與 H 剖視控制只適用於該模式，`06-free-tour-controls.png` 是先前飛行模式的截圖。本機 GLB／unitypackage 仍是先前靜態建築快照，未重新打包玩家依賴。
 
 GLB 和 Unity 資源包是可重建的本機交付檔，Git 保存 Unity 原生資產、程式、文件與預覽圖，避免重複保存大型二進位匯出。
 

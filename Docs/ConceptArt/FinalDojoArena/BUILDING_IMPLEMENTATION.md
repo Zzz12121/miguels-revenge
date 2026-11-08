@@ -4,6 +4,10 @@
 
 ## 直接查看
 
+**玩家更新：** 儲存場景現已加入共用 `PlayerRig.prefab`，出生在庭院 `(0,1.06,65)`，面向主殿。按 Play、點 Game，即可用 WASD／滑鼠／Shift／Space／V 操作現有角色與第三人稱相機。預覽飛行 Camera 預設停用，避免兩套相機及輸入同時生效。共用 Prefab 與遊戲控制腳本未修改，只保存場景內的位置、引用與技能不自動播放設定。
+
+下列自由飛行操作為原模式；要使用時，停止 Play、停用場景 PlayerRig，啟用 `PreviewLightingAndCameras/Main Camera`。本機模型與 Unity 匯出包仍為先前建築版本，未重新匯出玩家依賴。
+
 - 場景：`Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity`。
 - 單一主屋：`Assets/_Project/Prefabs/Environment/FinalDojoArena/PF_MainDojo_Complete.prefab`。
 - 主屋＋左右附室、可放在任意位置的組合：`Assets/_Project/Prefabs/Environment/FinalDojoArena/PF_DojoBuildings_Complete.prefab`。組合原點在主屋地面中心。
@@ -78,7 +82,9 @@ Build 會重建這個獨立場景；如果有開啟的未儲存場景，會停�
 
 ## 驗證範圍
 
-786 項幾何／資產斷言通過，包括角色尺寸膠囊沿入口、內部門洞、附室連橋的淨空、地板與階梯高度、中央整個 52×52m 戰鬥體積無碰撞障礙，以及材質／原生網格引用。實際角色控制、戰鬥與相機系統尚未整合到這個建築場景，因此這不代表已完成組員控制器的實機遊玩測試。
+786 項幾何／資產斷言通過，包括角色尺寸膠囊沿入口、內部門洞、附室連橋的淨空、地板與階梯高度、中央整個 52×52m 戰鬥體積無碰撞障礙，以及材質／原生網格引用。玩家更新另以虛擬鍵盤通過 7 項 Play 模式檢查：共用角色跳躍、回到地面、W 從庭院經階梯正門走到大廳、木地板支撐，以及唯一啟用相機／收音與正確跟隨目標。結果 `player-checks.json`、實景 `07-player-in-courtyard.png`。Boss 與完整戰鬥流程尚未整合。
+
+幾何 Build 會重建場景並移除額外的玩家實例；需要重建時，之後在 Edit 模式執行 `DojoPlayerSetup.Install`，再進入 Play 執行 `DojoPlayerChecks.Run`。兩者都透過 `unity command run_script --file Docs/Validation/<檔名>.cs --entry <類別>.<方法>` 執行。玩家更新完成後，使用者已明確要求 push。
 
 GLB 已重新解析檢查標頭、索引範圍、有限數值、材質／貼圖引用、內嵌圖片可解碼。報告在 `architecture-checks.json`、`glb-validation.json`。Unity Console 無錯誤；啟動時有既有 MCP 連線警告。
 
