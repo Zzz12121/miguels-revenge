@@ -1,0 +1,18 @@
+{
+  "success": true,
+  "counts": {
+    "CherryTree_": 18,
+    "BlackPine_": 8,
+    "Bamboo_": 18,
+    "JapaneseMaple_": 6,
+    "Boxwood_": 20,
+    "Fern_": 20,
+    "StoneLantern_": 10,
+    "SteppingStone_": 34
+  },
+  "pathSamples": 130,
+  "renderers": 476,
+  "particleSystems": 24,
+  "liveParticles": 867,
+  "scene": "Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity"
+}

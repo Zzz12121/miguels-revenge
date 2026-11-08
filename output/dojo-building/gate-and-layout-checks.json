@@ -1,0 +1,7 @@
+{
+  "success": true,
+  "wallSamples": 12,
+  "cherries": 18,
+  "rearTrees": 32,
+  "checks": "E opens/closes from both sides; W walks actual player through open gate; blocked close; moving debounce; distant input ignored; open/closed collider follows doors; connected walls; grounded rear pines"
+}

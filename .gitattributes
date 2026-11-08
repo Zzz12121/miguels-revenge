@@ -36,3 +36,16 @@ Docs/CharacterReferences/**/*.zip filter=lfs diff=lfs merge=lfs -text
 *.tif filter=lfs diff=lfs merge=lfs -text
 *.hdr filter=lfs diff=lfs merge=lfs -text
 *.exr filter=lfs diff=lfs merge=lfs -text
+# Imported dojo garden source art; keep native scene/meta files as ordinary text.
+Assets/Waldemarst/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/Waldemarst/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/Waldemarst/**/*.psd filter=lfs diff=lfs merge=lfs -text
+Assets/Waldemarst/**/*.tga filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_StoneLanterns/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_StoneLanterns/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_StoneLanterns/**/*.psd filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_StoneLanterns/**/*.tga filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_Shrine_Torii_Gates/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_Shrine_Torii_Gates/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_Shrine_Torii_Gates/**/*.psd filter=lfs diff=lfs merge=lfs -text
+Assets/JTS_Shrine_Torii_Gates/**/*.tga filter=lfs diff=lfs merge=lfs -text

@@ -2,6 +2,10 @@
 
 已建立實際 Unity 場景：`Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity`。
 
+**大門／配置修正：** 門柱與兩側牆面已連接，靠近入口按 E 可從內外開關雙扇門；玩家站在門扇掃過範圍時會阻止關門。前院櫻花增為 18 棵，其餘松、竹、楓移到後院，松樹根部下移貼地。`14-connected-entrance.png`、`15-rear-garden.png`、`16-pine-root-grounding.png` 為實景；`gate-and-layout-checks.json` 記錄 E、實際 W 通行與碰撞測試。
+
+**最新庭院更新：** 已換上套件鳥居與石燈籠，加入櫻花、松、竹、楓、灌木、蕨類、草地及 34 塊不規則踏石。Play 中可見草木風動與持續交錯的花瓣／竹葉飄落。圖片 08～13 為更新後實景；`garden-checks.json`、`garden-motion-checks.json` 與更新的 `player-checks.json` 記錄通路、風動與角色測試。詳細交接見 `Docs/ConceptArt/FinalDojoArena/LIVING_GARDEN.md`。以下 GLB／unitypackage 仍是較早的建築快照，未包含新庭院或玩家。
+
 - `DojoBuildings_Complete.glb`：主屋＋左右附館，內嵌貼圖，可用於模型檢視或後續加工。
 - `MainDojo_Complete.glb`：單獨中央主屋。
 - `FinalDojoArena.glb`：包含側廊、庭院、門樓、鳥居及圍牆的整院模型。

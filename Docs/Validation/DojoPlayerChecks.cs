@@ -17,7 +17,7 @@ public static class DojoPlayerChecks
         var cc = player.GetComponent<CharacterController>();
         var follow = Camera.main.GetComponent<ThirdPersonCamera>();
         Require(Camera.allCamerasCount == 1 && UnityEngine.Object.FindObjectsByType<AudioListener>().Count(l=>l.isActiveAndEnabled)==1, "Exactly one camera and listener required");
-        Require(cc.isGrounded && player.FeetY < .15f && !player.IsDead, "Player must stand on courtyard floor");
+        Require(cc.isGrounded && player.FeetY < .35f && !player.IsDead, "Player must stand on courtyard floor or shallow stepping stone");
         var originalKeyboard=Keyboard.current; var originalMouse=Mouse.current;
         var behavior=InputSystem.settings.editorInputBehaviorInPlayMode;
         var cursor=Cursor.lockState; bool visible=Cursor.visible;
