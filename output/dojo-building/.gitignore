@@ -1,0 +1,4 @@
+# Regenerate from the native Unity scene with Docs/Validation/DojoArenaBuild.cs
+# and DojoGlbExport.cs. The source assets and review captures are versioned.
+*.glb
+*.unitypackage

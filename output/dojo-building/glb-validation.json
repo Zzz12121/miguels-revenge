@@ -1,0 +1,137 @@
+[
+  {
+    "name": "MainDojo_Complete.glb",
+    "triangles": 44960,
+    "meshes": 16,
+    "materials": 11,
+    "images": [
+      {
+        "name": "stone_wall_2_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "be2fcba75fe845d0043303432314332bdd0295f34883d2b8db939264d9038c7f"
+      },
+      {
+        "name": "wooden-boards-texture_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "7a66f2ad22accf931e86f6f6a65e24a5904071f204d193dd42452c85031584ba"
+      },
+      {
+        "name": "T_MainDojoRoof_BaseColor",
+        "size": [
+          4096,
+          4096
+        ],
+        "sha256": "73b0d2e52ef39afc0c42d84e5843b70570e907520f9388ef72a05809598cc475"
+      }
+    ],
+    "bounds_min": [
+      -20.000001907348633,
+      0.0,
+      -14.060057640075684
+    ],
+    "bounds_max": [
+      20.000001907348633,
+      17.772510528564453,
+      15.399996757507324
+    ],
+    "bytes": 10791364,
+    "sha256": "629a2349b1ef6b1b40ffcb39cc9c3dbf11cb1fc2e38a18c8eda06dea8c49cf1f",
+    "checks": "GLB chunks, accessors, finite mesh data, in-range indices/materials, decodable embedded images"
+  },
+  {
+    "name": "DojoBuildings_Complete.glb",
+    "triangles": 99320,
+    "meshes": 41,
+    "materials": 11,
+    "images": [
+      {
+        "name": "stone_wall_2_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "be2fcba75fe845d0043303432314332bdd0295f34883d2b8db939264d9038c7f"
+      },
+      {
+        "name": "wooden-boards-texture_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "7a66f2ad22accf931e86f6f6a65e24a5904071f204d193dd42452c85031584ba"
+      },
+      {
+        "name": "T_MainDojoRoof_BaseColor",
+        "size": [
+          4096,
+          4096
+        ],
+        "sha256": "73b0d2e52ef39afc0c42d84e5843b70570e907520f9388ef72a05809598cc475"
+      }
+    ],
+    "bounds_min": [
+      -36.0,
+      0.0,
+      -14.060057640075684
+    ],
+    "bounds_max": [
+      36.0,
+      17.772510528564453,
+      15.399996757507324
+    ],
+    "bytes": 13892924,
+    "sha256": "9f32a0d89cf55229f4a8d14eadfa3e3f7c90bbf4c7c9f240067610aa273e408a",
+    "checks": "GLB chunks, accessors, finite mesh data, in-range indices/materials, decodable embedded images"
+  },
+  {
+    "name": "FinalDojoArena.glb",
+    "triangles": 520096,
+    "meshes": 73,
+    "materials": 14,
+    "images": [
+      {
+        "name": "stone_wall_2_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "be2fcba75fe845d0043303432314332bdd0295f34883d2b8db939264d9038c7f"
+      },
+      {
+        "name": "wooden-boards-texture_d",
+        "size": [
+          1024,
+          1024
+        ],
+        "sha256": "7a66f2ad22accf931e86f6f6a65e24a5904071f204d193dd42452c85031584ba"
+      },
+      {
+        "name": "T_MainDojoRoof_BaseColor",
+        "size": [
+          4096,
+          4096
+        ],
+        "sha256": "73b0d2e52ef39afc0c42d84e5843b70570e907520f9388ef72a05809598cc475"
+      }
+    ],
+    "bounds_min": [
+      -49.0,
+      -0.30000001192092896,
+      -121.0
+    ],
+    "bounds_max": [
+      49.0,
+      17.772510528564453,
+      1.0
+    ],
+    "bytes": 36528268,
+    "sha256": "f32a8c02bd367cff0369b92eb7ee4a4dcc0d2cad9f3f4c8ce89542f0c12982d4",
+    "checks": "GLB chunks, accessors, finite mesh data, in-range indices/materials, decodable embedded images"
+  }
+]
