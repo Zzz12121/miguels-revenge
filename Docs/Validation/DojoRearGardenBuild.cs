@@ -248,9 +248,10 @@ public static class DojoRearGardenBuild
         foreach(float x in new[]{-48.05f,48.05f})for(float z=5;z<RearWallZ;z+=3)StoneAsset("SM_Stonewall02a","KHS_WallBase_"+index++,new Vector3(x,-.12f,z),new Vector3(1,.62f,Mathf.Min(3,RearWallZ-z)/3),0,stone);
         for(float x=-48;x<48;x+=3)StoneAsset("SM_Stonewall02a","KHS_WallBase_"+index++,new Vector3(x,-.12f,RearWallZ),new Vector3(1,.62f,Mathf.Min(3,48-x)/3),90,stone);
         foreach(int side in new[]{-1,1})for(float x=6.4f;x<48;x+=3)StoneAsset("SM_Stonewall02a","KHS_WallBase_"+index++,new Vector3(side*x,-.12f,5),new Vector3(1,.62f,Mathf.Min(3,48-x)/3),side*90,stone);
-        var bridge=StoneAsset("SM_Bridge01b","KHS_StoneBridge",new Vector3(12,0,RiverZ(12)),new Vector3(2.1f,1,1.55f),0,StoneMaterial("Bridge01b","KHS_Bridge_URP"));
-        var b=BoundsOf(bridge);bridge.transform.position+=new Vector3(12-b.center.x,.1f-b.max.y,RiverZ(12)-b.center.z);
-        foreach(var collider in bridge.GetComponentsInChildren<Collider>())Object.DestroyImmediate(collider);
+        var bridge=Group("KHS_StoneBridge",root);
+        // KHS Bridge01b is a narrow frame. Build a complete stone slab crossing using KHS stone art.
+        for(int row=0;row<10;row++)for(int col=0;col<3;col++)
+            Box("StoneBridgeSlab_"+row+"_"+col,new Vector3(12+(col-1)*1.05f,-.04f,RiverZ(12)+(row-4.5f)*.775f),new Vector3(1.035f,.28f,.76f),stone,bridge,false);
         // The stone crossing has a continuous level walking surface with shallow approach ramps.
         var deck=Group("BridgeWalkableDeck",root);deck.position=new Vector3(12,.055f,RiverZ(12));var box=deck.gameObject.AddComponent<BoxCollider>();box.size=new Vector3(3.15f,.14f,7.75f);
         foreach(var fern in root.Cast<Transform>().Where(t=>t.name.StartsWith("RearFern_")||t.name.StartsWith("RearLowShrub_")).ToArray())if(Mathf.Abs(fern.position.x-12)<2&&Mathf.Abs(fern.position.z-RiverZ(12))<5){var p=fern.position;p.x+=4;fern.position=p;}
