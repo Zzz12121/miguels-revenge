@@ -3,9 +3,9 @@
 2026-11-09。場景：`Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity`。
 
 - 後院深度先由 14m 擴為 21m，再擴 1.2 倍至 25.2m；後牆 Z126.2，側牆碰撞及外觀同步延伸。外圍可行走地面 380×360m。
-- 前院保留櫻花；松、楓、竹在後院散植。56 叢低灌木、108 叢蕨類重新分布，前後院約 200,325 片風動草葉及連續綠底。
-- 碎石改為主屋平台外局部圓弧、不規則邊緣，寬約 44m、最深約 5.7m。其他後院區域接草坪。停用舊整片 GravelGround 及平地碰撞，避免遮住新河床。
-- 曲折水道寬約 3.5–4.75m，水面 Y-0.22、中央河床 Y-1.05，緩坡可涉水。100 顆岸石、8 顆大景石，另有庭石與石燈籠。
+- 前院保留櫻花；松、楓、竹在後院散植。56 叢低灌木、108 叢蕨類，前後院共 279,290 片風動草葉及連續綠底。
+- 2026-11-09 草地／河岸修正：房屋周圍、側廊外、後院擴建區及竹林下方全部接草地，移除米白砂地、主屋後方碎石弧面與小碎石。保留前院 34 塊踏石及其原始位置／尺寸、木平台、建築台階與石橋。舊 GravelGround 及平地碰撞保持停用，避免遮住新河床。
+- 曲折水道寬約 3.5–4.75m，水面 Y-0.22、中央河床 Y-1.05，緩坡可涉水。175 顆連續岸石與 8 顆大景石共用 `DojoRiverWater.Center/Width`，以縮放後的實際網格中心對齊水邊，石腳沉入水下。草皮以連續帶狀網格貼合水岸，移除方格切邊與裸露碎石空帶。
 - KHS 原始資產在 `Assets/Soswaewon`，不是名為 KHS 的資料夾。使用 Structure/SM_Stonewall02a 做外牆石基，使用 KHS 石材製作的連續石板橋橫跨溪流；實例材質換為本專案 URP 材質，原 Bridge01b 為細框架，因此改為完整石板橋面並保留獨立連續碰撞。
 
 ## 水面與接水特效
@@ -22,6 +22,10 @@ SUIMONO 原始資產：`Assets/SUIMONO - WATER SYSTEM 2`。其舊版 Built-in �
 ## 重建與驗證
 
 Edit 模式執行 `unity command run_script --file Docs/Validation/DojoRearGardenBuild.cs --entry DojoRearGardenBuild.Build`。會重建 RearLandscape 並重新排列松楓竹。
+
+只更新草地與岸石而保留目前樹木／灌木、河水及橋的位置，執行同檔案的 `DojoRearGardenBuild.ApplyGroundAndBanks`。重用 mesh 時會更新原生渲染緩衝並標記資產待儲存，避免 CPU 幾何已更新但畫面仍沿用舊地形。
+
+`DojoGroundBankChecks.Run`（Edit 模式）驗證 72 點庭院／擴建區草皮覆蓋、279,290 片草葉不伸入河道、183 顆岸石貼水與 171 組相鄰岸石連續性，以及 34 塊前院踏石未改動。報告 `output/dojo-building/grass-bank-checks.json`；實際 Unity 截圖 25–29 顯示房屋四周、後院、河岸近景與前院石路。Play 模式 `DojoRiverChecks.Run` 再驗證涉水、水花及橋面支撐。
 
 Play 模式執行 `DojoRearGardenChecks.Run` 與 `DojoRiverChecks.Run`（對應 Docs/Validation 同名 .cs）。驗證包含：49 點外圍碰撞、玩家 W 行走及後牆外支撐、固定鏡頭水面流動、玩家沉到河床、橋面支撐、角色及粒子接水、乾地拒絕水花。報告在 `output/dojo-building/*checks.json`，截圖由 `DojoGardenCapture.Run` 產生。
 

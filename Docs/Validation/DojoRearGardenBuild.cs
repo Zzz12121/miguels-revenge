@@ -20,7 +20,18 @@ public static class DojoRearGardenBuild
     static Transform Group(string name,Transform parent,Vector3 at=default)
     {var t=new GameObject(name).transform;t.SetParent(parent,false);t.localPosition=at;return t;}
     static T Save<T>(T asset,string name,string dir)where T:Object
-    {string path=dir+name;asset.name=Path.GetFileNameWithoutExtension(name);var prior=AssetDatabase.LoadAssetAtPath<T>(path);if(prior){EditorUtility.CopySerialized(asset,prior);Object.DestroyImmediate(asset);return prior;}AssetDatabase.CreateAsset(asset,path);return asset;}
+    {
+        string path=dir+name;asset.name=Path.GetFileNameWithoutExtension(name);var prior=AssetDatabase.LoadAssetAtPath<T>(path);
+        if(prior)
+        {
+            EditorUtility.CopySerialized(asset,prior);Object.DestroyImmediate(asset);
+            // CopySerialized alone can leave the renderer's native mesh buffers on the old geometry.
+            // Invalidate/upload those buffers and mark the reused asset dirty so the saved prefab matches the view.
+            if(prior is Mesh m){var bounds=m.bounds;m.vertices=m.vertices;m.triangles=m.triangles;m.bounds=bounds;m.UploadMeshData(false);}
+            EditorUtility.SetDirty(prior);return prior;
+        }
+        AssetDatabase.CreateAsset(asset,path);return asset;
+    }
     static Material Mat(string name,string shader,Color color)
     {var m=new Material(Shader.Find(shader));m.name=name;m.SetColor("_BaseColor",color);return Save(m,name+".mat",MatDir);}
     static Mesh Mesh(string name,List<Vector3> v,List<int> t,List<Vector2> uv=null,List<Color> c=null,List<Vector4> tangent=null)
@@ -41,14 +52,18 @@ public static class DojoRearGardenBuild
     {var go=GameObject.CreatePrimitive(PrimitiveType.Cube);go.name=name;go.transform.SetParent(parent,false);go.transform.localPosition=at;go.transform.localScale=size;go.GetComponent<Renderer>().sharedMaterial=mat;if(!collider)Object.DestroyImmediate(go.GetComponent<Collider>());}
     public static float RiverZ(float x)=>DojoRiverWater.Center(x);
     public static float RiverWidth(float x)=>DojoRiverWater.Width(x);
-    static float ApronEdge(float x)
+    static bool RearLawn(float x,float z)=>z>101.2f&&z<125.65f&&Mathf.Abs(x)<47.35f&&Mathf.Abs(z-RiverZ(x))>RiverWidth(x)*.5f+.12f;
+    static bool FrontLawn(float x,float z)=>z>=5.6f&&z<=101.2f&&Mathf.Abs(x)<47.35f&&GrassAllowed(x,z);
+    static bool GrassAllowed(float x,float z)
     {
-        float q=Mathf.Clamp01(Mathf.Abs(x)/22f);
-        return 101.2f+5.1f*Mathf.Sqrt(1-q*q)+.65f*Mathf.Sin(x*.28f)*Mathf.Sqrt(1-q*q);
+        if(z<74.5f&&Mathf.Abs(x)<2.05f)return false; // Preserve the front stepping-stone route.
+        if(Mathf.Abs(x)<19.7f&&z>73.5f&&z<101.5f)return false;
+        if(Mathf.Abs(Mathf.Abs(x)-27)<8.5f&&z>79&&z<94.5f)return false;
+        if(Mathf.Abs(Mathf.Abs(x)-39)<3.15f&&z>16.5f&&z<84.5f)return false;
+        if(Mathf.Abs(x-12)<1.7f&&Mathf.Abs(z-RiverZ(12))<4.05f)return false;
+        return true;
     }
-    static bool Apron(float x,float z)=>Mathf.Abs(x)<22&&z>=101.1f&&z<ApronEdge(x);
-    static bool RearLawn(float x,float z)=>z>101.2f&&z<125.4f&&Mathf.Abs(x)<46.6f&&!Apron(x,z)&&Mathf.Abs(z-RiverZ(x))>RiverWidth(x)*.5f+.78f;
-    static bool FrontLawn(float x,float z)=>z>=8&&z<=73.8f&&Mathf.Abs(x)<35.3f&&Mathf.Abs(x)>(2.3f+.30f*Mathf.Sin(z*.17f));
+    static float TurfY(float x,float z)=>Mathf.Max(DojoRiverWater.WaterY+.012f,DojoRiverWater.Bed(x,z)+.049f);
     static void Boundaries()
     {
         var boundary=architecture.Find("OuterWallsAndGate");
@@ -82,7 +97,6 @@ public static class DojoRearGardenBuild
     }
     static void Ground()
     {
-        var gravel=Mat("Rear_FineGreyGravel","Project/Environment/Dojo Garden Ground",new Color(.34f,.37f,.37f));gravel.SetFloat("_PebbleScale",31);
         var turf=Mat("DenseLawn_Base","Project/Environment/Dojo Garden Ground",new Color(.064f,.17f,.031f));turf.SetFloat("_Grass",1);turf.SetFloat("_PebbleScale",9);
         var outer=Mat("Exterior_Earth","Project/Environment/Dojo Garden Ground",new Color(.18f,.205f,.14f));outer.SetFloat("_Grass",1);
         // Replace BOTH former flat surfaces: otherwise the courtyard collider prevents wading.
@@ -97,29 +111,23 @@ public static class DojoRearGardenBuild
         foreach(float z in zs)foreach(float x in xs)gv.Add(new Vector3(x,DojoRiverWater.Bed(x,z),z));
         for(int j=0;j<zs.Count-1;j++)for(int i=0;i<xs.Count-1;i++){int n=j*xs.Count+i;gt.AddRange(new[]{n,n+xs.Count+1,n+1,n,n+xs.Count,n+xs.Count+1});}
         var groundMesh=Mesh("SM_ExtendedWalkableGround",gv,gt);var outside=Visual("ExtendedWalkableGround",groundMesh,outer,root);outside.AddComponent<MeshCollider>().sharedMesh=groundMesh;
-        var sand=AssetDatabase.LoadAssetAtPath<Material>("Assets/_Project/Materials/FinalDojoArena/M_Dojo_CourtyardSand.mat");
-        if(sand)Plane("CourtyardSandSurface",-47.5f,47.5f,5.1f,101.1f,.005f,sand,root);
-        var av=new List<Vector3>();var at=new List<int>();
-        for(int i=0;i<160;i++){float x=-22+44*i/160f,nx=-22+44*(i+1)/160f;Quad(av,at,new Vector3(x,.021f,101.1f),new Vector3(nx,.021f,101.1f),new Vector3(nx,.021f,ApronEdge(nx)),new Vector3(x,.021f,ApronEdge(x)));}
-        Visual("RearGreyGravel",Mesh("SM_RearGreyGravel",av,at),gravel,root);
         var lawnV=new List<Vector3>();var lawnT=new List<int>();
-        for(float z=8;z<125.4f;z+=.45f)for(float x=-46.7f;x<46.7f;x+=.45f)
+        // Continuous strips follow the actual water edges, without square-cell cutouts or a bare gravel gap.
+        for(int i=0;i<320;i++)foreach(int side in new[]{-1,1})
         {
-            bool front=FrontLawn(x+.225f,z+.225f),rear=RearLawn(x+.225f,z+.225f);
-            if(front||rear)Quad(lawnV,lawnT,new Vector3(x,.034f,z),new Vector3(x+.45f,.034f,z),new Vector3(x+.45f,.034f,z+.45f),new Vector3(x,.034f,z+.45f));
+            float x=Mathf.Lerp(-47.5f,47.5f,i/320f),nx=Mathf.Lerp(-47.5f,47.5f,(i+1)/320f);
+            float edge=RiverZ(x)+side*RiverWidth(x)*.5f,nedge=RiverZ(nx)+side*RiverWidth(nx)*.5f;
+            float[] offsets={0,.18f,.45f,.8f,1.3f};
+            for(int k=0;k<offsets.Length;k++)
+            {
+                float a=edge+side*offsets[k],b=nedge+side*offsets[k];
+                float c=k==offsets.Length-1?(side<0?5.1f:125.75f):edge+side*offsets[k+1];
+                float d=k==offsets.Length-1?(side<0?5.1f:125.75f):nedge+side*offsets[k+1];
+                Vector3 p=new Vector3(x,TurfY(x,a),a),q=new Vector3(nx,TurfY(nx,b),b),r=new Vector3(nx,TurfY(nx,d),d),s=new Vector3(x,TurfY(x,c),c);
+                if(side>0)Quad(lawnV,lawnT,p,q,r,s);else Quad(lawnV,lawnT,s,r,q,p);
+            }
         }
         Visual("ContinuousGreenTurf",Mesh("SM_DenseLawnBase",lawnV,lawnT),turf,root);
-        // Small angular pebbles add real silhouette and parallax to the textured grey apron.
-        var v=new List<Vector3>();var t=new List<int>();var colors=new List<Color>();
-        for(int i=0;i<12000;i++)
-        {
-            float x=R(-22,22),z=R(101.2f,107);if(!Apron(x,z))continue;float radius=R(.018f,.045f);float h=R(.006f,.017f);int n=v.Count;
-            v.Add(new Vector3(x,.028f+h,z));for(int k=0;k<5;k++){float a=k*Mathf.PI*.4f;v.Add(new Vector3(x+Mathf.Cos(a)*radius,.026f,z+Mathf.Sin(a)*radius*R(.7f,1.2f)));}
-            for(int k=0;k<5;k++)t.AddRange(new[]{n,n+1+(k+1)%5,n+1+k});
-            Color c=Color.Lerp(new Color(.23f,.25f,.24f),new Color(.62f,.64f,.61f),R(0,1));for(int k=0;k<6;k++)colors.Add(c);
-        }
-        var pebble=new Material(Shader.Find("Project/Environment/Dojo Garden Wind"));pebble.SetColor("_BaseColor",new Color(.64f,.66f,.66f));pebble.SetFloat("_UseVertexColor",1);pebble.SetFloat("_UseVertexMask",1);pebble.SetFloat("_BendStrength",0);pebble.SetFloat("_FlutterStrength",0);pebble.SetFloat("_Cutoff",0);
-        Visual("ApronSmallPebbles",Mesh("SM_RearApronPebbles",v,t,null,colors),Save(pebble,"Rear_ActualPebbles.mat",MatDir),root);
     }
     static void DenseGrass()
     {
@@ -129,17 +137,17 @@ public static class DojoRearGardenBuild
         int total=0,tile=0;
         for(int region=0;region<2;region++)
         {
-            float xmin=region==0?-35.3f:-46.6f,xmax=-xmin,zmin=region==0?8:101.2f,zmax=region==0?73.8f:125.4f;
+            float xmin=-47.35f,xmax=47.35f,zmin=region==0?5.6f:101.2f,zmax=region==0?101.2f:125.65f;
             for(float z0=zmin;z0<zmax;z0+=10)for(float x0=xmin;x0<xmax;x0+=10)
             {
                 var v=new List<Vector3>();var t=new List<int>();var uv=new List<Vector2>();var mask=new List<Vector2>();var c=new List<Color>();
                 int attempts=Mathf.CeilToInt(Mathf.Min(10,xmax-x0)*Mathf.Min(10,zmax-z0)*34);
                 for(int b=0;b<attempts;b++)
                 {
-                    float x=R(x0,Mathf.Min(x0+10,xmax)),z=R(z0,Mathf.Min(z0+10,zmax));if(!(region==0?FrontLawn(x,z):RearLawn(x,z)))continue;
+                    float x=R(x0,Mathf.Min(x0+10,xmax)),z=R(z0,Mathf.Min(z0+10,zmax));if(!(region==0?FrontLawn(x,z):RearLawn(x,z))||!GrassAllowed(x,z))continue;
                     // Short, overlapping curved blades with a dark root and several green tips.
                     float h=R(.15f,.37f),w=R(.016f,.038f),a=R(0,6.283f);Vector3 s=new Vector3(Mathf.Cos(a),0,Mathf.Sin(a))*w;
-                    Vector3 p=new Vector3(x,.04f,z),lean=new Vector3(R(-.12f,.12f),0,R(-.12f,.12f));int n=v.Count;
+                    Vector3 p=new Vector3(x,TurfY(x,z)+.006f,z),lean=new Vector3(R(-.12f,.12f),0,R(-.12f,.12f));int n=v.Count;
                     v.AddRange(new[]{p-s,p+s,p+Vector3.up*h*.52f+lean*.3f-s*.65f,p+Vector3.up*h*.52f+lean*.3f+s*.65f,p+Vector3.up*h+lean});
                     t.AddRange(new[]{n,n+2,n+1,n+1,n+2,n+3,n+2,n+4,n+3});
                     uv.AddRange(new[]{Vector2.zero,Vector2.right,new Vector2(0,.52f),new Vector2(1,.52f),new Vector2(.5f,1)});mask.AddRange(new[]{Vector2.zero,Vector2.zero,new Vector2(0,.52f),new Vector2(0,.52f),Vector2.up});
@@ -211,22 +219,58 @@ public static class DojoRearGardenBuild
         // Existing front shrubs remain; new independent clusters enrich the rear garden.
         for(int i=0;i<56;i++)CloneArt(shrubs[i%shrubs.Length],"RearLowShrub_"+i,spot(false),R(.38f,.95f),R(0,360));
         for(int i=0;i<108;i++)CloneArt(ferns[i%ferns.Length],"RearFern_"+i,spot(false),R(.24f,.52f),R(0,360));
-        var rocks=top.Where(t=>t.name.StartsWith("GardenRock_")).ToArray();int index=0;
-        foreach(int side in new[]{-1,1})for(float x=-46;x<46;x+=R(1.25f,2.35f))
-        {
-            if(Mathf.Abs(x-12)<2.2f)continue;float z=RiverZ(x)+side*(RiverWidth(x)*.5f+R(-.08f,.25f));
-            var rock=CloneArt(rocks[index%rocks.Length],"RiverbankBoulder_"+index,new Vector3(x,-.07f,z),R(.45f,1.05f),R(0,360));
-            rock.transform.localScale=new Vector3(rock.transform.localScale.x*R(.9f,1.5f),rock.transform.localScale.y,rock.transform.localScale.z*R(.7f,1.1f));index++;
-        }
+        var rocks=top.Where(t=>t.name.StartsWith("GardenRock_")).ToArray();
+        BankStonework();
         for(int i=0;i<12;i++)CloneArt(rocks[i%rocks.Length],"RearAccentBoulder_"+i,spot(false),R(.8f,1.6f),R(0,360));
-        for(int i=0;i<8;i++)
-        {
-            float x=-39+i*10.8f+R(-1.7f,1.7f),side=i%2==0?-1:1;
-            CloneArt(rocks[(i*3)%rocks.Length],"RiverbankLargeBoulder_"+i,
-                new Vector3(x,-.16f,RiverZ(x)+side*(RiverWidth(x)*.5f+.6f)),R(1.05f,1.75f),R(0,360));
-        }
         var lantern=top.First(t=>t.name.StartsWith("StoneLantern_"));
         for(int i=0;i<4;i++)CloneArt(lantern,"RearStoneLantern_"+i,new Vector3(-32+i*21,.01f,106.6f+(i%2)*.7f),R(1.5f,1.9f),R(0,360));
+    }
+    static void BankStonework()
+    {
+        var rocks=garden.Cast<Transform>().Where(t=>t.name.StartsWith("GardenRock_")).OrderBy(t=>t.name).ToArray();
+        int index=0;
+        Action<string,float,int,float,float,float> stone=(name,x,side,width,depth,height)=>
+        {
+            var go=CloneArt(rocks[index++%rocks.Length],"Stone",Vector3.zero,1,R(0,360));
+            var holder=Group(name,root);go.transform.SetParent(holder,true);var b=BoundsOf(go);
+            holder.localScale=new Vector3(width/b.size.x,height/b.size.y,depth/b.size.z);
+            b=BoundsOf(go);
+            float z=RiverZ(x)+side*(RiverWidth(x)*.5f+.10f);
+            // Recenter AFTER scaling. Sink the stone foot below water so the bank cannot float above it.
+            holder.position+=new Vector3(x,-.36f,z)-new Vector3(b.center.x,b.min.y,b.center.z);
+        };
+        foreach(int side in new[]{-1,1})
+        {
+            float x=-46.5f;
+            while(x<46.6f)
+            {
+                float width=R(1.05f,1.65f);
+                if(Mathf.Abs(x-12)>1.9f)stone("RiverbankBoulder_"+index,x,side,width,R(.85f,1.3f),R(.6f,1.05f));
+                x+=width*.76f;
+            }
+        }
+        for(int i=0;i<8;i++)
+        {
+            float x=-39+i*10.8f,side=i%2==0?-1:1;
+            stone("RiverbankLargeBoulder_"+i,x,(int)side,R(1.7f,2.5f),R(1.3f,1.8f),R(1.2f,1.7f));
+        }
+    }
+    static void SaveLandscape()
+    {
+        PrefabUtility.SaveAsPrefabAsset(root.gameObject,PrefabDir+"PF_DojoRearLandscape.prefab");
+        PrefabUtility.SaveAsPrefabAsset(garden.gameObject,PrefabDir+"PF_DojoLivingGarden.prefab");
+        PrefabUtility.SaveAsPrefabAsset(GameObject.Find("FinalDojoArena"),PrefabDir+"PF_FinalDojoArena_Living.prefab");
+        AssetDatabase.SaveAssets();EditorSceneManager.MarkSceneDirty(root.gameObject.scene);EditorSceneManager.SaveScene(root.gameObject.scene);Physics.SyncTransforms();
+    }
+    public static string ApplyGroundAndBanks()
+    {
+        if(EditorApplication.isPlaying||SceneManager.GetActiveScene().path!="Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity")throw new Exception("Open dojo scene in Edit mode");
+        architecture=GameObject.Find("FinalDojoArena/Architecture").transform;garden=architecture.Find("LivingGarden");root=garden.Find("RearLandscape");
+        if(!root)throw new Exception("Build rear landscape first");
+        foreach(var t in root.Cast<Transform>().ToArray())
+            if(new[]{"ExtendedWalkableGround","CourtyardSandSurface","RearGreyGravel","ContinuousGreenTurf","ApronSmallPebbles"}.Contains(t.name)||t.name.StartsWith("DenseGrass_")||t.name.StartsWith("Riverbank"))Object.DestroyImmediate(t.gameObject);
+        rng=new System.Random(20261109);Ground();DenseGrass();BankStonework();SaveLandscape();
+        return "Saved grass throughout courtyard and extended rear garden; continuous banks follow the existing water mesh. Grass blades: "+File.ReadAllText("Temp/dojo-grass-count.txt");
     }
     static Material StoneMaterial(string source,string name)
     {
@@ -264,10 +308,7 @@ public static class DojoRearGardenBuild
         var old=garden.Find("RearLandscape");if(old)Object.DestroyImmediate(old.gameObject);
         root=Group("RearLandscape",garden);rng=new System.Random(20261108);
         Boundaries();Ground();DenseGrass();Stream();Scenery();Stonework();
-        PrefabUtility.SaveAsPrefabAsset(root.gameObject,PrefabDir+"PF_DojoRearLandscape.prefab");
-        PrefabUtility.SaveAsPrefabAsset(garden.gameObject,PrefabDir+"PF_DojoLivingGarden.prefab");
-        PrefabUtility.SaveAsPrefabAsset(GameObject.Find("FinalDojoArena"),PrefabDir+"PF_FinalDojoArena_Living.prefab");
-        AssetDatabase.SaveAssets();EditorSceneManager.MarkSceneDirty(root.gameObject.scene);EditorSceneManager.SaveScene(root.gameObject.scene);Physics.SyncTransforms();
+        SaveLandscape();
         var summary=new{success=true,rearDepth=25.2,previousRearDepth=21,rearScale=1.2,exteriorGround="380 x 360m",grassBlades=File.ReadAllText("Temp/dojo-grass-count.txt"),shrubs=root.Cast<Transform>().Count(t=>t.name.StartsWith("RearLowShrub_")),ferns=root.Cast<Transform>().Count(t=>t.name.StartsWith("RearFern_")),bankBoulders=root.Cast<Transform>().Count(t=>t.name.StartsWith("RiverbankBoulder_")),largeBankBoulders=8};
         string json=Newtonsoft.Json.JsonConvert.SerializeObject(summary,Newtonsoft.Json.Formatting.Indented);File.WriteAllText("output/dojo-building/rear-landscape-build.json",json);return json;
     }
