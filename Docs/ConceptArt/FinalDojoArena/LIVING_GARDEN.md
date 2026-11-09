@@ -2,6 +2,8 @@
 
 2026-11-08。此更新已存入 `Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity`。
 
+**後續溪流與密草更新（2026-11-09）：** 後院擴至 1.5 倍，新增碎石步道、密草、低矮灌木、溪流岸石及加寬的院外地面，樹木改為隨機散植；下文草區與規律樹木配置描述為上一版。最新內容與建置順序見 [REAR_LANDSCAPE.md](REAR_LANDSCAPE.md)，完整重建時最後執行 `DojoRearGardenBuild.Build`。
+
 ## 查看與交接
 
 開啟場景、按 Play，再點 Game 畫面。現有玩家從庭院開始，沿石路可走上主殿階梯並進入室內；沿用原本角色操作。草木擺動與花葉飄落在 Play 中持續播放。

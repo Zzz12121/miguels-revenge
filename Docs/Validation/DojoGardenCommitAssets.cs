@@ -22,6 +22,8 @@ public static class DojoGardenCommitAssets
         roots.AddRange(new[]{"Big","Mid"}.Select(s=>fjg+"Trees/BlackPine/Tree_BlackPine_"+s+"_Green_01.prefab"));
         roots.AddRange(new[]{"Big","Mid"}.Select(s=>fjg+"Trees/Bamboo/Tree_Bamboo_"+s+"_Green_01.prefab"));
         roots.Add(fjg+"Plants/Boxwood/Plant_Boxwood_Spring_01.prefab");roots.Add(fjg+"Plants/PaintedFern/Plant_PaintedFern_Spring_01.prefab");
+        string rearPrefab="Assets/_Project/Prefabs/Environment/FinalDojoArena/PF_DojoRearLandscape.prefab";
+        if(File.Exists(rearPrefab))roots.Add(rearPrefab);
         for(int i=1;i<=3;i++)roots.Add(fjg+"Misc/Rocks/JG_Rock_A_0"+i+".prefab");
         for(int i=1;i<=2;i++)roots.Add(fjg+"Misc/Rocks/JG_TobiIshi_A_0"+i+".prefab");
         foreach(string p in roots)if(!File.Exists(p))throw new Exception("Missing source "+p);

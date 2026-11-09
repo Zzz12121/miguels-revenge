@@ -17,7 +17,7 @@ public static class DojoPlayerChecks
         var cc = player.GetComponent<CharacterController>();
         var follow = Camera.main.GetComponent<ThirdPersonCamera>();
         Require(Camera.allCamerasCount == 1 && UnityEngine.Object.FindObjectsByType<AudioListener>().Count(l=>l.isActiveAndEnabled)==1, "Exactly one camera and listener required");
-        Require(cc.isGrounded && player.FeetY < .35f && !player.IsDead, "Player must stand on courtyard floor or shallow stepping stone");
+        Require(!player.IsDead, "Player must be alive before the courtyard check");
         var originalKeyboard=Keyboard.current; var originalMouse=Mouse.current;
         var behavior=InputSystem.settings.editorInputBehaviorInPlayMode;
         var cursor=Cursor.lockState; bool visible=Cursor.visible;
@@ -32,6 +32,11 @@ public static class DojoPlayerChecks
             InputSystem.EnableDevice(keyboard); InputSystem.EnableDevice(mouse);
             keys=pressed=> { InputSystem.QueueStateEvent(keyboard,new KeyboardState(pressed)); InputSystem.QueueStateEvent(mouse,new MouseState()); pump.Invoke(null,new object[]{InputUpdateType.Dynamic}); keyboard.MakeCurrent(); mouse.MakeCurrent(); };
             keys(new Key[0]);
+            // Always exercise the same courtyard route even if the user was exploring the rear garden.
+            cc.enabled=false;player.transform.position=new Vector3(0,1.19f,65);cc.enabled=true;movement.ResetMotion();
+            follow.yaw=0;follow.pitch=15;follow.SnapToTarget();await Task.Delay(450);
+            Require(cc.isGrounded && player.FeetY < .35f, "Player must stand on courtyard floor or shallow stepping stone");
+            Vector3 spawn=player.transform.position;
             float before=player.transform.position.y;
             keys(new[]{Key.Space});
             typeof(ThirdPersonController).GetMethod("Update",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(movement,null);
@@ -48,7 +53,7 @@ public static class DojoPlayerChecks
             Require(player.transform.position.z >= 84, "W must walk through front stairs and open hall doorway: "+player.transform.position);
             Require(cc.isGrounded && Math.Abs(player.FeetY-1.2f)<.18f, "Hall floor must support player: feet="+player.FeetY);
             Require(!player.IsDead && follow.target==player.transform, "Health and camera target must remain valid");
-            var result=new {success=true, checks=7, spawn=start.ToString(), hallPosition=player.transform.position.ToString(), hallFeetY=player.FeetY, input="Virtual Keyboard exercised shared player jump and W movement from courtyard up stairs into main hall; no gameplay scripts modified."};
+            var result=new {success=true, checks=7, spawn=spawn.ToString(), hallPosition=player.transform.position.ToString(), hallFeetY=player.FeetY, input="Virtual Keyboard exercised shared player jump and W movement from courtyard up stairs into main hall; no gameplay scripts modified."};
             string json=Newtonsoft.Json.JsonConvert.SerializeObject(result,Newtonsoft.Json.Formatting.Indented);
             File.WriteAllText("output/dojo-building/player-checks.json",json);
             return json;

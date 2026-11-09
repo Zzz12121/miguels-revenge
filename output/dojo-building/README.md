@@ -2,6 +2,8 @@
 
 已建立實際 Unity 場景：`Assets/_Project/Scenes/DojoArena_ArchitecturePreview.unity`。
 
+**最新後院更新：** 後院深度由 14m 擴為 21m（1.5 倍），增加灰碎石、密草、56 叢低灌木、108 叢蕨類、蜿蜒溪流與岸石；前後院草區均有綠底及密草，院外新增 380×360m 支撐地面。圖片17～21與 `rear-landscape-build.json`／`rear-landscape-checks.json` 記錄實景及驗證，說明見 `Docs/ConceptArt/FinalDojoArena/REAR_LANDSCAPE.md`。本次尚未 push。
+
 **大門／配置修正：** 門柱與兩側牆面已連接，靠近入口按 E 可從內外開關雙扇門；玩家站在門扇掃過範圍時會阻止關門。前院櫻花增為 18 棵，其餘松、竹、楓移到後院，松樹根部下移貼地。`14-connected-entrance.png`、`15-rear-garden.png`、`16-pine-root-grounding.png` 為實景；`gate-and-layout-checks.json` 記錄 E、實際 W 通行與碰撞測試。
 
 **最新庭院更新：** 已換上套件鳥居與石燈籠，加入櫻花、松、竹、楓、灌木、蕨類、草地及 34 塊不規則踏石。Play 中可見草木風動與持續交錯的花瓣／竹葉飄落。圖片 08～13 為更新後實景；`garden-checks.json`、`garden-motion-checks.json` 與更新的 `player-checks.json` 記錄通路、風動與角色測試。詳細交接見 `Docs/ConceptArt/FinalDojoArena/LIVING_GARDEN.md`。以下 GLB／unitypackage 仍是較早的建築快照，未包含新庭院或玩家。
@@ -22,3 +24,5 @@ GLB 和 Unity 資源包是可重建的本機交付檔，Git 保存 Unity 原生�
 
 詳細配置、來源與使用方式：`Docs/ConceptArt/FinalDojoArena/BUILDING_IMPLEMENTATION.md`。
 檢查記錄：`architecture-checks.json`（786 項）、`tour-checks.json`（11 項 Play 模式輸入）、`glb-validation.json`、`package-validation.json`。
+
+2026-11-09 後院更新：後牆 Z126.2、局部圓弧碎石、下凹曲折河床、KHS 石橋與石牆基座、SUIMONO 貼圖／粒子／音效的 URP 接水效果。詳見 REAR_LANDSCAPE.md。22、23 圖為溪流與碎石配置；river-contact-checks.json 為實際玩家河床／橋面及水花測試。舊封裝未更新。

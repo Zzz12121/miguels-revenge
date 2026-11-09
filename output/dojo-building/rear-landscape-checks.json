@@ -1,0 +1,9 @@
+{
+  "success": true,
+  "floorSamples": 49,
+  "streamChangedPixels": 124756,
+  "streamPixelCount": 576000,
+  "exteriorWalk": "(55.00, 1.04, 95.26)",
+  "rearFeetY": 0.0349998474,
+  "note": "Actual shared player W walk on extended exterior; fixed-camera close water renders isolate flow from foliage."
+}

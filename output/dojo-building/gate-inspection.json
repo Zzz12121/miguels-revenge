@@ -1,0 +1,539 @@
+{
+  "success": true,
+  "command": "command run_script",
+  "data": {
+    "command": "run_script",
+    "parameters": {
+      "file": "Docs/Validation/DojoGateInspect.cs",
+      "entry": "DojoGateInspect.Run"
+    },
+    "result": {
+      "diagnostics": [],
+      "compileMs": 31,
+      "executeMs": 20,
+      "assemblyName": "PipelineRunScript_DojoGateInspect_794a9b8dd30f4146a4595f60f2704010",
+      "success": true,
+      "result": {
+        "boundary": [
+          {
+            "name": "OuterWallsAndGate",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "WallStoneBase",
+            "pos": "(-48.00, 1.00, 60.00)",
+            "scale": "(1.10, 2.00, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "WhitePlasterWall",
+            "pos": "(-48.00, 3.00, 60.00)",
+            "scale": "(0.75, 2.00, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "DarkWallCoping",
+            "pos": "(-48.00, 4.08, 60.00)",
+            "scale": "(1.25, 0.22, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "EntranceWallBase",
+            "pos": "(-28.00, 1.00, 5.00)",
+            "scale": "(40.00, 2.00, 1.10)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "EntranceWallPlaster",
+            "pos": "(-28.00, 3.00, 5.00)",
+            "scale": "(40.00, 2.00, 0.75)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "EntranceWallCoping",
+            "pos": "(-28.00, 4.08, 5.00)",
+            "scale": "(40.00, 0.22, 1.25)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "WallStoneBase",
+            "pos": "(48.00, 1.00, 60.00)",
+            "scale": "(1.10, 2.00, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "WhitePlasterWall",
+            "pos": "(48.00, 3.00, 60.00)",
+            "scale": "(0.75, 2.00, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "DarkWallCoping",
+            "pos": "(48.00, 4.08, 60.00)",
+            "scale": "(1.25, 0.22, 110.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "EntranceWallBase",
+            "pos": "(28.00, 1.00, 5.00)",
+            "scale": "(40.00, 2.00, 1.10)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "EntranceWallPlaster",
+            "pos": "(28.00, 3.00, 5.00)",
+            "scale": "(40.00, 2.00, 0.75)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "EntranceWallCoping",
+            "pos": "(28.00, 4.08, 5.00)",
+            "scale": "(40.00, 0.22, 1.25)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "RearWallBase",
+            "pos": "(0.00, 1.00, 115.00)",
+            "scale": "(97.00, 2.00, 1.10)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "RearWallPlaster",
+            "pos": "(0.00, 3.00, 115.00)",
+            "scale": "(97.00, 2.00, 0.75)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "RearWallCoping",
+            "pos": "(0.00, 4.08, 115.00)",
+            "scale": "(97.00, 0.22, 1.25)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "GateStoneFoot",
+            "pos": "(-6.00, 1.00, 5.00)",
+            "scale": "(1.20, 2.00, 1.20)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "GateTimberPost",
+            "pos": "(-6.00, 3.10, 5.00)",
+            "scale": "(0.60, 6.20, 0.60)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "GateStoneFoot",
+            "pos": "(6.00, 1.00, 5.00)",
+            "scale": "(1.20, 2.00, 1.20)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "GateTimberPost",
+            "pos": "(6.00, 3.10, 5.00)",
+            "scale": "(0.60, 6.20, 0.60)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "GateLintel",
+            "pos": "(0.00, 6.10, 5.00)",
+            "scale": "(13.00, 0.55, 0.60)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "RemovableRoofs",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "EntranceGateRoof",
+            "pos": "(0.00, 6.30, 5.00)",
+            "scale": "(17.00, 17.00, 17.00)",
+            "active": true,
+            "mesh": "SM_MainDojoRoof",
+            "material": "M_Dojo_TripoRoof",
+            "box": null
+          },
+          {
+            "name": "OpenGateLeaf",
+            "pos": "(-5.60, 0.00, 5.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "HeavyTimberGate",
+            "pos": "(-4.97, 2.65, 7.52)",
+            "scale": "(5.20, 5.30, 0.22)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "IronGateStrap",
+            "pos": "(-4.84, 0.90, 7.49)",
+            "scale": "(5.00, 0.18, 0.06)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "IronGateStrap",
+            "pos": "(-4.84, 4.40, 7.49)",
+            "scale": "(5.00, 0.18, 0.06)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "OpenGateLeaf",
+            "pos": "(5.60, 0.00, 5.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "HeavyTimberGate",
+            "pos": "(4.97, 2.65, 7.52)",
+            "scale": "(5.20, 5.30, 0.22)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "IronGateStrap",
+            "pos": "(4.84, 0.90, 7.49)",
+            "scale": "(5.00, 0.18, 0.06)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "IronGateStrap",
+            "pos": "(4.84, 4.40, 7.49)",
+            "scale": "(5.00, 0.18, 0.06)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "VermilionTorii",
+            "pos": "(0.00, 0.00, 15.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": false,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiPost",
+            "pos": "(-5.50, 3.60, 15.00)",
+            "scale": "(0.68, 3.60, 0.68)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiStonePlinth",
+            "pos": "(-5.50, 0.25, 15.00)",
+            "scale": "(1.00, 0.50, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "ToriiPost",
+            "pos": "(5.50, 3.60, 15.00)",
+            "scale": "(0.68, 3.60, 0.68)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiStonePlinth",
+            "pos": "(5.50, 0.25, 15.00)",
+            "scale": "(1.00, 0.50, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": "(1.00, 1.00, 1.00)"
+          },
+          {
+            "name": "ToriiLowerBeam",
+            "pos": "(0.00, 5.60, 15.00)",
+            "scale": "(13.50, 0.40, 0.48)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiUpperBeam",
+            "pos": "(0.00, 7.05, 15.00)",
+            "scale": "(15.00, 0.48, 0.70)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiCurvedCopingLeft",
+            "pos": "(-3.80, 7.45, 15.00)",
+            "scale": "(0.43, 7.61, 0.43)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiCurvedCopingRight",
+            "pos": "(3.80, 7.45, 15.00)",
+            "scale": "(0.43, 7.61, 0.43)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "ToriiCentreBlock",
+            "pos": "(0.00, 6.35, 15.00)",
+            "scale": "(0.35, 1.00, 0.45)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "BakedVisuals",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": null,
+            "material": null,
+            "box": null
+          },
+          {
+            "name": "M_Dojo_FoundationStone",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": "SM_CompoundBoundary_M_Dojo_FoundationStone_WithoutTorii",
+            "material": "M_Dojo_FoundationStone",
+            "box": null
+          },
+          {
+            "name": "M_Dojo_Plaster",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": "SM_CompoundBoundary_M_Dojo_Plaster",
+            "material": "M_Dojo_Plaster",
+            "box": null
+          },
+          {
+            "name": "M_Dojo_DarkJoinery",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": "SM_CompoundBoundary_M_Dojo_DarkJoinery_WithoutTorii",
+            "material": "M_Dojo_DarkJoinery",
+            "box": null
+          },
+          {
+            "name": "M_Dojo_CedarTimber",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": "SM_CompoundBoundary_M_Dojo_CedarTimber",
+            "material": "M_Dojo_CedarTimber",
+            "box": null
+          },
+          {
+            "name": "M_Dojo_Vermilion",
+            "pos": "(0.00, 0.00, 0.00)",
+            "scale": "(1.00, 1.00, 1.00)",
+            "active": true,
+            "mesh": "SM_CompoundBoundary_M_Dojo_Vermilion_WithoutTorii",
+            "material": "M_Dojo_Vermilion",
+            "box": null
+          }
+        ],
+        "pines": [
+          {
+            "name": "BlackPine_-1_0",
+            "pos": "(-32.00, 0.66, 31.00)",
+            "filters": [
+              {
+                "name": "LOD_0",
+                "active": true,
+                "bounds": "Center: (-32.06, 3.25, 30.81), Extents: (3.32, 3.25, 3.03)",
+                "mesh": "LOD_0",
+                "readable": true,
+                "vertices": 4118,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_1",
+                "active": true,
+                "bounds": "Center: (-32.05, 3.25, 30.81), Extents: (3.31, 3.25, 3.01)",
+                "mesh": "LOD_1",
+                "readable": true,
+                "vertices": 2705,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_2",
+                "active": true,
+                "bounds": "Center: (-32.09, 3.26, 30.82), Extents: (3.27, 3.26, 2.93)",
+                "mesh": "LOD_2",
+                "readable": true,
+                "vertices": 1477,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_3",
+                "active": false,
+                "bounds": "Center: (-32.00, 3.26, 31.00), Extents: (4.44, 3.26, 4.44)",
+                "mesh": "Billboard",
+                "readable": true,
+                "vertices": 32,
+                "local": "(0.00, -0.47, 0.00)"
+              }
+            ]
+          },
+          {
+            "name": "BlackPine_-1_1",
+            "pos": "(-32.00, 0.46, 45.00)",
+            "filters": [
+              {
+                "name": "LOD_0",
+                "active": true,
+                "bounds": "Center: (-31.94, 3.81, 44.76), Extents: (2.65, 3.81, 3.02)",
+                "mesh": "LOD_0",
+                "readable": true,
+                "vertices": 6421,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_1",
+                "active": true,
+                "bounds": "Center: (-31.94, 3.81, 44.75), Extents: (2.65, 3.81, 3.01)",
+                "mesh": "LOD_1",
+                "readable": true,
+                "vertices": 4151,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_2",
+                "active": true,
+                "bounds": "Center: (-31.92, 3.81, 44.78), Extents: (2.63, 3.81, 3.01)",
+                "mesh": "LOD_2",
+                "readable": true,
+                "vertices": 2335,
+                "local": "(0.00, 0.00, 0.00)"
+              },
+              {
+                "name": "LOD_3",
+                "active": false,
+                "bounds": "Center: (-32.00, 3.81, 45.00), Extents: (3.92, 3.81, 3.92)",
+                "mesh": "Billboard",
+                "readable": true,
+                "vertices": 32,
+                "local": "(0.00, -0.39, 0.00)"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "target": {
+      "host": "127.0.0.1",
+      "port": 7802,
+      "projectPath": "C:\\NTHU\\Introduction_to_Game_Programming\\final"
+    },
+    "success": true
+  },
+  "errors": [],
+  "warnings": []
+}

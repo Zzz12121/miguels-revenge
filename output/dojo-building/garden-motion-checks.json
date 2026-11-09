@@ -1,8 +1,8 @@
 {
   "success": true,
-  "changedPixels": 47363,
+  "changedPixels": 103676,
   "totalPixels": 518400,
-  "trackedLeaves": 441,
-  "averageLeafDrift": "(1.37, -1.47, 0.76)",
+  "trackedLeaves": 913,
+  "averageLeafDrift": "(1.36, -1.43, 0.75)",
   "note": "Fixed camera, leaf renderers hidden during wind capture; foliage motion changes pixels. Existing particles tracked separately."
 }

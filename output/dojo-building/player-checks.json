@@ -2,7 +2,7 @@
   "success": true,
   "checks": 7,
   "spawn": "(0.00, 1.19, 65.00)",
-  "hallPosition": "(0.00, 2.25, 84.35)",
+  "hallPosition": "(0.00, 2.25, 84.30)",
   "hallFeetY": 1.24999976,
   "input": "Virtual Keyboard exercised shared player jump and W movement from courtyard up stairs into main hall; no gameplay scripts modified."
 }
