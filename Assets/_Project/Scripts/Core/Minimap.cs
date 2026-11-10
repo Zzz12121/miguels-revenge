@@ -238,7 +238,7 @@ public class Minimap : MonoBehaviour
     void Update()
     {
         var kb = Keyboard.current;
-        if (kb != null && kb[toggleKey].wasPressedThisFrame && Time.timeScale > 0f)
+        if (InputBindings.Pressed(GameAction.Map) && Time.timeScale > 0f)
         {
             visible = !visible;
             if (canvas != null) canvas.enabled = visible;

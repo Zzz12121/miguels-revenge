@@ -117,7 +117,7 @@ public class BossGate : MonoBehaviour
         switch (state)
         {
             case GateState.Closed:
-                if (PlayerCanInteract() && Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame)
+                if (PlayerCanInteract() && InputBindings.Pressed(GameAction.Interact))
                 {
                     state = GateState.Open;
                     MoveDoor(true, openTime);

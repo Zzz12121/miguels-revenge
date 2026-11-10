@@ -731,16 +731,20 @@ public class ThirdPersonController : MonoBehaviour
 
         Vector2 input = Vector2.zero;
         var kb = Keyboard.current;
-        if (kb != null)
+        if (kb != null && InputBindings.KeyboardEnabled)
         {
             if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.y += 1f;
             if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.y -= 1f;
             if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1f;
             if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1f;
 
-            sprint = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Sprint)].isPressed;
-            jumpPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
-            rollPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Roll)].wasPressedThisFrame;
+            if (RangeInputSettings.IsRange(this))
+            {
+                // 靶場有自己的 K 改鍵面板
+                sprint = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Sprint)].isPressed;
+                jumpPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
+                rollPressed = kb[RangeInputSettings.Binding(this,RangeInputSettings.Action.Roll)].wasPressedThisFrame;
+            }
         }
 #if ENABLE_LEGACY_INPUT_MANAGER
         else
@@ -752,6 +756,13 @@ public class ThirdPersonController : MonoBehaviour
             rollPressed = Input.GetKeyDown(RangeInputSettings.IsRange(this) ? KeyCode.C : KeyCode.V);
         }
 #endif
+        // 暫停選單「設定」裡的按鍵（鍵盤 + 手把）；手把左搖桿移動（推一半 = 走慢一點）
+        bool rangeKeys = RangeInputSettings.IsRange(this);
+        sprint |= rangeKeys ? InputBindings.PadHeld(GameAction.Sprint) : InputBindings.Held(GameAction.Sprint);
+        jumpPressed |= rangeKeys ? InputBindings.PadPressed(GameAction.Jump) : InputBindings.Pressed(GameAction.Jump);
+        rollPressed |= rangeKeys ? InputBindings.PadPressed(GameAction.Roll) : InputBindings.Pressed(GameAction.Roll);
+        Vector2 stick = PadInput.Move;
+        if (stick.sqrMagnitude > input.sqrMagnitude) input = stick;
         return Vector2.ClampMagnitude(input, 1f); // 斜走不會比較快
     }
 }

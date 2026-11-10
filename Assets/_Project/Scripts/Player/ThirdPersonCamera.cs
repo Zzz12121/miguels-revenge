@@ -38,6 +38,8 @@ public class ThirdPersonCamera : MonoBehaviour
     [Header("滑鼠控制")]
     [Tooltip("每移動 1 像素旋轉幾度")]
     public float mouseSensitivity = 0.12f;
+    [Tooltip("遊戲手把右搖桿推到底時，鏡頭每秒轉幾度")]
+    public float padLookSpeed = 180f;
     public bool invertY = false;
     [Tooltip("最低可往上看的角度（負值 = 從下往上看）")]
     public float minPitch = -30f;
@@ -362,15 +364,29 @@ public class ThirdPersonCamera : MonoBehaviour
             LockCursor(true);
 #endif
 
+        // 用手把操作時自動鎖定游標（技能瞄準中不鎖，右搖桿要拿去移動準心）
+        if (Cursor.lockState != CursorLockMode.Locked && PadInput.AnyPressed && !SkillAimCancellation.IsAiming && !GameUI.OverlayOpen)
+            LockCursor(true);
+
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        if (mouse != null)
+        // 右搖桿轉鏡頭（每秒轉的角度；瞄準時一樣比較好微調）
+        Vector2 look = PadInput.Look;
+        if (look.sqrMagnitude > 0f)
         {
-            // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）
+            float padSens = padLookSpeed * InputBindings.LookSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend) * Time.unscaledDeltaTime;
+            yaw += look.x * padSens;
+            pitch += look.y * padSens * (invertY != InputBindings.InvertY ? 1f : -1f) * .7f;
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        }
+
+        if (mouse != null && InputBindings.KeyboardEnabled) // 設定選「只用手把」時滑鼠不轉鏡頭
+        {
+            // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）；靈敏度 / 上下反轉可以在暫停選單「設定」裡調
             Vector2 delta = mouse.delta.ReadValue();
-            float sens = mouseSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend); // 瞄準時比較好微調
+            float sens = mouseSensitivity * InputBindings.LookSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend); // 瞄準時比較好微調
             yaw += delta.x * sens;
-            pitch += delta.y * sens * (invertY ? 1f : -1f);
+            pitch += delta.y * sens * (invertY != InputBindings.InvertY ? 1f : -1f);
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
             // 縮放

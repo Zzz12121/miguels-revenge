@@ -102,7 +102,7 @@ public class StoryDialogue : MonoBehaviour
         var kb = Keyboard.current;
         var mouse = Mouse.current;
         bool next = (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame))
-                 || (mouse != null && mouse.leftButton.wasPressedThisFrame);
+                 || (mouse != null && mouse.leftButton.wasPressedThisFrame) || PadInput.ConfirmPressed;
         if (!next) return;
 
         if (VisibleChars() < lines[index].text.Length)
@@ -179,7 +179,7 @@ public class StoryDialogue : MonoBehaviour
     {
         // 站在對話框的上緣（左上角 / 右上角）：下半部藏在對話框後面，只露出上半身。背景透明
         // （呼叫的地方要先畫半身像、再畫對話框，對話框才會蓋住下半部）
-        const float pw = 240f, ph = 300f;
+        const float pw = 330f, ph = 410f;
         float y = box.y - ph * 0.5f;
         if (left != null) DialoguePortraits.Draw(new Rect(box.x + 8f, y, pw, ph), 0, left, leftSpeaking);
         if (right != null) DialoguePortraits.Draw(new Rect(box.xMax - pw - 8f, y, pw, ph), 1, right, rightSpeaking);
@@ -195,7 +195,7 @@ public class DialoguePortraits : MonoBehaviour
     const int PortraitLayer = 31;
     /// <summary>每一邊的放大倍率：左邊（玩家）大一點、右邊（商人等）小一點</summary>
     static readonly float[] SlotZoom = { 1.2f, 0.85f };
-    const int Width = 288, Height = 352;
+    const int Width = 400, Height = 496; // 半身像畫在 330 × 410 的框裡
 
     class Slot
     {
@@ -404,7 +404,8 @@ public class DialoguePortraits : MonoBehaviour
         Vector3 fwd = subject.forward;
         fwd.y = 0f;
         if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
-        fwd = Quaternion.Euler(0f, 20f, 0f) * fwd.normalized; // 稍微斜一點的 3/4 角度
+        // 稍微斜一點的 3/4 角度：左邊的人朝右、右邊的人朝左（兩個人面對面）
+        fwd = Quaternion.Euler(0f, s == slots[1] ? -20f : 20f, 0f) * fwd.normalized;
         float dist = frame * 0.5f / Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.15f;
         cam.transform.position = focus + fwd * dist + Vector3.up * frame * 0.05f;
         cam.transform.LookAt(focus);

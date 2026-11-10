@@ -53,3 +53,6 @@ Assets/Soswaewon/**/*.png filter=lfs diff=lfs merge=lfs -text
 Assets/Soswaewon/**/*.fbx filter=lfs diff=lfs merge=lfs -text
 "Assets/SUIMONO - WATER SYSTEM 2/**/*.psd" filter=lfs diff=lfs merge=lfs -text
 "Assets/SUIMONO - WATER SYSTEM 2/**/*.wav" filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/JapaneseVillage/**/*.fbx filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/JapaneseVillage/**/*.png filter=lfs diff=lfs merge=lfs -text
+Assets/_Project/Models/JapaneseVillage/**/*.PNG filter=lfs diff=lfs merge=lfs -text

@@ -126,19 +126,21 @@ public class MainMenu : MonoBehaviour
         string save = GameManager.Instance != null ? GameManager.Instance.DescribeSave() : null;
         if (save != null)
         {
-            continueButton = UIKit.Button("ContinueButton", root, "繼續遊戲", new Vector2(-360f, -420f),
+            continueButton = UIKit.Button("ContinueButton", root, "繼續遊戲", new Vector2(-540f, -420f),
                                           new Vector2(320f, 90f), OnContinueClicked, 40);
-            startButton = UIKit.Button("StartButton", root, "開始新遊戲", new Vector2(0f, -420f), new Vector2(320f, 90f),
+            startButton = UIKit.Button("StartButton", root, "開始新遊戲", new Vector2(-180f, -420f), new Vector2(320f, 90f),
                                        OnStartClicked, 40);
-            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(360f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
+            UIKit.Button("SettingsButton", root, "設定", new Vector2(180f, -420f), new Vector2(320f, 90f), OnSettingsClicked, 40);
+            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(540f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
             UIKit.Label("Hint", root, $"存檔：{save}　　Enter 繼續遊戲", 22, new Color(1f, 1f, 1f, 0.55f),
                         new Vector2(0f, -500f), new Vector2(1200f, 40f));
         }
         else
         {
-            startButton = UIKit.Button("StartButton", root, "開始遊戲", new Vector2(-180f, -420f), new Vector2(320f, 90f),
+            startButton = UIKit.Button("StartButton", root, "開始遊戲", new Vector2(-360f, -420f), new Vector2(320f, 90f),
                                        OnStartClicked, 40);
-            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(180f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
+            UIKit.Button("SettingsButton", root, "設定", new Vector2(0f, -420f), new Vector2(320f, 90f), OnSettingsClicked, 40);
+            UIKit.Button("QuitButton", root, "結束遊戲", new Vector2(360f, -420f), new Vector2(320f, 90f), OnQuitClicked, 40);
             UIKit.Label("Hint", root, "Enter 也可以開始遊戲", 22, new Color(1f, 1f, 1f, 0.5f), new Vector2(0f, -500f),
                         new Vector2(800f, 40f));
         }
@@ -146,12 +148,32 @@ public class MainMenu : MonoBehaviour
 
     void Update()
     {
+        // 設定畫面開著（或這一幀剛關掉）時不搶 Enter / A
+        if (ControlsSettingsMenu.IsOpen || ControlsSettingsMenu.ClosedThisFrame) return;
+        // 已經用方向鍵 / 手把選到某個按鈕時，Enter / A 交給那個按鈕；沒選任何按鈕時才當成「開始 / 繼續」的快捷鍵
+        var selected = UnityEngine.EventSystems.EventSystem.current != null ? UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject : null;
+        if (selected != null && selected.activeInHierarchy) return;
         var kb = Keyboard.current;
-        if (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
+        if ((kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame))
+            || PadInput.ConfirmPressed || PadInput.PausePressed)
         {
             if (continueButton != null) OnContinueClicked();
             else OnStartClicked();
         }
+    }
+
+    /// <summary>設定：操作方式、鏡頭靈敏度、自訂按鍵（和遊戲中暫停選單的設定是同一個畫面、同一份設定）</summary>
+    void OnSettingsClicked()
+    {
+        if (ControlsSettingsMenu.IsOpen || canvas == null) return;
+        canvas.gameObject.SetActive(false);
+        ControlsSettingsMenu.Open(transform, () =>
+        {
+            if (canvas == null) return;
+            canvas.gameObject.SetActive(true);
+            var settings = canvas.transform.Find("SettingsButton");
+            if (settings != null) UnityEngine.EventSystems.EventSystem.current?.SetSelectedGameObject(settings.gameObject);
+        });
     }
 
     void OnContinueClicked()

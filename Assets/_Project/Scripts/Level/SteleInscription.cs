@@ -15,6 +15,10 @@ public class SteleInscription : MonoBehaviour
     [Tooltip("走到多近可以按 E 閱讀 (m)")]
     public float readRadius = 3.2f;
     public string promptText = "閱讀石碑";
+    [Tooltip("要展示的圖（古畫）。有圖時圖放在標題下面，內文變成圖下方的說明")]
+    public Texture2D picture;
+    [Tooltip("開：只秀出圖本身（不畫卷軸的紙、圖下面也不寫字）")]
+    public bool pictureOnly;
     [Tooltip("卷軸用的字型（留空 = 用電腦裡的楷書：標楷體 / 楷體，都沒有就用預設字型）")]
     public Font font;
     [Tooltip("卷軸背景的紙張圖（留空 = 程式自動產生一張邊緣燒焦、撕破的舊羊皮紙）")]
@@ -30,6 +34,11 @@ public class SteleInscription : MonoBehaviour
     const float UnrollTime = 0.35f;
 
     public static bool AnyOpen { get; private set; }
+
+    /// <summary>至少讀完（打開再收起）過一次</summary>
+    public bool HasRead { get; private set; }
+    /// <summary>每次讀完收起時通知（任務進度用）</summary>
+    public event System.Action OnRead;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics() { AnyOpen = false; osFont = null; oldPaper = null; }
@@ -80,7 +89,7 @@ public class SteleInscription : MonoBehaviour
             controller.inputEnabled = false;
         }
         if (checkpoint != null) checkpoint.Activate();
-        if (paperTexture == null) OldPaper(); // 第一次打開時先產生紙張，畫的時候才不會卡一下
+        if (paperTexture == null && !(pictureOnly && picture != null)) OldPaper(); // 第一次打開時先產生紙張，畫的時候才不會卡一下
         GameAudio.Play("SFX/RPG/bookOpen", Vector3.zero, 0.7f, 0.9f, 0f, 0f);
     }
 
@@ -92,8 +101,9 @@ public class SteleInscription : MonoBehaviour
 
         var kb = Keyboard.current;
         var mouse = Mouse.current;
-        bool close = (kb != null && (kb[InteractPrompt.InteractKey].wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame))
-                  || (mouse != null && mouse.leftButton.wasPressedThisFrame);
+        bool close = (kb != null && (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame))
+                  || (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                  || InputBindings.Pressed(GameAction.Interact) || PadInput.ConfirmPressed || PadInput.CancelPressed;
         if (close) Close();
     }
 
@@ -109,6 +119,8 @@ public class SteleInscription : MonoBehaviour
             if (playerHealth == null || !playerHealth.IsDead) controller.inputEnabled = true;
         }
         GameAudio.Play("SFX/RPG/bookClose", Vector3.zero, 0.6f, 1f, 0f, 0f);
+        HasRead = true;
+        OnRead?.Invoke();
     }
 
     void OnDisable() => Close();
@@ -166,6 +178,7 @@ public class SteleInscription : MonoBehaviour
     }
 
     const int TitleSize = 34, BodySize = 26;
+    const float PictureWidth = 900f, PictureFill = 0.92f; // 有圖時紙的寬度、圖佔紙寬的比例
     const float CharWidth = 1.5f, LineHeight = 1.65f, BlankLine = 0.7f; // 內文一格多寬、一行多高、空行多高（× 字級）
 
     /// <summary>內文的總高度（× 字級）</summary>
@@ -190,10 +203,15 @@ public class SteleInscription : MonoBehaviour
         GUI.depth = -1150; // 蓋在 HUD、技能操作說明（-1100）上面，劇情對話（-1200）下面
         float k = Mathf.Clamp01((Time.unscaledTime - openTime) / UnrollTime);
         k = 1f - (1f - k) * (1f - k);
+        if (pictureOnly && picture != null) { DrawPictureOnly(k); return; }
 
         var lines = (text ?? "").Replace("\r", "").Split('\n');
+        // 有圖的時候紙比較寬，圖的高度照比例
+        float baseW = picture != null ? PictureWidth : 620f;
+        float aspect = picture != null ? picture.height / (float)Mathf.Max(1, picture.width) : 0f;
+        float picExtra = picture != null ? baseW * PictureFill * aspect + 24f : 0f;
         // 畫面太矮時整張卷軸（字）跟著縮小，內容才放得下
-        float ui = Mathf.Clamp((Screen.height - 110f) / (BodyLines(lines) * BodySize + 200f), 0.5f, 1f);
+        float ui = Mathf.Clamp((Screen.height - 110f) / (BodyLines(lines) * BodySize + 200f + picExtra), 0.4f, 1f);
         int titleSize = Mathf.RoundToInt(TitleSize * ui), bodySize = Mathf.RoundToInt(BodySize * ui);
 
         var f = font != null ? font : OSKaiFont();
@@ -212,9 +230,10 @@ public class SteleInscription : MonoBehaviour
         GUI.color = new Color(0f, 0f, 0f, 0.45f * k);
         GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
 
-        float w = Mathf.Min(620f * ui, Screen.width - 60f);
+        float w = Mathf.Min(baseW * ui, Screen.width - 60f);
+        float picW = w * PictureFill, picH = picW * aspect;
         float bodyH = BodyLines(lines) * bodySize;
-        float fullH = bodyH + 200f * ui;
+        float fullH = bodyH + 200f * ui + (picture != null ? picH + 24f * ui : 0f);
         float h = fullH;
         float cx = Screen.width * 0.5f, cy = Screen.height * 0.47f;
         var paper = new Rect(cx - w * 0.5f, cy - h * 0.5f, w, h);
@@ -235,8 +254,15 @@ public class SteleInscription : MonoBehaviour
             GUI.DrawTexture(new Rect(cx - w * 0.3f, paper.y + 82f * ui, w * 0.6f, 2f), Texture2D.whiteTexture);
 
             // 內文一個字一格、每格一樣寬（字距比較寬），每一行置中
+            float y = paper.y + 104f * ui;
+            if (picture != null)
+            {
+                GUI.color = new Color(1f, 1f, 1f, a);
+                GUI.DrawTexture(new Rect(cx - picW * 0.5f, y, picW, picH), picture, ScaleMode.ScaleToFit);
+                y += picH + 24f * ui;
+            }
             GUI.color = new Color(Ink.r, Ink.g, Ink.b, a);
-            float cell = bodySize * CharWidth, y = paper.y + 104f * ui;
+            float cell = bodySize * CharWidth;
             foreach (var line in lines)
             {
                 if (line.Length == 0) { y += bodySize * BlankLine; continue; }
@@ -250,6 +276,43 @@ public class SteleInscription : MonoBehaviour
             GUI.color = new Color(Ink.r, Ink.g, Ink.b, a * 0.6f);
             GUI.Label(new Rect(paper.x, paper.yMax - 38f * ui, w - 26f, 26f), $"[{InteractPrompt.KeyName}] 收起卷軸", hintStyle);
         }
+        GUI.color = prev;
+    }
+
+    static readonly Color PaleText = new Color(0.93f, 0.87f, 0.74f);
+
+    /// <summary>只秀圖：背景暗下來，圖本身（有透明的破邊）放大置中，標題和說明用淺色字寫在下面</summary>
+    void DrawPictureOnly(float k)
+    {
+        var lines = (text ?? "").Replace("\r", "").Split('\n');
+        var f = font != null ? font : OSKaiFont();
+        float ui = Mathf.Clamp(Screen.height / 1080f, 0.5f, 1.4f);
+        int titleSize = Mathf.RoundToInt(30 * ui), bodySize = Mathf.RoundToInt(22 * ui);
+        if (f != null && Event.current.type == EventType.Layout)
+        {
+            f.RequestCharactersInTexture(title, titleSize);
+            f.RequestCharactersInTexture(text, bodySize);
+        }
+        var titleStyle = Style(f, titleSize, TextAnchor.MiddleCenter);
+        var bodyStyle = Style(f, bodySize, TextAnchor.UpperCenter, true);
+        var hintStyle = Style(null, Mathf.RoundToInt(15 * Mathf.Max(ui, 0.8f)), TextAnchor.MiddleRight);
+
+        var prev = GUI.color;
+        GUI.color = new Color(0f, 0f, 0f, 0.78f * k);
+        GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+
+        float textH = 0f; // 圖下面不寫標題和說明
+        float aspect = picture.width / (float)Mathf.Max(1, picture.height);
+        float maxW = Screen.width * 0.86f, maxH = Screen.height - textH - 90f * ui;
+        float w = Mathf.Min(maxW, maxH * aspect) * Mathf.Lerp(0.92f, 1f, k), h = w / aspect;
+        float cx = Screen.width * 0.5f;
+        float top = (Screen.height - (h + textH)) * 0.5f;
+        GUI.color = new Color(1f, 1f, 1f, k);
+        GUI.DrawTexture(new Rect(cx - w * 0.5f, top, w, h), picture, ScaleMode.StretchToFill, true);
+
+        float a = Mathf.Clamp01((k - 0.6f) / 0.4f);
+        GUI.color = new Color(PaleText.r, PaleText.g, PaleText.b, a * 0.55f);
+        GUI.Label(new Rect(0f, Screen.height - 46f * ui, Screen.width - 30f, 26f), $"[{InteractPrompt.KeyName}] 收起", hintStyle);
         GUI.color = prev;
     }
 

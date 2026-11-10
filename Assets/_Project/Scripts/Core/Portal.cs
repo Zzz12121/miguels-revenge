@@ -17,6 +17,9 @@ public class Portal : MonoBehaviour
     [Tooltip("Destination = SpecificScene 時要去的場景名稱")]
     public string sceneName;
 
+    [Tooltip("提示裡顯示的目的地名稱（留空 = 用關卡標題或場景名稱）")]
+    public string destinationTitle;
+
     [Tooltip("一開始關著，等其他腳本呼叫 Unlock() 才開")]
     public bool startLocked = false;
 
@@ -108,7 +111,7 @@ public class Portal : MonoBehaviour
             return;
         }
         if (!IsOpen) return;
-        if (Keyboard.current != null && Keyboard.current[interactKey].wasPressedThisFrame) Enter();
+        if (InputBindings.Pressed(GameAction.Interact)) Enter();
     }
 
     void Enter()
@@ -123,6 +126,7 @@ public class Portal : MonoBehaviour
 
     string TargetTitle()
     {
+        if (!string.IsNullOrEmpty(destinationTitle)) return destinationTitle;
         var gm = GameManager.Instance;
         if (gm == null) return "";
         int i = destination == Destination.SpecificScene ? gm.IndexOf(sceneName) : gm.CurrentLevelIndex + 1;

@@ -369,10 +369,13 @@ public class GameManager : MonoBehaviour
         if (CurrentLevelIndex >= 0 && !IsPaused && !IsGameOver && !IsGameWon) PlayTime += Time.deltaTime;
         if (IsLoading) return;
         var kb = Keyboard.current;
-        if (kb == null) return;
+        bool pausePressed = (kb != null && kb.escapeKey.wasPressedThisFrame) || PadInput.PausePressed; // 手把 Start
+
+        // 設定畫面開著時 Esc / Start 由設定畫面自己處理（返回暫停選單）
+        if (ControlsSettingsMenu.IsOpen || ControlsSettingsMenu.ClosedThisFrame) return;
 
         // Esc：暫停 / 繼續（別的選單把時間停住的時候不搶，例如能力植物三選一）
-        if (kb.escapeKey.wasPressedThisFrame && CurrentLevelIndex >= 0 && !IsGameOver && !IsGameWon)
+        if (pausePressed && CurrentLevelIndex >= 0 && !IsGameOver && !IsGameWon)
         {
             if (SkillAimCancellation.CancelForEscape()) return;
             if (IsPaused) Resume();
@@ -389,6 +392,7 @@ public class GameManager : MonoBehaviour
             ("繼續遊戲", Resume),
             ("存檔", OnSaveClicked),
             ("讀取存檔", OnLoadClicked),
+            ("設定", OpenSettings),
             ("重新開始本關", ReloadLevel),
             ("回主選單", GoToMainMenu));
         IsPaused = true; // OpenOverlay 會先把舊的狀態清掉，所以放在後面
@@ -399,6 +403,21 @@ public class GameManager : MonoBehaviour
         bool ok = SaveGame();
         VictoryBanner.ShowSmall(ok ? "已存檔" : "存檔失敗", ok ? "讀檔時會從這一關的起點開始" : "",
                                 ok ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f));
+    }
+
+    /// <summary>暫停選單的「設定」：操作方式、鏡頭靈敏度、自訂按鍵。開著的時候先把暫停選單藏起來，返回時再顯示</summary>
+    void OpenSettings()
+    {
+        if (overlay == null || ControlsSettingsMenu.IsOpen) return;
+        var pauseMenu = overlay;
+        pauseMenu.gameObject.SetActive(false);
+        ControlsSettingsMenu.Open(transform, () =>
+        {
+            if (pauseMenu == null || overlay != pauseMenu) return;
+            pauseMenu.gameObject.SetActive(true);
+            var settingsButton = pauseMenu.transform.Find("Button_3");
+            if (settingsButton != null) UnityEngine.EventSystems.EventSystem.current?.SetSelectedGameObject(settingsButton.gameObject);
+        });
     }
 
     void OnLoadClicked()
@@ -457,7 +476,7 @@ public class GameManager : MonoBehaviour
 
         Button first = null;
         // 按鈕多的時候（暫停選單）往上挪、間距縮小，才不會超出畫面
-        float startY = buttons.Length > 3 ? 0f : -40f, step = buttons.Length > 3 ? 98f : 110f;
+        float startY = buttons.Length > 3 ? 0f : -40f, step = buttons.Length > 5 ? 88f : buttons.Length > 3 ? 98f : 110f;
         for (int i = 0; i < buttons.Length; i++)
         {
             var b = UIKit.Button("Button_" + i, root, buttons[i].label, new Vector2(0f, startY - i * step),

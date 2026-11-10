@@ -97,10 +97,11 @@ public sealed partial class VoidRendSkillDemo
             // Dialogue/shop already owns movement input and the number keys.
             if (GameUI.OverlayOpen || (practiceController != null &&
                 (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
-            if (Keyboard.current.digit1Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.VoidRend);
-            else if (Keyboard.current.digit2Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CatPounce);
-            else if (Keyboard.current.digit3Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CrescentDash);
-            else if (Keyboard.current.digit4Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.SkyfallCross);
+            // 預設 1~4 / 手把十字鍵 ← ↑ → ↓，可以在暫停選單「設定」裡改
+            if (InputBindings.Pressed(GameAction.Skill1)) BeginTargeting(PreviewSkill.VoidRend);
+            else if (InputBindings.Pressed(GameAction.Skill2)) BeginTargeting(PreviewSkill.CatPounce);
+            else if (InputBindings.Pressed(GameAction.Skill3)) BeginTargeting(PreviewSkill.CrescentDash);
+            else if (InputBindings.Pressed(GameAction.Skill4)) BeginTargeting(PreviewSkill.SkyfallCross);
             else UpdatePracticeMovement();
         }
     }
@@ -160,6 +161,7 @@ public sealed partial class VoidRendSkillDemo
         SetTargetingControls(true);
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
+        PadInput.CenterPointer(); // 用手把瞄準時，準心從畫面中央開始
         hoveredSelection = FindTargetUnderPointer();
         hoveredTarget = hoveredSelection.marker;
         UpdateTargetingReticle(hoveredSelection);
@@ -169,12 +171,12 @@ public sealed partial class VoidRendSkillDemo
     void UpdateTargetSelection()
     {
         if(!PlayerSkillAvailability.TryUse()){CancelTargeting();return;}
-        if (Mouse.current != null && practiceOrbitCamera != null)
-            practiceOrbitCamera.PanFromScreenEdge(Mouse.current.position.ReadValue(), Time.unscaledDeltaTime);
+        if (practiceOrbitCamera != null)
+            practiceOrbitCamera.PanFromScreenEdge(PadInput.PointerPosition, Time.unscaledDeltaTime);
         hoveredSelection = FindTargetUnderPointer();
         hoveredTarget = hoveredSelection.marker;
         UpdateTargetingReticle(hoveredSelection);
-        if (Keyboard.current.escapeKey.wasPressedThisFrame)
+        if (Keyboard.current.escapeKey.wasPressedThisFrame || PadInput.CancelPressed) // 手把 B 取消
         {
             SkillAimCancellation.CancelForEscape();
             return;
@@ -185,7 +187,7 @@ public sealed partial class VoidRendSkillDemo
             return;
         }
 
-        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && hoveredTarget != null)
+        if (PadInput.PointerPressed && hoveredTarget != null) // 滑鼠左鍵 / 手把 X、RT
         {
             PreviewSkill selectedSkill = pendingSkill;
             calligraphyCast = CalligraphyAttackContext.NewCast();
@@ -214,8 +216,8 @@ public sealed partial class VoidRendSkillDemo
     {
         // Outside actors remain in the scene but are not part of the player's painting space.
         if (CalligraphyPaintingWorld.BlocksTether) return default;
-        if (skillCamera == null || Mouse.current == null) return default;
-        Vector2 pointer = Mouse.current.position.ReadValue();
+        if (skillCamera == null) return default;
+        Vector2 pointer = PadInput.PointerPosition; // 滑鼠位置，或手把右搖桿推動的準心
         Ray ray = skillCamera.ScreenPointToRay(pointer);
         RaycastHit[] hits = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
@@ -569,6 +571,10 @@ public sealed partial class VoidRendSkillDemo
         RestorePracticeControlsAfterSkill();
     }
 
+    /// <summary>畫面下方的操作說明要不要展開（平常收起來，按 F1 / 手把 View 鍵切換）</summary>
+    static bool controlsExpanded;
+    static int controlsToggledFrame = -1;
+
     void DrawTargetingUI()
     {
         GUI.depth = -1100;
@@ -577,15 +583,44 @@ public sealed partial class VoidRendSkillDemo
             fontSize = 15,
             normal = { textColor = new Color(0.78f, 0.94f, 1f, 0.94f) }
         };
-        GUI.Box(new Rect(18f, Screen.height - 91f, 610f, 67f), GUIContent.none);
+        // 暫停選單 / 設定畫面開著時不畫操作提示（OnGUI 會蓋在選單上面）
+        if (GameUI.OverlayOpen || ControlsSettingsMenu.IsOpen) return;
+        if (Event.current.type == EventType.Layout && controlsToggledFrame != Time.frameCount) // 一幀可能有好幾次 Layout，只切換一次
+        {
+            var kbd = UnityEngine.InputSystem.Keyboard.current;
+            var gp = UnityEngine.InputSystem.Gamepad.current;
+            if ((kbd != null && kbd.f1Key.wasPressedThisFrame) || (gp != null && gp.selectButton.wasPressedThisFrame))
+            {
+                controlsExpanded = !controlsExpanded;
+                controlsToggledFrame = Time.frameCount;
+            }
+        }
+        if (!controlsExpanded && !IsTargeting)
+        {
+            // 收起來時只留一個小標籤
+            var tab = new GUIStyle(controls) { fontSize = 13 };
+            GUI.Box(new Rect(18f, Screen.height - 40f, 150f, 26f), GUIContent.none);
+            GUI.Label(new Rect(28f, Screen.height - 38f, 140f, 22f), PadInput.UsingPadRecently ? "View：操作說明" : "F1：操作說明", tab);
+            return;
+        }
+        GUI.Box(new Rect(18f, Screen.height - 91f, Mathf.Min(1180f, Screen.width - 36f), 67f), GUIContent.none);
         var owner=practiceController?practiceController:(Component)this;
         string sprint=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Sprint));
         string jump=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Jump));
         string roll=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Roll));
-        GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), $"WASD 移動　{sprint}：衝刺　{jump}：跳躍　{roll}：翻滾"+(RangeInputSettings.IsRange(owner)?"　K：按鍵設定":""), controls);
-        GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
+        // 按鍵名稱照暫停選單「設定」裡的按鍵；最近用手把就顯示手把按鍵
+        bool pad = PadInput.UsingPadRecently;
+        string N(GameAction a) => InputBindings.DisplayName(a, pad);
+        if (!RangeInputSettings.IsRange(owner) || pad) { sprint = N(GameAction.Sprint); jump = N(GameAction.Jump); roll = N(GameAction.Roll); }
+        string moveLine = (pad ? "左搖桿 移動" : "WASD 移動") + $"　{sprint}：衝刺　{jump}：跳躍　{roll}：翻滾　{N(GameAction.Attack)}：攻擊　{N(GameAction.Block)}：格擋"
+            + (RangeInputSettings.IsRange(owner) && !pad ? "　K：按鍵設定" : "　Esc / Start：暫停・設定");
+        GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), moveLine, controls);
+        GUI.Label(new Rect(31f, Screen.height - 56f, Screen.width-50f, 24f),
+            $"{N(GameAction.Skill1)}：虛空連斬　{N(GameAction.Skill2)}：貓躍雙斬　{N(GameAction.Skill3)}：月弧突進　{N(GameAction.Skill4)}：空中十字斬"
+            + (pad ? $"（右搖桿瞄準、{N(GameAction.Attack)} 確認、B 取消）" : "（技能需滑鼠選取）"), controls);
 
         if (!IsTargeting) return;
+        PadInput.DrawPointer();
         GUIStyle title = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,

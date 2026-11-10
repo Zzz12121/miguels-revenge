@@ -121,8 +121,8 @@ public class PlayerItems : MonoBehaviour
     {
         var kb = Keyboard.current;
         if (kb == null || Time.time < nextUseTime || !CanUse()) return;
-        if (kb[potionKey].wasPressedThisFrame) DrinkPotion();
-        else if (kb[staminaPotionKey].wasPressedThisFrame) DrinkStaminaPotion();
+        if (InputBindings.Pressed(GameAction.HealPotion)) DrinkPotion();                 // 預設 Q / 手把 R3
+        else if (InputBindings.Pressed(GameAction.StaminaPotion)) DrinkStaminaPotion();  // 預設 G / 手把 L3
     }
 
     void DrinkPotion()
@@ -208,14 +208,14 @@ public class PlayerItems : MonoBehaviour
         int potions = Count(HealingPotion), potionMax = Count(HealingPotionMax), staminaPotions = Count(StaminaPotion);
         if (staminaPotions > 0)
         {
-            Slot(new Rect(x, y, w, h), staminaPotionKey, "精力藥水", $"×{staminaPotions}", StaminaColor, true);
+            Slot(new Rect(x, y, w, h), InputBindings.DisplayName(GameAction.StaminaPotion), "精力藥水", $"×{staminaPotions}", StaminaColor, true);
             y -= h + gap;
         }
         // 喝光了也繼續顯示（0 / 3），提醒重生後會補回來
         if (potions > 0 || potionMax > 0)
         {
             string count = potionMax > 0 ? $"{potions}/{potionMax}" : $"×{potions}";
-            Slot(new Rect(x, y, w, h), potionKey, "治癒藥水", count, GameUI.Good, potions > 0);
+            Slot(new Rect(x, y, w, h), InputBindings.DisplayName(GameAction.HealPotion), "治癒藥水", count, GameUI.Good, potions > 0);
             y -= h + gap;
         }
 
@@ -234,11 +234,11 @@ public class PlayerItems : MonoBehaviour
         }
     }
 
-    void Slot(Rect r, Key key, string label, string count, Color color, bool available)
+    void Slot(Rect r, string key, string label, string count, Color color, bool available)
     {
         GameUI.Panel(r, color);
         float a = available ? 1f : 0.45f;
-        GameUI.Key(new Rect(r.x + 10f, r.y + 8f, 24f, 24f), key.ToString(), a);
+        GameUI.Key(new Rect(r.x + 10f, r.y + 8f, Mathf.Max(24f, key.Length * 9f + 8f), 24f), key, a);
         GUI.color = new Color(color.r, color.g, color.b, a);
         GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), label, GameUI.Small);
         GUI.Label(new Rect(r.x, r.y, r.width - 12f, r.height), count, GameUI.SmallRight);

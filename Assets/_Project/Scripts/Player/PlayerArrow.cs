@@ -6,6 +6,7 @@ using UnityEngine;
 ///   - 射中敵艦的船員（BoatCrewMember）→ 有效，船員受傷 / 倒下
 ///   - 射中敵艦船身 → 無效（插在船上，跳出「無效」）
 ///   - 射中其他東西就插在上面；掉進海裡濺起水花
+///   - damage > 0（鐵匠鋪換成弓的時候）：射中一般目標（IDamageable，例如敵人、木樁人偶）也會造成傷害
 /// 船員優先：同一段飛行路徑上同時碰到船身和船員（船員站在船舷後面）時，算射中船員。
 /// </summary>
 public class PlayerArrow : MonoBehaviour
@@ -17,6 +18,7 @@ public class PlayerArrow : MonoBehaviour
     [HideInInspector] public Transform owner;      // 射箭的玩家（不會射到自己）
     [HideInInspector] public Transform ownerBoat;  // 玩家搭的船
     [HideInInspector] public PlayerCombat shooter; // 射中時通知準心顯示命中
+    [HideInInspector] public float damage;         // 射中一般目標（IDamageable）的傷害；0 = 只有船員算
 
     float spawnTime;
     bool stuck;
@@ -100,10 +102,19 @@ public class PlayerArrow : MonoBehaviour
         if (blockDist < float.MaxValue)
         {
             var boat = block.collider.GetComponentInParent<EnemyBoat>();
+            var target = damage > 0f ? block.collider.GetComponentInParent<IDamageable>() : null;
             if (boat != null)
             {
                 boat.ShowInvalidHit(block.point); // 射到船身：無效
                 if (shooter != null) shooter.NotifyArrowHit(false);
+            }
+            else if (target != null && !target.IsDead)
+            {
+                target.TakeDamage(damage, block.point);
+                if (shooter != null) shooter.NotifyArrowHit(true);
+                GameAudio.Play("SFX/RPG/knifeSlice", block.point, 0.6f, 1.3f, 0.1f, 1f, 30f);
+                Destroy(gameObject);
+                return true;
             }
             else GameAudio.Play("SFX/RPG/chop", block.point, 0.5f, 1.5f, 0.1f, 1f, 30f);
             Stick(block);

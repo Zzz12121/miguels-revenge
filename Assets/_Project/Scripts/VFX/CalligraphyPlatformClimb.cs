@@ -230,6 +230,7 @@ public sealed class CalligraphyPlatformClimb : MonoBehaviour
     bool WantsClimb()
     {
         if(RangeInputSettings.InputBlocked || (!motor.inputEnabled && !(tether && tether.IsPullingPlayer)))return false;
+        if(PadInput.Move.y>.5f)return true; // 手把：左搖桿往前推
         if(Keyboard.current!=null)return Keyboard.current.wKey.isPressed && !Keyboard.current.sKey.isPressed;
 #if ENABLE_LEGACY_INPUT_MANAGER
         return Input.GetKey(KeyCode.W) && !Input.GetKey(KeyCode.S);

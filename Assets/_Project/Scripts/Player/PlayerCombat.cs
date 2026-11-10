@@ -68,6 +68,12 @@ public class PlayerCombat : MeleeCombat
     public float arrowCooldown = 0.55f;
     [Tooltip("沒有瞄準直接射時，箭的散佈角度（度）")]
     public float hipFireSpread = 2.5f;
+    [Tooltip("箭射中一般目標（IDamageable）時的傷害；0 = 只射得傷船員（船戰原本的規則）。鐵匠鋪換成弓時由 PlayerLoadout 設定")]
+    public float arrowDamage = 0f;
+    [Tooltip("瞄準中（右鍵按住）射箭時的散佈角度（度）；0 = 正中準心。鐵匠鋪的弓依蓄力的程度設定")]
+    public float aimedSpread = 0f;
+    /// <summary>剛射出一支箭（箭的 GameObject）：換箭的外觀用</summary>
+    public event System.Action<GameObject> OnArrowSpawned;
 
     /// <summary>正在按住右鍵瞄準</summary>
     public bool IsAimingBow { get; private set; }
@@ -116,22 +122,10 @@ public class PlayerCombat : MeleeCombat
         }
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        bool leftClick = false, rightClick = false, rightHeld = false;
-        var mouse = Mouse.current;
-        if (mouse != null)
-        {
-            leftClick = mouse.leftButton.wasPressedThisFrame;
-            rightClick = mouse.rightButton.wasPressedThisFrame;
-            rightHeld = mouse.rightButton.isPressed;
-        }
-#if ENABLE_LEGACY_INPUT_MANAGER
-        else
-        {
-            leftClick = Input.GetMouseButtonDown(0);
-            rightClick = Input.GetMouseButtonDown(1);
-            rightHeld = Input.GetMouseButton(1);
-        }
-#endif
+        // 攻擊 / 格擋的按鍵在暫停選單「設定」裡可以改（預設 滑鼠左鍵 / 右鍵，手把 X / LT）
+        bool leftClick = InputBindings.Pressed(GameAction.Attack);
+        bool rightClick = InputBindings.Pressed(GameAction.Block);
+        bool rightHeld = InputBindings.Held(GameAction.Block);
 
         // 受擊僵直中不能攻擊 / 舉盾
         if (controller.IsStunned)
@@ -165,7 +159,7 @@ public class PlayerCombat : MeleeCombat
         // 有「重擊」能力：沒在攻擊時按下左鍵先開始蓄力，放開才出手；按住超過 heavyHoldTime 就是重擊（舉盾時不能蓄力）
         if (heavyAttackEnabled && !IsAttacking && !ShieldUp)
         {
-            bool held = mouse != null && mouse.leftButton.isPressed;
+            bool held = InputBindings.Held(GameAction.Attack);
             if (leftClick) { charging = true; chargeStart = Time.time; chargeFull = false; }
             if (charging && !chargeFull && held && Time.time - chargeStart >= heavyHoldTime)
             {
@@ -262,16 +256,23 @@ public class PlayerCombat : MeleeCombat
     bool charging, chargeFull, heavyChain, heavySwing;
     float chargeStart;
 
-    /// <summary>玩家造成傷害的總倍率：基本倍率 × 能力植物（低血量狂暴）</summary>
+    [Tooltip("手上武器的傷害倍率（鐵匠鋪換武器時由 PlayerLoadout 設定，不會跟著存檔 / 換關卡；大刀 = 1）")]
+    [System.NonSerialized] public float weaponDamageScale = 1f;
+
+    /// <summary>玩家造成傷害的總倍率：基本倍率 × 武器 × 能力植物（低血量狂暴）</summary>
     float DamageScale(bool heavy, IDamageable target)
     {
         if (perks == null) perks = GetComponent<PlayerPerks>();
-        return damageMultiplier * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScaleFor(target) : 1f);
+        return damageMultiplier * weaponDamageScale * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScaleFor(target) : 1f);
     }
+
+    /// <summary>打中東西的瞬間（近戰、盾擊、箭）：傷害、打中的目標（箭射中時是 null）。打擊回饋（震動）用</summary>
+    public event System.Action<float, IDamageable> OnDealtHit;
 
     void AfterHit(float dealt, IDamageable target)
     {
         if (perks != null) perks.OnDealtDamage(dealt, target);
+        OnDealtHit?.Invoke(dealt, target);
     }
 
     PlayerPerks perks;
@@ -403,9 +404,8 @@ public class PlayerCombat : MeleeCombat
 
     void UpdateBow()
     {
-        var mouse = Mouse.current;
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        bool aim = locked && mouse != null && mouse.rightButton.isPressed;
+        bool aim = locked && InputBindings.Held(GameAction.Block);
         if (aim != IsAimingBow)
         {
             IsAimingBow = aim;
@@ -415,7 +415,7 @@ public class PlayerCombat : MeleeCombat
         }
         if (IsAimingBow) FaceCamera();
 
-        if (locked && mouse != null && mouse.leftButton.wasPressedThisFrame && Time.time >= nextArrowTime)
+        if (locked && InputBindings.Pressed(GameAction.Attack) && Time.time >= nextArrowTime)
             ShootArrow();
     }
 
@@ -439,10 +439,11 @@ public class PlayerCombat : MeleeCombat
         Vector3 target;
         // 往畫面正中央（準心）射：從鏡頭打一條線，找第一個不是自己 / 自己船的東西
         Ray ray = cam != null ? cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)) : new Ray(origin, transform.forward);
-        if (!IsAimingBow)
+        float spread = IsAimingBow ? aimedSpread : hipFireSpread;
+        if (spread > 0f)
         {
-            // 沒瞄準：準心附近隨機偏一點
-            ray.direction = Quaternion.Euler(Random.Range(-hipFireSpread, hipFireSpread), Random.Range(-hipFireSpread, hipFireSpread), 0f) * ray.direction;
+            // 沒瞄準（或沒蓄滿力）：準心附近隨機偏一點
+            ray.direction = Quaternion.Euler(Random.Range(-spread, spread), Random.Range(-spread, spread), 0f) * ray.direction;
         }
         target = ray.GetPoint(150f);
         float best = float.MaxValue;
@@ -463,6 +464,8 @@ public class PlayerCombat : MeleeCombat
         arrow.owner = transform;
         arrow.ownerBoat = boat;
         arrow.shooter = this;
+        arrow.damage = arrowDamage * damageMultiplier;
+        OnArrowSpawned?.Invoke(arrowObj);
 
         GameAudio.Play("SFX/RPG/drawKnife3", origin, 0.85f, 1.6f, 0.08f, 0.5f, 30f);
         CombatVFX.Puff(origin, dir, new Color(0.9f, 0.95f, 1f, 0.5f));
@@ -474,6 +477,7 @@ public class PlayerCombat : MeleeCombat
     {
         hitMarkerTime = Time.time;
         hitMarkerValid = valid;
+        if (valid) OnDealtHit?.Invoke(arrowDamage, null);
     }
 
     void OnGUI()

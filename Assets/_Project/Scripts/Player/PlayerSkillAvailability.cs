@@ -29,9 +29,8 @@ public sealed class PlayerSkillAvailability : MonoBehaviour
     void Update()
     {
         if(!CalligraphyPaintingWorld.BlocksTether || RangeInputSettings.InputBlocked || GameUI.OverlayOpen || Time.timeScale<=0)return;
-        var keyboard=Keyboard.current;var mouse=Mouse.current;
-        if((keyboard!=null && (keyboard.digit1Key.wasPressedThisFrame || keyboard.digit2Key.wasPressedThisFrame ||
-            keyboard.digit3Key.wasPressedThisFrame || keyboard.digit4Key.wasPressedThisFrame)) || (mouse!=null && mouse.middleButton.wasPressedThisFrame))TryUse();
+        if(InputBindings.Pressed(GameAction.Skill1) || InputBindings.Pressed(GameAction.Skill2) || InputBindings.Pressed(GameAction.Skill3) ||
+            InputBindings.Pressed(GameAction.Skill4) || InputBindings.Pressed(GameAction.Tether))TryUse();
     }
     void OnGUI()
     {

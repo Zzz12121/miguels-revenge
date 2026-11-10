@@ -117,10 +117,12 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (Time.timeScale <= 0f) return;
         if (aimCamera == null) ResolveCameraAndHands();
         Mouse mouse = Mouse.current;
-        if (mouse == null || aimCamera == null) return;
+        if (aimCamera == null) return;
+        // 滑鼠中鍵 / 手把 RB 開始瞄準
+        bool begin = InputBindings.Pressed(GameAction.Tether); // 預設 滑鼠中鍵 / 手把 RB
 
         if (!aiming && !executing && heldChunk == null && Cursor.lockState == CursorLockMode.Locked &&
-            mouse.middleButton.wasPressedThisFrame && Time.unscaledTime >= nextUseTime && (health == null || !health.IsDead) &&
+            begin && Time.unscaledTime >= nextUseTime && (health == null || !health.IsDead) &&
             (movement == null || !movement.ActionsLocked))
         {
             BeginAiming(false);
@@ -131,13 +133,13 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (!aiming) return;
 
         if (orbitCamera != null && !dragging)
-            orbitCamera.PanFromScreenEdge(mouse.position.ReadValue(), Time.unscaledDeltaTime);
+            orbitCamera.PanFromScreenEdge(PadInput.PointerPosition, Time.unscaledDeltaTime);
 
-        hovered = FindAimPoint(mouse.position.ReadValue());
+        hovered = FindAimPoint(PadInput.PointerPosition);
         if (selectionLocked && !ValidPoint(locked)) { selectionLocked=false; dragging=false; }
         UpdateReticle(selectionLocked ? locked : hovered, selectionLocked || ValidPoint(hovered));
 
-        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        if ((Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) || PadInput.CancelPressed)
         {
             SkillAimCancellation.CancelForEscape();
             return;
@@ -148,7 +150,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             return;
         }
 
-        if (mouse.leftButton.wasPressedThisFrame)
+        if (PadInput.PointerPressed) // 滑鼠左鍵 / 手把 X、RT
         {
             if (!selectionLocked)
             {
@@ -171,17 +173,18 @@ public sealed class EnergyTetherSkill : MonoBehaviour
                 return;
             }
             if (IsStaticAnchor(locked)) { Notify("無法拖動此目標"); return; }
-            dragging=true; dragStart=dragLast=mouse.position.ReadValue(); dragVelocity=Vector2.zero;
+            dragging=true; dragStart=dragLast=PadInput.PointerPosition; dragVelocity=Vector2.zero;
             dragDisplacement=Vector2.zero;
             dragPeakSpeed=0f;
             dragCameraRight=aimCamera.transform.right;
             dragCameraUp=aimCamera.transform.up;
         }
 
-        if (dragging && (mouse.leftButton.isPressed || mouse.leftButton.wasReleasedThisFrame))
+        // 甩出：按住左鍵移動滑鼠（手把：按住 X 推右搖桿），放開甩出
+        if (dragging && (PadInput.PointerHeld || PadInput.PointerReleased))
         {
-            Vector2 current=mouse.position.ReadValue();
-            Vector2 delta=mouse.delta.ReadValue();
+            Vector2 current=PadInput.PointerPosition;
+            Vector2 delta=PadInput.PointerDelta;
             // Raw motion still works at the screen edge; position is a fallback.
             if (delta.sqrMagnitude<.001f) delta=current-dragLast;
             dragDisplacement+=delta;
@@ -190,7 +193,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             dragPeakSpeed=Mathf.Max(dragPeakSpeed,dragVelocity.magnitude);
             dragLast=current;
         }
-        if (dragging && mouse.leftButton.wasReleasedThisFrame)
+        if (dragging && PadInput.PointerReleased)
         {
             dragging=false;
             aimingStartedAt=Time.unscaledTime;
@@ -211,7 +214,10 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         }
 
         if (!selectionLocked) return;
-        float scroll = mouse.scroll.ReadValue().y;
+        float scroll = mouse != null && InputBindings.KeyboardEnabled ? mouse.scroll.ReadValue().y : 0f;
+        // 手把：牽引鍵（預設 RB）= 滾輪往上（拉自己過去）、衝刺鍵（預設 LB）= 滾輪往下（把目標拉過來）
+        if (InputBindings.PadPressed(GameAction.Tether)) scroll = 1f;
+        else if (InputBindings.PadPressed(GameAction.Sprint)) scroll = -1f;
         if (Mathf.Abs(scroll) < .01f) return;
         AimPoint chosen = locked;
         if (scroll < 0 && IsStaticAnchor(chosen)) { Notify("無法拖動此目標"); return; }
@@ -243,6 +249,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         Time.fixedDeltaTime = Mathf.Max(.0001f, savedFixedDelta * aimingTimeScale / Mathf.Max(.0001f, savedTimeScale));
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+        PadInput.CenterPointer();
     }
 
     void EndAiming(bool restoreHeldChunk)
@@ -580,6 +587,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (Time.unscaledTime<feedbackUntil)
             GUI.Box(new Rect(Screen.width*.5f-180,Screen.height*.45f,360,40),feedback);
         if (!aiming) return;
+        PadInput.DrawPointer();
         GUIStyle style = new GUIStyle(GUI.skin.box)
         {
             fontSize = 15,

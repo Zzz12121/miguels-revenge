@@ -350,8 +350,10 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (controller == null) return;
 
         bool sprinting = controller.CurrentSpeed > controller.walkSpeed * 1.05f;
-        bool jumpPressed = Keyboard.current != null && !RangeInputSettings.InputBlocked &&
-            Keyboard.current[RangeInputSettings.Binding(controller,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
+        bool jumpPressed = !RangeInputSettings.InputBlocked && (RangeInputSettings.IsRange(controller)
+            ? InputBindings.PadPressed(GameAction.Jump) || (Keyboard.current != null &&
+              Keyboard.current[RangeInputSettings.Binding(controller,RangeInputSettings.Action.Jump)].wasPressedThisFrame)
+            : InputBindings.Pressed(GameAction.Jump));
         if (grounded && sprinting && jumpPressed)
         {
             pounceStartedAt = Time.unscaledTime;
