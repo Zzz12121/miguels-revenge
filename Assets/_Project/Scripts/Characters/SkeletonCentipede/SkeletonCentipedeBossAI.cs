@@ -11,6 +11,8 @@ using UnityEngine;
 ///   技能：殘影圍殺（SkeletonCentipedeEncircleSkill）、蝠群襲擊（SkeletonCentipedeBatSwarmSkill），
 ///         蝠群護體（SkeletonCentipedeBatGuardSkill）由血量門檻自動發動，AI 會等它結束。
 ///   血量低於 phase2Threshold → 吼叫進入二階段：移動更快、冷卻更短。
+///   血量低於 phase3Threshold → 三階段：吼叫召喚兩隻分身（血量、攻擊較低），本體退到離玩家最遠的那側休息；
+///         兩隻分身都被打倒後本體回到戰場。OnPhase3Started / OnFightReset / OnDefeated 給天色等演出用。
 /// 傷害判定時機用動畫事件（driver.AttackImpact），全部走 PlayerHealth.TakeDamage（翻滾無敵 / 格擋照常有效）。
 /// 玩家死亡重生 → Boss 回到起點、補滿血，玩家回到場內後重新開打。
 /// </summary>
@@ -94,6 +96,24 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     public float phase2SpeedMultiplier = 1.25f;
     public float phase2CooldownMultiplier = 0.7f;
 
+    [Header("三階段：分身")]
+    [Range(0f, 1f)] public float phase3Threshold = 0.2f;
+    [Tooltip("分身數量")]
+    public int cloneCount = 2;
+    [Tooltip("分身血量 = 本體最大血量 × 這個比例")]
+    [Range(0.01f, 1f)] public float cloneHealthFraction = 0.12f;
+    [Tooltip("分身所有攻擊的傷害倍率")]
+    [Range(0.05f, 1f)] public float cloneDamageMultiplier = 0.5f;
+    [Tooltip("分身的體型（相對本體）")]
+    public float cloneScale = 0.85f;
+    [Tooltip("分身出現在本體左右多遠")]
+    public float cloneSpawnOffset = 8f;
+    [Tooltip("分身還活著時本體無敵（躲在後方休息）")]
+    public bool restInvulnerable = true;
+    [Tooltip("本體休息時移動到的位置和目前位置差超過這個距離才重新移動（避免一直抖動）")]
+    public float restRepositionDistance = 4f;
+    public float cloneSpawnEffectScale = 3f;
+
     [Header("音樂")]
     public AudioClip bossMusic;
     public float musicVolume = 0.5f;
@@ -105,6 +125,14 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     public string CurrentAction { get; private set; } = "沉睡";
     public event System.Action OnFightStarted;
     public event System.Action OnDefeated;
+    /// <summary>三階段開始（天色轉暗紅、召喚分身）</summary>
+    public event System.Action OnPhase3Started;
+    /// <summary>玩家重生、戰鬥重來</summary>
+    public event System.Action OnFightReset;
+
+    public bool IsClone => isClone;
+    public bool IsDead => dead;
+    public bool InPhase3 => phase3;
 
     SkeletonCentipedeAnimationDriver driver;
     BossHealth health;
@@ -118,6 +146,9 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     Quaternion homeRot;
     float homeY;
     bool dead, phase2, dashing, dashHit;
+    bool phase3, phase3Pending, isClone;
+    float damageMultiplier = 1f;
+    readonly System.Collections.Generic.List<SkeletonCentipedeBossAI> clones = new System.Collections.Generic.List<SkeletonCentipedeBossAI>();
     Vector3 dashDir;
     float inArenaTimer;
     float nextSweep, nextTail, nextDash, nextRanged, nextEncircle, nextBatSwarm;
@@ -150,6 +181,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         driver.DashStart += OnDashStart;
         driver.DashEnd += OnDashEnd;
         health.OnDied += OnBossDied;
+        health.OnDamaged += OnBossDamaged;
         if (rangedVfx != null) rangedVfx.ProjectileHit += OnProjectileHit;
     }
 
@@ -159,6 +191,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         driver.DashStart -= OnDashStart;
         driver.DashEnd -= OnDashEnd;
         health.OnDied -= OnBossDied;
+        health.OnDamaged -= OnBossDamaged;
         if (rangedVfx != null) rangedVfx.ProjectileHit -= OnProjectileHit;
         if (player != null) { player.OnDied -= OnPlayerDied; player.OnRespawned -= OnPlayerRespawned; }
     }
@@ -225,22 +258,28 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     {
         if (FightActive || dead) return;
         FightActive = true;
-        health.ShowBar = true;
         float t = Time.time;
         nextEncircle = nextBatSwarm = t + firstSkillDelay;
         nextSweep = nextTail = nextDash = nextRanged = t;
-        GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
-        OnFightStarted?.Invoke();
+        if (!isClone)
+        {
+            health.ShowBar = true;
+            GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
+            OnFightStarted?.Invoke();
+        }
         brain = StartCoroutine(Brain());
     }
 
     IEnumerator Brain()
     {
-        CurrentAction = "開場吼叫";
-        yield return FacePlayer(0.6f);
-        driver.PlayRoar();
-        ThirdPersonCamera.ShakeMain(0.25f, 1f);
-        yield return Wait(RoarLen);
+        if (!isClone)
+        {
+            CurrentAction = "開場吼叫";
+            yield return FacePlayer(0.6f);
+            driver.PlayRoar();
+            ThirdPersonCamera.ShakeMain(0.25f, 1f);
+            yield return Wait(RoarLen);
+        }
 
         while (FightActive && !dead)
         {
@@ -252,7 +291,13 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
                 continue;
             }
 
-            if (!phase2 && health.Health <= health.maxHealth * phase2Threshold)
+            if (phase3Pending && !phase3)
+            {
+                yield return EnterPhase3();
+                continue;
+            }
+
+            if (!isClone && !phase2 && health.Health <= health.maxHealth * phase2Threshold)
             {
                 yield return EnterPhase2();
                 continue;
@@ -366,6 +411,152 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         nextEncircle = Mathf.Min(nextEncircle, Time.time + 2f);
     }
 
+    // ===================== 三階段：分身＋本體退後休息 =====================
+
+    void OnBossDamaged(float amount)
+    {
+        // 記下來就好，等目前的動作 / 技能（例如蝠群護體回血）結束後 Brain 再處理，回血回到門檻以上也照樣發動
+        if (!isClone && !phase3 && !dead && health.Health <= health.maxHealth * phase3Threshold) phase3Pending = true;
+    }
+
+    IEnumerator EnterPhase3()
+    {
+        phase3 = true;
+        phase3Pending = false;
+        phase2 = true;
+        CurrentAction = "三階段：召喚分身";
+        driver.SetMoveSpeed(0f);
+        health.Invulnerable = true;
+        OnPhase3Started?.Invoke();
+
+        yield return FacePlayer(0.5f);
+        driver.PlayRoar();
+        ThirdPersonCamera.ShakeMain(0.5f, 1.6f);
+        yield return Wait(0.55f); // 吼叫動畫裡張嘴的那一格
+        SpawnClones();
+        yield return Wait(RoarLen - 0.55f);
+
+        health.Invulnerable = restInvulnerable;
+        yield return RestBehindClones();
+        health.Invulnerable = false;
+        if (dead) yield break;
+
+        // 分身全滅：本體回到戰場
+        CurrentAction = "三階段：回到戰場";
+        yield return FacePlayer(0.6f);
+        driver.PlayRoar();
+        ThirdPersonCamera.ShakeMain(0.35f, 1f);
+        yield return Wait(RoarLen);
+        nextEncircle = Mathf.Min(nextEncircle, Time.time + 1.5f);
+    }
+
+    void SpawnClones()
+    {
+        clones.Clear();
+        for (int i = 0; i < cloneCount; i++)
+        {
+            float side = cloneCount == 1 ? 1f : Mathf.Lerp(-1f, 1f, i / (float)(cloneCount - 1));
+            Vector3 pos = ClampToArena(transform.position + transform.right * side * cloneSpawnOffset + transform.forward * 2f);
+            pos.y = homeY;
+
+            var go = Instantiate(gameObject, pos, transform.rotation);
+            go.name = $"{name} (Clone {i + 1})";
+            go.transform.localScale = transform.localScale * cloneScale;
+            var clone = go.GetComponent<SkeletonCentipedeBossAI>();
+            clone.InitAsClone(this, health.maxHealth * cloneHealthFraction, cloneDamageMultiplier);
+            clones.Add(clone);
+
+            if (batSwarm != null && batSwarm.summonEffectPrefab != null)
+            {
+                var fx = Instantiate(batSwarm.summonEffectPrefab, pos, Quaternion.identity);
+                fx.transform.localScale = Vector3.one * cloneSpawnEffectScale;
+                Destroy(fx, 4f);
+            }
+        }
+    }
+
+    /// <summary>由本體呼叫：把這個複製出來的物件設定成分身並立刻開打。</summary>
+    void InitAsClone(SkeletonCentipedeBossAI owner, float maxHealth, float damageScale)
+    {
+        isClone = true;
+        damageMultiplier = damageScale;
+        phase2 = owner.phase2;
+        phase3 = true; // 分身不會再觸發任何階段
+        homePos = transform.position;
+        homeRot = transform.rotation;
+        homeY = owner.homeY;
+
+        health.maxHealth = maxHealth;
+        health.ResetHealth();
+        health.ShowBar = false;
+        health.Invulnerable = false;
+        if (batGuard != null) { batGuard.enabled = false; batGuard = null; }   // 分身不會回血
+        if (batSwarm != null) { batSwarm.enabled = false; batSwarm = null; }   // 也不會召喚蝠群
+        if (encircle != null) encircle.damage *= damageScale;
+        driver.Revive();
+        BeginFight();
+    }
+
+    bool AnyCloneAlive()
+    {
+        foreach (var c in clones) if (c != null && !c.dead) return true;
+        return false;
+    }
+
+    /// <summary>分身還活著時：退到競技場上離玩家最遠的那一側，面向玩家待著。</summary>
+    IEnumerator RestBehindClones()
+    {
+        CurrentAction = "三階段：後方休息";
+        bool moving = true;
+        while (!dead && AnyCloneAlive())
+        {
+            if (!PlayerAlive) { driver.SetMoveSpeed(0f); yield return null; continue; }
+
+            Vector3 target = RestPoint();
+            Vector3 to = target - transform.position;
+            to.y = 0f;
+            float dist = to.magnitude;
+            if (dist > restRepositionDistance) moving = true;
+            else if (dist < 1.5f) moving = false;
+
+            if (moving)
+            {
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(to), turnSpeed * Time.deltaTime);
+                float facing = Mathf.Clamp01(Vector3.Dot(transform.forward, to.normalized));
+                float speed = Speed * Mathf.Lerp(0.3f, 1f, facing);
+                transform.position = ClampToArena(transform.position + transform.forward * Mathf.Min(speed * Time.deltaTime, dist));
+                driver.SetMoveSpeed(speed / Mathf.Max(0.01f, moveSpeed * phase2SpeedMultiplier));
+            }
+            else
+            {
+                driver.SetMoveSpeed(0f);
+                TurnTowardsPlayer(0.6f);
+            }
+            yield return null;
+        }
+        driver.SetMoveSpeed(0f);
+    }
+
+    Vector3 RestPoint()
+    {
+        Vector3 away = arenaCenter - player.transform.position;
+        away.y = 0f;
+        if (away.magnitude < 3f) { away = transform.position - player.transform.position; away.y = 0f; }
+        if (away.sqrMagnitude < 0.01f) away = -transform.forward;
+        return ClampToArena(arenaCenter + away.normalized * arenaRadius);
+    }
+
+    void DespawnClones(bool kill)
+    {
+        foreach (var c in clones)
+        {
+            if (c == null) continue;
+            if (kill && !c.dead) c.health.SetHealth(0f); // 播死亡動畫後自己消失
+            else Destroy(c.gameObject);
+        }
+        clones.Clear();
+    }
+
     IEnumerator Chase(float duration)
     {
         CurrentAction = "追擊";
@@ -450,7 +641,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         pushDir.y = 0f;
         if (knockback < 0f) knockback = meleeKnockback;
         Vector3 knock = (pushDir.sqrMagnitude > 0.001f ? pushDir.normalized : transform.forward) * knockback + Vector3.up * knockUp;
-        if (player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+        if (player.TakeDamage(damage * damageMultiplier, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
     }
 
     bool InFan(float range, float halfAngle)
@@ -471,6 +662,13 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         if (encircle != null) encircle.Stop();
         driver.PlayDeath();
         CurrentAction = "擊敗";
+        if (isClone)
+        {
+            Destroy(gameObject, 6f); // 死亡動畫播完後消失
+            return;
+        }
+        health.Invulnerable = false;
+        DespawnClones(true);       // 本體倒下，分身一起倒下
         GameAudio.StopMusic(2f);
         ThirdPersonCamera.ShakeMain(0.4f, 0.8f);
         OnDefeated?.Invoke();
@@ -490,7 +688,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
     void OnPlayerRespawned()
     {
-        if (dead) return;
+        if (dead || isClone) return; // 分身由本體清掉
         // 重新來過：回到起點、補滿血，玩家再進場就重新開打
         transform.SetPositionAndRotation(homePos, homeRot);
         health.ResetHealth();
@@ -499,9 +697,12 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         if (batGuard != null) batGuard.ResetThresholds();
         driver.Revive();
         phase2 = false;
+        phase3 = phase3Pending = false;
+        DespawnClones(false);
         inArenaTimer = 0f;
         GameAudio.StopMusic(1f);
         CurrentAction = "沉睡";
+        OnFightReset?.Invoke();
     }
 
     // ===================== 小工具 =====================

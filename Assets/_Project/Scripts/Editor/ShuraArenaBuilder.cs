@@ -39,6 +39,7 @@ public static class ShuraArenaBuilder
     static Material mPlaster, mStone, mWood, mCharred, mRoof, mRoofCap, mVermilion, mLacquer, mBlood, mSoot,
         mFlagRed, mFlagBlack, mFlagWhite, mGold, mCedar, mGround, mLantern, mIron, mFireCore, mFeatherW, mFeatherR;
     static Material pAdd, pSmoke, pPetal, pAsh;
+    static Material mStraw, mRope, mClay, mCrate, mImmortalLabel;
     static Mesh coneMesh;
 
     [MenuItem("GeminiGrowUp/建立修羅場 Boss 場景 (Shura Arena)")]
@@ -85,7 +86,7 @@ public static class ShuraArenaBuilder
         float r = floor != null ? floor.radius : 36f;
 
         RestyleBossRoom(room, floor, gate);
-        SetupCentipedeBoss(room, gate, c, r);
+        var bossAI = SetupCentipedeBoss(room, gate, c, r);
         EnablePostProcessing(rig);
 
         // ---------- 環境 ----------
@@ -101,9 +102,12 @@ public static class ShuraArenaBuilder
         occupied.Add(BuildPagoda(env, c, r));
         BuildForest(env, c, r, occupied);
         BuildAtmosphereVfx(env, c, r);
+        BuildPropPrefabs();
+        BuildBreakables(env, c, r, gate);
+        SetupImmortalWalls(room, gate);
 
         // ---------- 光線 / 天空 / 霧 / 後製 ----------
-        BuildLighting(c);
+        BuildLighting(c, bossAI);
 
         EditorSceneManager.SaveScene(scene, ScenePath);
         Debug.Log($"[Shura] 已建立修羅場 Boss 場景：{ScenePath}（競技場半徑 {r}m）。按 Play 開始。");
@@ -160,13 +164,13 @@ public static class ShuraArenaBuilder
     //  Boss：百足駭骨＋它自己的 AI（SkeletonCentipedeBossAI），取代 BossRoom 裡的石像 Boss
     // =====================================================================
 
-    static void SetupCentipedeBoss(GameObject room, BossGate gate, Vector3 c, float r)
+    static SkeletonCentipedeBossAI SetupCentipedeBoss(GameObject room, BossGate gate, Vector3 c, float r)
     {
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(CentipedePrefabPath);
         if (prefab == null)
         {
             Debug.LogWarning("[Shura] 找不到百足駭骨 Prefab，Boss 維持原樣。");
-            return;
+            return null;
         }
 
         // 原本的石像 Boss（BossController）在這個場景整個關掉；大門不再連到它（玩家一開始就在場內）
@@ -201,6 +205,371 @@ public static class ShuraArenaBuilder
         if (ai == null) ai = boss.AddComponent<SkeletonCentipedeBossAI>();
         ai.arenaCenter = c;
         ai.arenaRadius = r;
+        return ai;
+    }
+
+    // =====================================================================
+    //  可破壞物件（佔位用的日式道具：酒樽、木箱、米俵、陶甕）＋ 不可破壞的牆
+    // =====================================================================
+
+    static GameObject breakEffect;
+
+    // ---------------- 真實模型（Models/ShuraProps，由 Tripo 道具模型拆分、減面）----------------
+    const string PropsModelDir = Root + "/Models/ShuraProps";
+    const string PropsPrefabDir = Root + "/Prefabs/ShuraProps";
+
+    /// <summary>名稱、血量、碎片數、煙塵大小、模型轉角（讓正面朝 +Z）、是否有燈火</summary>
+    static readonly (string name, float hp, int debris, float fx, float yaw, bool light)[] PropSpecs =
+    {
+        ("SakeBarrel",   40f, 10, 0.8f,   0f, false),
+        ("Crate",        30f,  9, 0.8f,   0f, false),
+        ("RiceBale",     25f,  8, 0.7f,   0f, false),
+        ("ClayPot",      10f,  7, 0.5f,   0f, false),
+        ("Tate",         60f, 10, 0.9f, 180f, false),
+        ("Taketaba",     50f, 10, 0.9f,   0f, false),
+        ("StoneLantern", 80f, 12, 1.0f,   0f, true),
+        ("KatanaRack",   25f,  8, 0.6f,   0f, false),
+        ("SpearRack",    30f,  9, 0.8f,   0f, false),
+        ("BambooFence",  35f, 10, 0.9f,   0f, false),
+    };
+
+    static readonly Dictionary<string, GameObject> propPrefabs = new Dictionary<string, GameObject>();
+    static readonly Dictionary<string, Vector3> propSizes = new Dictionary<string, Vector3>();
+
+    /// <summary>
+    /// 把 Models/ShuraProps 裡的模型做成可破壞 Prefab（Prefabs/ShuraProps/PF_Shura_*.prefab）：
+    /// 共用一個 URP 材質（顏色＋法線貼圖）、包住模型的 BoxCollider、ShuraBreakable；石燈籠加一盞燈。
+    /// 模型不存在就跳過，場景會改用基本形狀拼的佔位道具。
+    /// </summary>
+    static void BuildPropPrefabs()
+    {
+        propPrefabs.Clear();
+        propSizes.Clear();
+        var baseTex = AssetDatabase.LoadAssetAtPath<Texture2D>(PropsModelDir + "/T_ShuraProps_BaseColor.jpg");
+        if (baseTex == null) { Debug.Log("[Shura] 沒有找到 Models/ShuraProps，可破壞物件使用佔位造型。"); return; }
+
+        string normalPath = PropsModelDir + "/T_ShuraProps_Normal.png";
+        if (AssetImporter.GetAtPath(normalPath) is TextureImporter ni && ni.textureType != TextureImporterType.NormalMap)
+        {
+            ni.textureType = TextureImporterType.NormalMap;
+            ni.sRGBTexture = false;
+            ni.SaveAndReimport();
+        }
+        var normalTex = AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath);
+
+        var mat = GetOrCreateMat("M_ShuraProps", "Universal Render Pipeline/Lit");
+        mat.SetTexture("_BaseMap", baseTex);
+        mat.SetColor("_BaseColor", Color.white);
+        mat.SetFloat("_Smoothness", 0.15f);
+        mat.SetFloat("_Metallic", 0f);
+        if (normalTex != null)
+        {
+            mat.SetTexture("_BumpMap", normalTex);
+            mat.SetFloat("_BumpScale", 0.6f); // 法線是高面數模型烘的，減面後調淡一點比較不會有接縫
+            mat.EnableKeyword("_NORMALMAP");
+        }
+        mat.enableInstancing = true;
+        EditorUtility.SetDirty(mat);
+
+        BossArenaBuilder.EnsureFolder(PropsPrefabDir);
+        foreach (var spec in PropSpecs)
+        {
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>($"{PropsModelDir}/SM_Shura_{spec.name}.obj");
+            if (model == null) continue;
+
+            var root = new GameObject($"PF_Shura_{spec.name}");
+            var vis = (GameObject)PrefabUtility.InstantiatePrefab(model);
+            vis.name = "Model";
+            vis.transform.SetParent(root.transform, false);
+            vis.transform.localRotation = Quaternion.Euler(0f, spec.yaw, 0f);
+            foreach (var mr in vis.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                var mats = mr.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+                mr.sharedMaterials = mats;
+            }
+
+            var t = root.transform;
+            FinishBreakable(t, spec.hp, spec.debris, spec.fx);
+            var size = t.GetComponent<BoxCollider>().size;
+
+            if (spec.light)
+            {
+                // 石燈籠的火袋大約在 62% 高度
+                var lightGo = new GameObject("Light");
+                lightGo.transform.SetParent(t, false);
+                lightGo.transform.localPosition = new Vector3(0f, size.y * 0.62f, 0f);
+                var l = lightGo.AddComponent<Light>();
+                l.type = LightType.Point;
+                l.color = new Color(1f, 0.6f, 0.3f);
+                l.intensity = 4f;
+                l.range = 12f;
+                l.shadows = LightShadows.None;
+                var flicker = root.AddComponent<TorchFlicker>();
+                flicker.amount = 0.12f;
+                flicker.speed = 3f;
+            }
+
+            string path = $"{PropsPrefabDir}/PF_Shura_{spec.name}.prefab";
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+            Object.DestroyImmediate(root);
+            propPrefabs[spec.name] = prefab;
+            propSizes[spec.name] = size;
+        }
+        Debug.Log($"[Shura] 道具 Prefab：{propPrefabs.Count} 個（{PropsPrefabDir}）");
+    }
+
+    /// <summary>有真實模型的 Prefab 就放它；scale 為等比縮放。</summary>
+    static bool TryProp(string name, Transform parent, float scale, out Transform t)
+    {
+        t = null;
+        if (!propPrefabs.TryGetValue(name, out var prefab) || prefab == null) return false;
+        var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
+        go.name = name;
+        go.transform.localScale = Vector3.one * scale;
+        t = go.transform;
+        return true;
+    }
+
+    static float PropHeight(string name, float fallback) => propSizes.TryGetValue(name, out var s) ? s.y : fallback;
+
+    static void BuildBreakables(Transform env, Vector3 c, float r, BossGate gate)
+    {
+        var root = Group("Breakables", env);
+        breakEffect = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/VFX/SkeletonCentipede/Prefabs/VFX_SkeletonCentipede_TailDust.prefab");
+
+        // 場地上：幾堆散落的物資（避開中心的出生點、北邊 Boss 起點、南邊大門通道）
+        int clusters = 0, tries = 0;
+        while (clusters < 9 && tries++ < 200)
+        {
+            float ang = R(0f, 360f);
+            float dist = R(14f, r - 6f);
+            if (Mathf.Abs(Mathf.DeltaAngle(ang, 0f)) < 25f && dist < 22f) continue;   // Boss 起點
+            if (Mathf.Abs(Mathf.DeltaAngle(ang, 180f)) < 18f) continue;              // 大門通道
+            float a = ang * Mathf.Deg2Rad;
+            Vector3 p = c + new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * dist;
+            var g = Group($"FieldCluster_{clusters:00}", root);
+            g.position = p;
+            g.rotation = Quaternion.Euler(0f, R(0f, 360f), 0f);
+            Cluster(g, rng.Next(3, 6));
+            clusters++;
+        }
+
+        // 場地上的石燈籠（有燈火，打碎就熄滅）：避開北邊 Boss 起點與南邊大門
+        foreach (float deg in new[] { 60f, 120f, 240f, 300f })
+        {
+            float a = deg * Mathf.Deg2Rad;
+            var dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+            if (TryProp("StoneLantern", root, 1f, out var lantern))
+            {
+                lantern.name = $"StoneLantern_{deg:000}";
+                lantern.position = c + dir * (r * 0.5f);
+                lantern.rotation = Quaternion.LookRotation(-dir);
+            }
+        }
+
+        // 牆邊：靠牆堆放的物資（在牆內側，碰撞牆從半徑 r 開始）
+        const int wallStacks = 14;
+        for (int i = 0; i < wallStacks; i++)
+        {
+            float a = (i + R(0.2f, 0.8f)) * Mathf.PI * 2f / wallStacks;
+            var dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+            Vector3 p = c + dir * (r - 1.4f);
+            if (InGateGap(gate, p, 9f)) continue;
+            var g = Group($"WallStack_{i:00}", root);
+            g.position = p;
+            g.rotation = Quaternion.LookRotation(-dir);
+            WallStack(g, i);
+        }
+
+        // 牆上：木架上的陶甕（架子本身不可破壞，甕可以打碎）
+        const int shelves = 8;
+        for (int i = 0; i < shelves; i++)
+        {
+            float a = (i + 0.5f) * Mathf.PI * 2f / shelves + 0.12f;
+            var dir = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a));
+            Vector3 p = c + dir * (r + 0.2f);
+            if (InGateGap(gate, p, 9f)) continue;
+            var g = Group($"WallShelf_{i:00}", root);
+            g.position = p;
+            g.rotation = Quaternion.LookRotation(-dir);
+            Box(g, "Shelf", new Vector3(0f, 2.3f, 0.35f), Vector3.zero, new Vector3(2.6f, 0.08f, 0.7f), mWood);
+            Box(g, "BracketL", new Vector3(-1.1f, 2.05f, 0.3f), new Vector3(45f, 0f, 0f), new Vector3(0.08f, 0.5f, 0.08f), mWood);
+            Box(g, "BracketR", new Vector3(1.1f, 2.05f, 0.3f), new Vector3(45f, 0f, 0f), new Vector3(0.08f, 0.5f, 0.08f), mWood);
+            for (int k = 0; k < 3; k++)
+            {
+                var pot = Pot(g, R(0.6f, 0.75f));
+                pot.localPosition = new Vector3(-0.8f + k * 0.8f, 2.34f, 0.4f);
+            }
+        }
+    }
+
+    static void Cluster(Transform g, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            // 圍成一圈擺，避免互相穿插
+            float ang = (i + R(-0.25f, 0.25f)) * Mathf.PI * 2f / count;
+            float rad = count > 1 ? R(1.3f, 1.9f) : 0f;
+            Vector3 off = new Vector3(Mathf.Sin(ang), 0f, Mathf.Cos(ang)) * rad;
+            Transform item;
+            switch (rng.Next(propPrefabs.ContainsKey("Taketaba") ? 5 : 4))
+            {
+                case 0: item = SakeBarrel(g); break;
+                case 1: item = Crate(g, R(0.8f, 1.05f)); break;
+                case 2: item = RiceBale(g); break;
+                case 3: item = Pot(g, R(0.9f, 1.3f)); break;
+                default: TryProp("Taketaba", g, R(0.9f, 1.05f), out item); break;
+            }
+            item.localPosition = off;
+            item.localRotation = Quaternion.Euler(0f, R(0f, 360f), 0f);
+        }
+        // 掩體：一半的物資堆旁邊立一面置盾
+        if (Chance(0.5f) && TryProp("Tate", g, R(0.95f, 1.05f), out var shield))
+        {
+            float a = R(0f, Mathf.PI * 2f);
+            shield.localPosition = new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)) * 2.8f;
+            shield.localRotation = Quaternion.LookRotation(new Vector3(Mathf.Sin(a), 0f, Mathf.Cos(a)));
+        }
+    }
+
+    static void WallStack(Transform g, int index)
+    {
+        // 牆邊輪流放：刀架 / 槍架、竹柵、堆起來的物資（+Z 朝向場內）
+        if (index % 4 == 1 && TryProp(Chance(0.5f) ? "KatanaRack" : "SpearRack", g, 1f, out var rack))
+        {
+            rack.localPosition = new Vector3(0f, 0f, 0.3f);
+            return;
+        }
+        if (index % 4 == 3 && propPrefabs.ContainsKey("BambooFence"))
+        {
+            for (int i = -1; i <= 1; i += 2)
+                if (TryProp("BambooFence", g, 1f, out var fence))
+                    fence.localPosition = new Vector3(i * 0.95f, 0f, 0.4f);
+            return;
+        }
+
+        // 下層兩個、上層一個
+        bool barrels = Chance(0.5f);
+        float lower = 0f;
+        for (int i = 0; i < 2; i++)
+        {
+            var item = barrels ? SakeBarrel(g) : Crate(g, 1f);
+            item.localPosition = new Vector3(i == 0 ? -0.75f : 0.75f, 0f, 0f);
+            if (barrels) item.localRotation = Quaternion.Euler(0f, R(0f, 360f), 0f);
+            lower = Mathf.Max(lower, (barrels ? PropHeight("SakeBarrel", 1.03f) : PropHeight("Crate", 1f)) * item.localScale.y);
+        }
+        var top = Chance(0.5f) ? Crate(g, 0.8f) : RiceBale(g);
+        top.localPosition = new Vector3(R(-0.2f, 0.2f), lower + 0.02f, 0f);
+    }
+
+    /// <summary>建立一個可破壞物件的根物件（底部在 y=0），子物件建完後再呼叫 FinishBreakable。</summary>
+    static Transform NewBreakable(Transform parent, string name) => Group(name, parent);
+
+    static Transform FinishBreakable(Transform t, float health, int debris, float fxScale)
+    {
+        // 這些東西會被打碎（關掉外觀），不參與靜態合批
+        foreach (var tr in t.GetComponentsInChildren<Transform>(true))
+            GameObjectUtility.SetStaticEditorFlags(tr.gameObject, 0);
+
+        // 包住整個造型的碰撞體（玩家可以撞到、攻擊打得到）
+        var mrs = t.GetComponentsInChildren<MeshRenderer>();
+        var b = new Bounds(Vector3.zero, Vector3.zero);
+        bool first = true;
+        foreach (var mr in mrs)
+        {
+            var mf = mr.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) continue;
+            var mb = mf.sharedMesh.bounds;
+            foreach (var corner in Corners(mb))
+            {
+                Vector3 lp = t.InverseTransformPoint(mr.transform.TransformPoint(corner));
+                if (first) { b = new Bounds(lp, Vector3.zero); first = false; }
+                else b.Encapsulate(lp);
+            }
+        }
+        var box = t.gameObject.AddComponent<BoxCollider>();
+        box.center = b.center;
+        box.size = b.size;
+
+        var br = t.gameObject.AddComponent<ShuraBreakable>();
+        br.maxHealth = health;
+        br.debrisCount = debris;
+        br.breakEffectPrefab = breakEffect;
+        br.breakEffectScale = fxScale;
+        return t;
+    }
+
+    static IEnumerable<Vector3> Corners(Bounds b)
+    {
+        for (int i = 0; i < 8; i++)
+            yield return b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+    }
+
+    /// <summary>酒樽（菰樽）：稻草包覆的木桶＋黑色麻繩＋紅色招牌</summary>
+    static Transform SakeBarrel(Transform parent)
+    {
+        if (TryProp("SakeBarrel", parent, R(0.9f, 1.05f), out var real)) return real;
+        var t = NewBreakable(parent, "SakeBarrel");
+        Cyl(t, "Body", new Vector3(0f, 0.5f, 0f), Vector3.zero, new Vector3(0.9f, 0.5f, 0.9f), mStraw);
+        Cyl(t, "Lid", new Vector3(0f, 1.0f, 0f), Vector3.zero, new Vector3(0.8f, 0.03f, 0.8f), mCrate);
+        for (int k = 0; k < 3; k++)
+            Cyl(t, "Rope", new Vector3(0f, 0.18f + k * 0.32f, 0f), Vector3.zero, new Vector3(0.93f, 0.03f, 0.93f), mRope);
+        Box(t, "Label", new Vector3(0f, 0.55f, 0.455f), Vector3.zero, new Vector3(0.38f, 0.42f, 0.02f), Chance(0.5f) ? mFlagRed : mFlagBlack);
+        return FinishBreakable(t, 40f, 10, 0.8f);
+    }
+
+    /// <summary>木箱：箱體＋深色框條</summary>
+    static Transform Crate(Transform parent, float s)
+    {
+        if (TryProp("Crate", parent, s, out var real)) return real;
+        var t = NewBreakable(parent, "Crate");
+        Box(t, "Body", new Vector3(0f, 0.5f * s, 0f), Vector3.zero, new Vector3(s, s, s), mCrate);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            Box(t, "FrameX", new Vector3(0f, 0.5f * s, side * s * 0.505f), Vector3.zero, new Vector3(s * 1.02f, s * 0.12f, 0.03f), mWood);
+            Box(t, "FrameZ", new Vector3(side * s * 0.505f, 0.5f * s, 0f), Vector3.zero, new Vector3(0.03f, s * 0.12f, s * 1.02f), mWood);
+            Box(t, "Edge", new Vector3(side * s * 0.47f, 0.5f * s, s * 0.505f), Vector3.zero, new Vector3(s * 0.08f, s, 0.03f), mWood);
+        }
+        return FinishBreakable(t, 30f, 9, 0.8f);
+    }
+
+    /// <summary>米俵：橫躺的稻草捆＋三道繩</summary>
+    static Transform RiceBale(Transform parent)
+    {
+        if (TryProp("RiceBale", parent, R(0.9f, 1.05f), out var real)) return real;
+        var t = NewBreakable(parent, "RiceBale");
+        Prim(PrimitiveType.Capsule, t, "Body", new Vector3(0f, 0.38f, 0f), new Vector3(0f, 0f, 90f), new Vector3(0.75f, 0.6f, 0.75f), mStraw);
+        for (int k = -1; k <= 1; k++)
+            Cyl(t, "Rope", new Vector3(k * 0.35f, 0.38f, 0f), new Vector3(0f, 0f, 90f), new Vector3(0.78f, 0.025f, 0.78f), mRope);
+        return FinishBreakable(t, 25f, 8, 0.7f);
+    }
+
+    /// <summary>陶甕：圓胖的甕身＋窄口</summary>
+    static Transform Pot(Transform parent, float s)
+    {
+        if (TryProp("ClayPot", parent, s * 0.75f, out var real)) return real;
+        var t = NewBreakable(parent, "ClayPot");
+        Sphere(t, "Body", new Vector3(0f, 0.32f * s, 0f), new Vector3(0.6f * s, 0.64f * s, 0.6f * s), mClay, shadows: true);
+        Cyl(t, "Neck", new Vector3(0f, 0.66f * s, 0f), Vector3.zero, new Vector3(0.3f * s, 0.06f * s, 0.3f * s), mClay);
+        Cyl(t, "Rim", new Vector3(0f, 0.72f * s, 0f), Vector3.zero, new Vector3(0.36f * s, 0.02f * s, 0.36f * s), mRope);
+        return FinishBreakable(t, 10f, 7, 0.5f);
+    }
+
+    /// <summary>競技場的環形碰撞牆、大門標成不可破壞；場景加一個顯示紅色標籤的元件。</summary>
+    static void SetupImmortalWalls(GameObject room, BossGate gate)
+    {
+        var parents = new HashSet<Transform>();
+        foreach (var col in room.GetComponentsInChildren<Collider>(true))
+            if (col.name.StartsWith("Wall_") && col.transform.parent != null) parents.Add(col.transform.parent);
+        if (gate != null) parents.Add(gate.transform);
+        foreach (var t in parents)
+            if (t.GetComponent<ImmortalObject>() == null) t.gameObject.AddComponent<ImmortalObject>();
+
+        var go = new GameObject("ImmortalObjectFeedback");
+        var fb = go.AddComponent<ImmortalObjectFeedback>();
+        fb.labelMaterial = mImmortalLabel;
+        Debug.Log($"[Shura] 不可破壞標記：{parents.Count} 組（環形牆 / 大門）");
     }
 
     static void EnablePostProcessing(GameObject rig)
@@ -804,7 +1173,7 @@ public static class ShuraArenaBuilder
     //  光線、赤月天空、紅霧、後製
     // =====================================================================
 
-    static void BuildLighting(Vector3 c)
+    static void BuildLighting(Vector3 c, SkeletonCentipedeBossAI bossAI)
     {
         var lighting = new GameObject("Lighting").transform;
 
@@ -850,6 +1219,11 @@ public static class ShuraArenaBuilder
         RenderSettings.fogColor = new Color(0.025f, 0.04f, 0.08f); // 接近夜空地平線的藍黑色，遠景剪影才會融進去
         RenderSettings.fogDensity = 0.012f;
         DynamicGI.UpdateEnvironment();
+
+        // 三階段（Boss 血量 < 20%）時天色轉暗紅；夜晚的數值就是上面這組
+        var skyPhase = lighting.gameObject.AddComponent<ShuraSkyPhase>();
+        skyPhase.boss = bossAI;
+        skyPhase.moonLight = moon;
 
         // 後製 Volume
         string profilePath = SceneAssetDir + "/VP_ShuraArena.asset";
@@ -950,6 +1324,15 @@ public static class ShuraArenaBuilder
         pSmoke = ParticleMat("M_Shura_ParticleSmoke", smoke, additive: false);
         pPetal = ParticleMat("M_Shura_ParticlePetal", petal, additive: false);
         pAsh = ParticleMat("M_Shura_ParticleAsh", soft, additive: false);
+
+        // 可破壞道具（佔位用的日式造型）
+        mStraw = Lit("M_Shura_Straw", new Color(0.72f, 0.63f, 0.42f), 0.05f);
+        mRope = Lit("M_Shura_Rope", new Color(0.18f, 0.12f, 0.08f), 0.05f);
+        mClay = Lit("M_Shura_Clay", new Color(0.36f, 0.2f, 0.12f), 0.35f);
+        mCrate = Lit("M_Shura_CrateWood", new Color(0.42f, 0.29f, 0.17f), 0.15f);
+
+        // 不可破壞物件的紅色六角標籤
+        mImmortalLabel = LabelMaterial();
     }
 
     static Material GetOrCreateMat(string name, string shaderName)
@@ -1020,6 +1403,72 @@ public static class ShuraArenaBuilder
         EditorUtility.SetDirty(mat);
         return mat;
     }
+
+    /// <summary>紅色六角標籤（左右兩端是尖角、內有蜂巢紋、雙層亮邊），512×128。</summary>
+    static Material LabelMaterial()
+    {
+        const int W = 512, H = 128;
+        string path = $"{VfxDir}/T_Shura_ImmortalLabel.png";
+        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+        float halfW = W * 0.5f - 3f, halfH = H * 0.5f - 3f;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                float px = Mathf.Abs(x + 0.5f - W * 0.5f), py = Mathf.Abs(y + 0.5f - H * 0.5f);
+                // 到邊緣的距離（上下平邊 / 左右斜邊）
+                float e = Mathf.Min(halfH - py, (halfW - px - py) * 0.7071f);
+                if (e <= 0f) { tex.SetPixel(x, y, Color.clear); continue; }
+
+                float v = (y + 0.5f) / H;
+                Color fill = Color.Lerp(new Color(0.45f, 0.02f, 0.05f), new Color(0.82f, 0.08f, 0.1f), v);
+                // 蜂巢紋
+                float hx = (x + 0.5f) / 15f, hy = (y + 0.5f) / 15f;
+                float line = HexLine(hx, hy);
+                fill = Color.Lerp(fill, new Color(1f, 0.35f, 0.35f), line * 0.22f);
+                float a = 0.86f;
+                // 外框（亮）＋內框（細）
+                if (e < 3f) { fill = new Color(1f, 0.5f, 0.5f); a = 1f; }
+                else if (e > 6f && e < 7.5f) { fill = Color.Lerp(fill, new Color(1f, 0.55f, 0.55f), 0.7f); a = 0.95f; }
+                a *= Mathf.Clamp01(e); // 邊緣反鋸齒
+                tex.SetPixel(x, y, new Color(fill.r, fill.g, fill.b, a));
+            }
+        File.WriteAllBytes(Path.Combine(Directory.GetCurrentDirectory(), path), tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+        var ti = (TextureImporter)AssetImporter.GetAtPath(path);
+        ti.alphaIsTransparency = true;
+        ti.wrapMode = TextureWrapMode.Clamp;
+        ti.mipmapEnabled = false;
+        ti.SaveAndReimport();
+
+        var mat = GetOrCreateMat("M_Shura_ImmortalLabel", "Universal Render Pipeline/Unlit");
+        mat.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(path));
+        mat.SetColor("_BaseColor", Color.white);
+        mat.SetFloat("_Surface", 1f);
+        mat.SetFloat("_Blend", 0f);
+        mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        mat.SetFloat("_ZWrite", 0f);
+        mat.SetFloat("_Cull", 0f);
+        mat.SetOverrideTag("RenderType", "Transparent");
+        mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        mat.renderQueue = (int)RenderQueue.Transparent + 50;
+        EditorUtility.SetDirty(mat);
+        return mat;
+    }
+
+    /// <summary>蜂巢格線強度（0~1）</summary>
+    static float HexLine(float x, float y)
+    {
+        const float rx = 1f, ry = 1.732f;
+        Vector2 a = new Vector2(Mod(x, rx) - rx * 0.5f, Mod(y, ry) - ry * 0.5f);
+        Vector2 b = new Vector2(Mod(x - rx * 0.5f, rx) - rx * 0.5f, Mod(y - ry * 0.5f, ry) - ry * 0.5f);
+        Vector2 g = a.sqrMagnitude < b.sqrMagnitude ? a : b;
+        float d = Mathf.Max(Mathf.Abs(g.x) * 0.5f + Mathf.Abs(g.y) * 0.866f, Mathf.Abs(g.x));
+        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.44f, 0.5f, d));
+    }
+
+    static float Mod(float x, float m) => x - m * Mathf.Floor(x / m);
 
     static Texture2D MakeTexture(string name, int size, System.Func<float, float, Color> f)
     {
