@@ -52,6 +52,8 @@ public class PlayerCombat : MeleeCombat
     public int BlockStreak { get; private set; }
     /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
     public event System.Action OnShieldBash;
+    /// <summary>玩家的近戰 / 盾擊打中目標（目標、命中點、傷害、是否重擊）。打擊感回饋（PlayerHitFeedback）用。</summary>
+    public static event System.Action<IDamageable, Vector3, float, bool> OnHitLanded;
     /// <summary>開始 / 停止格擋</summary>
     public event System.Action<bool> OnBlockChanged;
     /// <summary>用盾牌擋下攻擊（參數 true = 這一下破防了）</summary>
@@ -383,6 +385,7 @@ public class PlayerCombat : MeleeCombat
             float dealt = shieldBashDamage * DamageScale(false, target);
             target.TakeDamage(dealt, point);
             AfterHit(dealt, target);
+            OnHitLanded?.Invoke(target, point, dealt, true);
 
             // 盾擊的重點是把敵人撞開：額外的大力擊退
             var enemyMove = (target as Component) != null ? ((Component)target).GetComponent<ThirdPersonController>() : null;
@@ -571,6 +574,7 @@ public class PlayerCombat : MeleeCombat
         float dealt = damage * DamageScale(heavySwing, target);
         target.TakeDamage(dealt, hitPoint);
         AfterHit(dealt, target);
+        OnHitLanded?.Invoke(target, hitPoint, dealt, heavySwing);
         if (heavySwing) CombatVFX.Impact(hitPoint, new Color(1f, 0.6f, 0.2f));
         ThirdPersonCamera.ShakeMain(heavySwing ? 0.18f : 0.08f, 0.1f);
         return true;
