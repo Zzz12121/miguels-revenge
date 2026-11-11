@@ -46,7 +46,7 @@ public static class ForestIslandBuilder
     const float BridgeLength = 110f;
     const float BridgeSag = 5f;
     const float BridgeWidth = 2.6f;
-    const float BridgeSpawnDistance = 18f;    // 玩家出生點離島邊多遠（在橋上）
+    const float BridgeSpawnDistance = 70f;    // 玩家出生點離島邊多遠（在橋上；中間是骷髏騎士守橋）
 
     static System.Random rng;
     static float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
@@ -97,6 +97,7 @@ public static class ForestIslandBuilder
         var markers = BuildMarkers();
         SetupCentipedeBoss();
         BuildBridge(env, out Vector3 spawn);
+        BuildBridgeSoldiers();
         BuildCliffRocks(env);
         BuildArenaDressing(env);
         BuildForest(env, treePrefabs);
@@ -154,6 +155,7 @@ public static class ForestIslandBuilder
             ("04_edge_look_out", new Vector3(-30f, 3f, 40f), new Vector3(-110f, -15f, 150f)),
             ("05_forest_interior", new Vector3(38f, GroundY(38f, 8f) + 1.8f, 8f), new Vector3(30f, GroundY(30f, 40f) + 2.5f, 40f)),
             ("06_boss_view_south", new Vector3(0f, 2.6f, 17f), new Vector3(0f, 1f, -40f)),
+            ("08_bridge_soldiers", BridgePoint(BridgeSpawnDistance - 4f, 0f, 2.4f), BridgePoint(BridgeSpawnDistance - 16f, 0f, 1.4f)),
             ("07_centipede_from_player", new Vector3(3f, 3.2f, -12f), new Vector3(0f, 2f, 15f)),
         };
         var go = new GameObject("PreviewCamera");
@@ -363,6 +365,54 @@ public static class ForestIslandBuilder
 
     static float GroundY(float x, float z) =>
         terrain != null ? terrain.SampleHeight(new Vector3(x, 0f, z)) + terrain.transform.position.y : DesignHeight(x, z);
+
+    // =====================================================================
+    //  吊橋上的骷髏騎士（Enemy_SkeletonKnight；沒有的話先建立，失敗就退回 Enemy_Grunt）
+    // =====================================================================
+
+    static void BuildBridgeSoldiers()
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(SkeletonKnightInstaller.PrefabPath);
+        if (prefab == null) prefab = SkeletonKnightInstaller.BuildPrefab();
+        if (prefab == null) prefab = AssetDatabase.LoadAssetAtPath<GameObject>(Root + "/Prefabs/Enemy_Grunt.prefab");
+        if (prefab == null) { Debug.LogWarning("[ForestIsland] 找不到小怪 Prefab，橋上沒有士兵。"); return; }
+
+        var root = new GameObject("BridgeSoldiers").transform;
+        // (離島邊的距離, 左右偏移)：由遠到近一路守到橋頭，兩隻並排的那組堵住橋面
+        var slots = new (float s, float x)[]
+        {
+            (56f, 0f), (46f, -0.6f), (46f, 0.6f), (34f, 0f), (22f, 0.3f), (10f, -0.3f),
+            (-4f, -1.6f), (-4f, 1.6f),   // 橋頭（島上）兩隻守衛
+        };
+        int i = 0;
+        foreach (var slot in slots)
+        {
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            go.name = $"SkeletonKnight_{i++:00}";
+            go.transform.SetParent(root, false);
+            Vector3 p = BridgePoint(Mathf.Max(slot.s, 0f), slot.x, 0f);
+            if (slot.s < 0f)
+            {
+                p.z = BridgePoint(slot.s, 0f, 0f).z;   // BridgePoint 的 z 不夾，橋頭往島內延伸
+                p.y = GroundY(p.x, p.z);
+            }
+            // Prefab 根物件在碰撞膠囊中心：往上抬到腳底貼地
+            var cc = go.GetComponent<CharacterController>();
+            float feet = cc != null ? cc.center.y - cc.height * 0.5f : 0f;
+            go.transform.position = p + Vector3.up * (0.08f - feet);
+            go.transform.rotation = Quaternion.LookRotation(Vector3.back);   // 面向走來的玩家
+
+            var ai = go.GetComponent<EnemyAI>();
+            if (ai != null)
+            {
+                ai.enableWander = false;   // 不在窄橋上亂走
+                ai.canJump = false;        // 不做跳躍撲擊（會跳出橋外）
+                ai.leashRadius = 30f;
+                ai.giveUpDistance = 24f;
+                PrefabUtility.RecordPrefabInstancePropertyModifications(ai);
+            }
+        }
+    }
 
     // =====================================================================
     //  Boss：百足駭骨＋它自己的 AI（和修羅場同一套設定方式，不修改 Prefab 與 AI 程式）

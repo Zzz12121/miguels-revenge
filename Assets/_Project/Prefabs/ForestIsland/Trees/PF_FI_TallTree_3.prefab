@@ -377,5 +377,6 @@ MonoBehaviour:
   initialPush: 8
   crackSound: SFX/RPG/creak1
   crashSound: SFX/roar_rock_crumble
+  soundMaxSeconds: 0.8
   crashShake: 0.35
   shakeRange: 35
