@@ -15,7 +15,7 @@ public static class BattleMusic
     {
         var c = GameAudio.Pick(clip, fallback);
         if (c == null) return;
-        GameAudio.PlayMusic(c, volume, fadeIn);
+        GameAudio.PlayBattleMusic(c, volume, fadeIn);
         Playing = true;
     }
 

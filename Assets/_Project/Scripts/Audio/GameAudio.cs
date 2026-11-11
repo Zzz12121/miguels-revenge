@@ -16,6 +16,8 @@ public static class GameAudio
     public static float SfxVolume = 1f;
     /// <summary>音樂的總音量</summary>
     public static float MusicVolume = 1f;
+    /// <summary>戰鬥音樂（Boss 戰、區域戰鬥）額外乘上的音量，讓打擊音效不被音樂蓋過</summary>
+    public static float BattleMusicVolume = 0.45f;
 
     const int PoolSize = 32;
 
@@ -95,6 +97,12 @@ public static class GameAudio
     {
         if (clip == null) return;
         Host().PlayMusic(clip, volume, fadeIn);
+    }
+
+    /// <summary>播放戰鬥音樂：音量會再乘上 BattleMusicVolume</summary>
+    public static void PlayBattleMusic(AudioClip clip, float volume = 0.5f, float fadeIn = 1.5f)
+    {
+        PlayMusic(clip, volume * BattleMusicVolume, fadeIn);
     }
 
     /// <summary>停止背景音樂，fadeOut 秒淡出</summary>
