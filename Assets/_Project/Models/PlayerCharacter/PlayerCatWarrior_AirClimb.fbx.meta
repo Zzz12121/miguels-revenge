@@ -18,7 +18,7 @@ ModelImporter:
     removeConstantScaleCurves: 0
     motionNodeName: 
     animationImportErrors: 
-    animationImportWarnings: "\nClip 'Armature|CW_Climb' has import animation warnings that might lower retargeting quality:\nNote: Activate translation DOF on avatar to improve retargeting quality.\n\t'Right_UpperLeg' has scale animation that will be discarded.\n"
+    animationImportWarnings: "\nClip 'Armature|CW_Climb' has import animation warnings that might lower retargeting quality:\nNote: Activate translation DOF on avatar to improve retargeting quality.\n\t'Neck' has translation animation that will be discarded.\n\t'Left_Shoulder' has translation animation that will be discarded.\n\t'Left_LowerArm' has translation animation that will be discarded.\n\t'Left_ThumbProximal' has translation animation that will be discarded.\n\t'Left_ThumbIntermediate' has translation animation that will be discarded.\n\t'Left_IndexProximal' has translation animation that will be discarded.\n\t'Left_MiddleProximal' has translation animation that will be discarded.\n\t'Left_RingProximal' has translation animation that will be discarded.\n\t'Left_PinkyProximal' has translation animation that will be discarded.\n\t'Left_PinkyIntermediate' has translation animation that will be discarded.\n\t'Right_Shoulder' has translation animation that will be discarded.\n\t'Right_LowerArm' has translation animation that will be discarded.\n\t'Right_Hand' has translation animation that will be discarded.\n\t'Right_ThumbProximal' has translation animation that will be discarded.\n\t'Right_ThumbDistal' has translation animation that will be discarded.\n\t'Right_IndexProximal' has translation animation that will be discarded.\n\t'Right_MiddleProximal' has translation animation that will be discarded.\n\t'Right_RingProximal' has translation animation that will be discarded.\n\t'Right_RingIntermediate' has translation animation that will be discarded.\n\t'Right_PinkyProximal' has translation animation that will be discarded.\n\t'Right_PinkyIntermediate' has translation animation that will be discarded.\n\t'Left_Toes' has translation animation that will be discarded.\n\t'Right_Toes' has translation animation that will be discarded.\n"
     animationRetargetingWarnings: 
     animationDoRetargetingWarnings: 0
     importAnimatedCustomProperties: 0
@@ -65,7 +65,7 @@ ModelImporter:
       takeName: Armature|CW_Climb
       internalID: -8834180355011861531
       firstFrame: 0
-      lastFrame: 29
+      lastFrame: 79
       wrapMode: 0
       orientationOffsetY: 0
       level: 0
@@ -182,6 +182,35 @@ ModelImporter:
       internalID: -3737181392212778364
       firstFrame: 0
       lastFrame: 119
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 0
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: CW_Roll
+      takeName: Armature|CW_Roll
+      internalID: -8630986003203966451
+      firstFrame: 0
+      lastFrame: 48
       wrapMode: 0
       orientationOffsetY: 0
       level: 0

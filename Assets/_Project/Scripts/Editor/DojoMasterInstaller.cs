@@ -10,6 +10,7 @@ using UnityEngine;
 ///         （Art/DojoMaster/dojomaster_build.py 把 Tripo 的三段動畫合在一起，並修好長袍被手指骨頭拉走的蒙皮）
 ///   動畫：DM_SitIdle（跪坐喝茶，循環；來自 Tripo 的喝茶動畫 DM_SitDrink）、DM_Walk（走路，循環）、DM_Talk（說話，循環）、
 ///         DM_Kneel（跪坐不動，Boss 被打倒時用）
+///   頭髮、外袍袖子、長袍下襬有 Blender 加的彈簧骨（SB_ 開頭），Prefab 上的 SpringBoneSystem 讓它們晃動
 ///         Tripo 的「起身」那段沒有真的站起來（跪著往前滑），所以只取最前面坐著的部分；演出時用鏡頭切換帶過起身。
 ///         走路原本會真的往前走（循環時彈回原點），build 腳本已經改成原地走，往前移動交給 DojoOpeningCutscene。
 /// 選單 GeminiGrowUp > 道場 > 建立老師父 Prefab → Assets/_Project/Prefabs/NPC/PF_DojoMaster.prefab
@@ -138,6 +139,8 @@ public sealed class DojoMasterInstaller : AssetPostprocessor
 
             // Boss 戰：血條（BossHealth）+ AI（DojoMasterBoss）。數值可以在 Prefab 上調
             root.AddComponent<DojoMasterBoss>();
+            // 頭髮、袖子、長袍下襬的彈簧骨（Blender 加的 SB_ 骨頭）
+            if (body.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("SB_"))) root.AddComponent<SpringBoneSystem>();
 
             var saved = PrefabUtility.SaveAsPrefabAsset(root, PrefabPath);
             AssetDatabase.SaveAssets();

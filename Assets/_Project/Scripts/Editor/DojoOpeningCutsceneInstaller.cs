@@ -76,7 +76,7 @@ public static class DojoOpeningCutsceneInstaller
         var cut = root.AddComponent<DojoOpeningCutscene>();
         cut.gate = gate;
         cut.master = master;
-        cut.drinkTea = false; // IK 端茶先關掉，等 Tripo 的喝茶動畫
+        cut.holdTeaCup = true;
 
         var sit = new GameObject("SitPoint").transform;
         sit.SetParent(root.transform, false);

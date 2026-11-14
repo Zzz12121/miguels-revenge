@@ -79,8 +79,10 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     [Min(0.05f)] public float pushReleaseBlend = 0.6f;
 
     [Header("老師父喝茶")]
-    [Tooltip("坐著喝茶（Tripo 的喝茶動畫）時，右手端起來的時候手上拿著茶杯（複製場景裡最近的 TeaCup）")]
-    public bool drinkTea = true;
+    [Tooltip("坐著喝茶（Tripo 的喝茶動畫）時，右手端起來的時候手上拿著茶杯（複製場景裡最近的 TeaCup；找不到就用一個簡單的陶杯）")]
+    public bool holdTeaCup = true;
+    [Tooltip("找不到桌上的 TeaCup 時，自動做的陶杯顏色")]
+    public Color fallbackCupColor = new Color(0.82f, 0.78f, 0.68f);
     [Tooltip("喝茶動畫裡「喝」那一刻在動畫的哪裡（0～1）：用來量茶杯要拿在手的哪個位置")]
     [Range(0f, 1f)] public float sipMoment = 0.6f;
     [Tooltip("拍喝茶鏡頭時，從喝茶動畫的哪裡開始播（0～1）：讓 3 秒內剛好拍到端起來、喝、放下")]
@@ -214,7 +216,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         masterAnim.Play(SitState, 0, 0f);
         masterAnim.Update(0f);
         // 坐姿的模型會比站姿的腳底低一截：把「身體最低點」放到坐墊表面、身體中心對準坐墊
-        if (!SkinnedMeshBounds.TryGet(master.gameObject, out var b)) return;
+        if (!SkinnedMeshBounds.TryGet(master.gameObject, out var b, "SB_")) return;
         Vector3 shift = new Vector3(sitPoint.position.x - b.center.x, sitPoint.position.y - b.min.y, sitPoint.position.z - b.center.z);
         Vector2 flat = Vector2.ClampMagnitude(new Vector2(shift.x, shift.z), 0.5f);
         master.position += new Vector3(flat.x, Mathf.Clamp(shift.y, -1f, 1f), flat.y);
@@ -227,7 +229,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     void SetupTea()
     {
         drinking = false;
-        if (!drinkTea || master == null || sitPoint == null || masterAnim == null) return;
+        if (!holdTeaCup || master == null || sitPoint == null || masterAnim == null) return;
         armHand = FindDeep(master, "Right_Hand");
         armPalm = FindDeep(master, "Right_MiddleProximal");
         if (armHand == null || masterHead == null) return;
@@ -238,7 +240,6 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             float d = Vector3.Distance(t.position, sitPoint.position);
             if (d < best) { best = d; cupSource = t; }
         }
-        if (cupSource == null) return;
 
         // 量手的位置：腿上（休息）和嘴邊（喝）的高度，以及喝的那一刻杯子在手的哪裡
         float restT = 0.1f;
@@ -249,17 +250,39 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         Vector3 toMouth = masterHead.position + Vector3.up * 0.05f - Palm();
         Vector3 cupPos = Palm() + (toMouth.sqrMagnitude > 0.0001f ? toMouth.normalized : Vector3.up) * 0.04f;
         // 杯子保持原本直立的方向，杯口稍微往嘴的方向傾
-        Quaternion cupRot = Quaternion.AngleAxis(-20f, Vector3.Cross(Vector3.up, Flat(master.forward).normalized)) * cupSource.rotation;
+        Quaternion cupRot = Quaternion.AngleAxis(-20f, Vector3.Cross(Vector3.up, Flat(master.forward).normalized)) * (cupSource != null ? cupSource.rotation : Quaternion.identity);
 
-        cup = Instantiate(cupSource.gameObject).transform;
+        if (cupSource != null)
+        {
+            cup = Instantiate(cupSource.gameObject).transform;
+            cup.localScale = cupSource.lossyScale; // 桌上的杯子可能在有縮放的父物件底下：複製出來要保持一樣大
+            foreach (var c in cup.GetComponentsInChildren<Collider>()) { c.enabled = false; Destroy(c); }
+        }
+        else
+        {
+            cup = MakeFallbackCup();
+            cupRot = Quaternion.AngleAxis(-20f, Vector3.Cross(Vector3.up, Flat(master.forward).normalized));
+        }
         cup.name = "TeaCup_Master";
-        foreach (var c in cup.GetComponentsInChildren<Collider>()) { c.enabled = false; Destroy(c); }
         cup.SetPositionAndRotation(cupPos, cupRot);
         cup.SetParent(armHand, true);                 // 之後跟著手動
         cupLocalScale = cup.localScale;
         masterAnim.Play(SitState, 0, 0f); masterAnim.Update(0f);
         drinking = true;
         UpdateCupVisibility();
+    }
+
+    /// <summary>場景沒有 TeaCup 時：一個沒有把手的小陶杯（直徑約 7 公分、高 5 公分）</summary>
+    Transform MakeFallbackCup()
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(go.GetComponent<Collider>());
+        go.transform.localScale = new Vector3(0.07f, 0.025f, 0.07f); // 圓柱預設高 2，所以 y 0.025 = 5 公分
+        var r = go.GetComponent<Renderer>();
+        r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        var m = new Material(r.sharedMaterial) { color = fallbackCupColor };
+        r.sharedMaterial = m;
+        return go.transform;
     }
 
     Vector3 Palm() => armPalm != null ? armPalm.position : armHand.position;
