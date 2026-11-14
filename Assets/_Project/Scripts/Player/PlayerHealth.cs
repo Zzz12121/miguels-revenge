@@ -141,6 +141,9 @@ public class PlayerHealth : MonoBehaviour
         return true;
     }
 
+    /// <summary>直接死亡（不受無敵、翻滾、盾牌影響），例如掉出步道、墜入山谷。走原本的死亡與重生流程。</summary>
+    public void Kill(string reason) { if (!IsDead) Die(reason); }
+
     public void GrantDodgeInvulnerability(float seconds)
     {
         dodgeInvulnerableUntil = Mathf.Max(dodgeInvulnerableUntil, Time.unscaledTime + Mathf.Max(0f, seconds));
