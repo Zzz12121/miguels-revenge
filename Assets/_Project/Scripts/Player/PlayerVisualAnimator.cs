@@ -444,6 +444,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         }
 
         GroundFeet();
+        SmoothStepHeight();
         ApplyShortKesaSlash();
         ApplyAirDashPose();
         UpdateBowAndShieldVisuals();
@@ -1005,6 +1006,34 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         SolveLimbWorld(rightUpperLeg, rightLowerLeg, rightFoot, rightGoal, actor.forward + actor.right * .2f);
         leftFoot.rotation = leftRot;
         rightFoot.rotation = rightRot;
+    }
+
+    // ---------------- 踩上 / 走下小台階（庭院踏腳石）時身體不要瞬間彈一下 ----------------
+    // 角色控制器遇到矮於 stepOffset 的東西會「一幀」直接升上去，模型跟著瞬間跳高。
+    // 偵測到這種一幀內的高度跳動，就讓模型先留在原本的高度，再慢慢追上膠囊。
+    const float StepSmoothSpeed = .9f;  // 模型追上膠囊高度的速度 (m/s)
+    const float StepSmoothMax = .45f;   // 超過這個高度差就不是台階（傳送、重生），不處理
+    float stepSmoothOffset, lastActorY = float.NaN;
+
+    void SmoothStepHeight()
+    {
+        if (controller == null || hips == null) return;
+        float y = controller.transform.position.y;
+        if (float.IsNaN(lastActorY) || Time.deltaTime <= 0f) { lastActorY = y; return; }
+        float dy = y - lastActorY;
+        lastActorY = y;
+        float vy = controller.VerticalVelocity;
+        if (!controller.IsGrounded && (vy > .5f || vy < -4f))
+            stepSmoothOffset = 0f; // 跳起來、真的往下掉：照實際高度
+        else
+        {
+            // 斜坡上正常走路的高度變化不算（最陡約 30°）
+            float slope = Mathf.Max(.03f, controller.CurrentSpeed * Time.deltaTime * .6f);
+            if (Mathf.Abs(dy) > slope && Mathf.Abs(dy) < StepSmoothMax)
+                stepSmoothOffset = Mathf.Clamp(stepSmoothOffset - dy, -StepSmoothMax, StepSmoothMax);
+        }
+        stepSmoothOffset = Mathf.MoveTowards(stepSmoothOffset, 0f, StepSmoothSpeed * Time.deltaTime);
+        if (Mathf.Abs(stepSmoothOffset) > .0001f) hips.position += Vector3.up * stepSmoothOffset;
     }
 
     /// <summary>腳正下方地面的高度（相對角色位置，沿角色上方量）</summary>

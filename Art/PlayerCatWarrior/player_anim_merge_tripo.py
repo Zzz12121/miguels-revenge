@@ -1,9 +1,9 @@
-# 用法：python player_anim_merge_tripo.py -- PlayerCatWarrior_AirClimb.fbx <Tripo 匯出的 AirDash FBX> 輸出.fbx
-# Tripo 動畫必須是同一套骨架（貓戰士的 Tripo 骨架）；會轉成 CW_AirDash 加進 PlayerCatWarrior_AirClimb.fbx，原本的動畫不變。
+# 用法：python player_anim_merge_tripo.py -- PlayerCatWarrior_AirClimb.fbx <Tripo 匯出的動畫 FBX> 輸出.fbx [動畫名稱，預設 CW_AirDash]
+# Tripo 動畫必須是同一套骨架（貓戰士的 Tripo 骨架）；會轉成指定名稱的動畫加進 PlayerCatWarrior_AirClimb.fbx，原本的動畫不變。
 """把 Tripo 做的 AirDash 動畫（同一套骨架）轉成 CW_AirDash，加進 PlayerCatWarrior_AirClimb.fbx 裡（世界空間逐格對齊，跟骨架縮放無關）"""
 import bpy, sys
 from mathutils import Matrix
-args=sys.argv[sys.argv.index('--')+1:]; ac, ad, out = args
+args=sys.argv[sys.argv.index('--')+1:]; ac, ad, out = args[:3]; NEWNAME = args[3] if len(args) > 3 else 'CW_AirDash'
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.fbx(filepath=ad)
 src=[o for o in bpy.data.objects if o.type=='ARMATURE'][0]; src.name='SRC'
@@ -26,7 +26,7 @@ rig=[o for o in bpy.data.objects if o.type=='ARMATURE'][0]
 for a in bpy.data.actions: a.name=a.name.split('|')[-1]; a.use_fake_user=True
 print('OBJECTS',[(o.name,o.type) for o in bpy.data.objects]); print('ACTIONS',[a.name for a in bpy.data.actions])
 for b in rig.pose.bones: b.rotation_mode='QUATERNION'
-act=bpy.data.actions.new('CW_AirDash'); act.use_fake_user=True
+act=bpy.data.actions.new(NEWNAME); act.use_fake_user=True
 rig.animation_data_create()
 inv=rig.matrix_world.inverted()
 order=[]

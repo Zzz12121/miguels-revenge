@@ -7,7 +7,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash，Tripo 做的）。
+/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate），後兩段是 Tripo 做的。
 ///
 /// 動畫放在 Models/PlayerCharacter/PlayerCatWarrior_AirClimb.fbx（Art/PlayerCatWarrior/player_anim_generator.py 產生）。
 ///  1. 匯入設定是自動的（下面的 AssetPostprocessor）：Humanoid、跟原本的貓戰士用同一套骨架對應，
@@ -187,6 +187,16 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             Add(airDash, land, 0.06f).AddCondition(AnimatorConditionMode.If, 0, "Grounded");
             Add(airDash, fall, 0.15f, 0.95f);
             log.Add("AC_PlayerCatWarrior：加上 AirDash（空中側閃）狀態");
+        }
+
+        // 推大門（Tripo 做的 CW_PushGate）：由劇情演出用程式切進來，播完自己接回待機
+        if (clips.TryGetValue("CW_PushGate", out var pushClip))
+        {
+            var push = Find("PushGate") ?? sm.AddState("PushGate", new Vector3(600, 500));
+            push.motion = pushClip; push.speed = 1f; push.writeDefaultValues = true;
+            Clear(push);
+            if (idle != null) Add(push, idle, 0.25f, 0.92f);
+            log.Add("AC_PlayerCatWarrior：加上 PushGate（推大門）狀態");
         }
 
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；
