@@ -6,7 +6,8 @@ using UnityEngine.InputSystem;
 /// W-intent ledge climb on this ultimate's moving rocks. Owns one balanced action lock.
 ///
 /// 動畫：Animator 有「Climb」狀態（選單 GeminiGrowUp > 安裝 玩家跳躍・下落・攀爬動畫）時，
-/// 播放手做的攀爬動畫 CW_Climb（掛在邊緣 → 雙手拉、單腳蹬牆 → 撐起上半身 → 右膝跨上 → 站起來），
+/// 播放攀爬動畫 CW_Climb（Tripo 做的，Art/PlayerCatWarrior/climb_merge.py 轉成這裡用的格式：
+/// 掛在邊緣 → 拉起來、上半身撐過邊緣、腳垂在牆上 → 右膝跨上平台 → 左腳跟上 → 站起來），
 /// 播放進度 = 攀爬進度；角色根節點放在「爬完站好的位置」，一開始從抓住邊緣的位置平順地接過去，
 /// 雙手用 IK 釘在邊緣上（石頭在動也不會滑開），撐起之後依序放開。
 /// 石頭的側面是斜的（上窄下寬或歪一邊），動畫是照垂直的牆做的；所以每一幀量身體各部位離石頭表面多遠，
@@ -23,7 +24,7 @@ public sealed class CalligraphyPlatformClimb : MonoBehaviour
     // ---- CW_Climb 動畫的尺寸（Blender 裡的單位：角色身高約 1.18） ----
     static readonly int ClimbHash=Animator.StringToHash("Climb");
     const float ClipLegLength=.482f;   // 大腿 + 小腿
-    const float ClipEdgeBehind=.30f;   // 爬完站好時，邊緣在腳後面多遠
+    const float ClipEdgeBehind=.139f;  // 爬完站好時，邊緣在腳後面多遠（climb_merge.py 印出來的 EDGE_BEHIND）
     bool clipMode;                     // true = 播 CW_Climb；false = 原本的程式姿勢
     bool rootMotionBefore;
     float scale=1;
@@ -148,8 +149,10 @@ public sealed class CalligraphyPlatformClimb : MonoBehaviour
         // 先很快地往外移出來，再慢慢往上接，手和頭才不會從石頭的邊緣穿過去
         float intoRock=Vector3.Dot(startOffset,inward);
         Vector3 rest=startOffset-inward*intoRock;
-        float blend=1-Ease(p,0,.18f),outward=intoRock>0?1-Ease(p,0,.07f):blend;
-        Vector3 at=stand+rest*blend+inward*(intoRock*outward)-inward*wallPush;
+        // 高度差接得慢一點（前 40%），跟動畫本身的上升疊在一起才不會一開始猛地往上竄；前後左右的差距還是很快接上
+        float vertical=rest.y;Vector3 flat=rest-Vector3.up*vertical;
+        float blend=1-Ease(p,0,.18f),rise=1-Ease(p,0,.4f),outward=intoRock>0?1-Ease(p,0,.07f):blend;
+        Vector3 at=stand+flat*blend+Vector3.up*(vertical*rise)+inward*(intoRock*outward)-inward*wallPush;
         player.transform.SetPositionAndRotation(at,Quaternion.LookRotation(inward));
     }
 
@@ -170,7 +173,7 @@ public sealed class CalligraphyPlatformClimb : MonoBehaviour
     void WallClearance()
     {
         if(rockColliders.Length==0)return;
-        float p=Progress,s=scale,fade=1-Ease(p,.55f,.8f);
+        float p=Progress,s=scale,fade=1-Ease(p,.5f,.85f);
         float back=1.5f*s,worst=float.NegativeInfinity;
         if(fade>0)
             foreach(var (id,radius) in ClearanceBones)
@@ -196,14 +199,14 @@ public sealed class CalligraphyPlatformClimb : MonoBehaviour
     {
         float p=Progress;
         Vector3 side=Vector3.Cross(Vector3.up,inward),up=Vector3.up;
-        float k=Ease(p,.38f,.55f);
+        float k=Ease(p,.13f,.26f);  // 手從勾住邊緣換成壓在平台上（時間點是 climb_merge.py 印出的 TIMEMAP）
         float s=scale;
         Vector3 hang=edge-inward*(.035f*s)-up*(.025f*s),press=edge+inward*(.05f*s)+up*(.035f*s);
         Vector3 basePoint=Vector3.Lerp(hang,press,k);
         float spread=Mathf.Lerp(.11f,.13f,k)*s;
         Vector3 poleHang=-inward*.5f-up*.3f,polePress=-inward*.6f+up*.5f;
         Vector3 pole=Vector3.Lerp(poleHang,polePress,k);
-        float right=1-Ease(p,.58f,.68f),left=1-Ease(p,.7f,.84f);
+        float right=1-Ease(p,.54f,.77f),left=1-Ease(p,.81f,.94f);
         if(left>0)ArmIK(true,basePoint-side*spread,-side*.6f+pole,left);
         if(right>0)ArmIK(false,basePoint+side*spread,side*.6f+pole,right);
     }
