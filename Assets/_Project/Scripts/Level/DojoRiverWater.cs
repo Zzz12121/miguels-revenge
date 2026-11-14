@@ -3,6 +3,7 @@ using UnityEngine;
 
 /// <summary>URP adapter for SUIMONO splash/ripple art. No dependency on the legacy Built-in water renderer.</summary>
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(-100)]
 public sealed class DojoRiverWater : MonoBehaviour
 {
     public const float WaterY = -.22f;
@@ -11,6 +12,10 @@ public sealed class DojoRiverWater : MonoBehaviour
     public AudioClip splashSound, riverSound;
     [Range(4,24)] public int poolSize = 12;
     [Range(.05f,.5f)] public float contactInterval = .10f;
+    [Header("後院涉水")]
+    [Tooltip("玩家腳部浸入河水時的行走／衝刺速度倍率；離水、上橋或跳離水面後解除。")]
+    [Range(.1f,1f)] public float wadingSpeedMultiplier = .55f;
+    public bool IsPlayerWading => wadingLease != 0;
     public int ImpactCount { get; private set; }
     public int ActorContactCount { get; private set; }
     public int ParticleContactCount { get; private set; }
@@ -35,7 +40,36 @@ public sealed class DojoRiverWater : MonoBehaviour
     readonly ParticleSystem.Particle[] particles=new ParticleSystem.Particle[128];
     ParticleSystem[] splashes,ripples,sceneParticles;
     AudioSource audioSource;
+    PlayerHealth wadingPlayer;
+    ThirdPersonController wadingMotor;
+    CharacterController wadingCapsule;
+    int wadingLease;
     int cursor; float tick,scan,nextSound;
+    void ReleaseWadingSlow()
+    {
+        if(wadingMotor && wadingLease!=0)wadingMotor.RemoveSpeedMultiplierLease(wadingLease);
+        wadingLease=0;
+    }
+    void OnDisable() => ReleaseWadingSlow();
+    void UpdateWadingSlow()
+    {
+        // Renew only this source's lease each frame. ResetMotion/death/other skills may clear
+        // all leases, so retaining an old ID would silently lose the slow after a reset.
+        ReleaseWadingSlow();
+        if(!wadingPlayer || !wadingPlayer.isActiveAndEnabled)
+        {
+            wadingPlayer=PlayerHealth.Find();
+            wadingMotor=wadingPlayer?wadingPlayer.GetComponent<ThirdPersonController>():null;
+            wadingCapsule=wadingPlayer?wadingPlayer.GetComponent<CharacterController>():null;
+        }
+        if(!wadingPlayer || wadingPlayer.IsDead || !wadingMotor || !wadingMotor.isActiveAndEnabled ||
+           wadingMotor.aiControlled || wadingMotor.IsControlImmune || !wadingCapsule || !wadingCapsule.enabled)return;
+        var bounds=wadingCapsule.bounds;
+        float surface=transform.TransformPoint(new Vector3(0,WaterY,0)).y;
+        // Horizontal overlap alone would slow players on the bridge or jumping over the river.
+        if(!Contains(bounds.center) || bounds.min.y>surface-.08f || bounds.max.y<surface)return;
+        wadingLease=wadingMotor.AddSpeedMultiplierLease(Mathf.Clamp(wadingSpeedMultiplier,.1f,1f));
+    }
     void Awake()
     {
         splashes=new ParticleSystem[poolSize];ripples=new ParticleSystem[poolSize];
@@ -74,6 +108,7 @@ public sealed class DojoRiverWater : MonoBehaviour
     }
     void Update()
     {
+        UpdateWadingSlow();
         if(Time.time<tick)return;tick=Time.time+contactInterval;
         int count=Physics.OverlapBoxNonAlloc(transform.TransformPoint(new Vector3(0,WaterY,116.2f)),new Vector3(47,1.5f,7.5f),overlaps,transform.rotation,~0,QueryTriggerInteraction.Ignore);
         for(int i=0;i<count;i++)

@@ -1,0 +1,17 @@
+{
+  "success": true,
+  "multiplier": 0.55,
+  "dryWalk": 4.5,
+  "wetWalk": 2.47500014,
+  "drySprint": 8.0,
+  "wetSprint": 4.4,
+  "dryWalkMetresPerSecond": 4.4999733,
+  "wetWalkMetresPerSecond": 2.475006,
+  "drySprintMetresPerSecond": 7.99997759,
+  "wetSprintMetresPerSecond": 4.399972,
+  "resetRecovery": true,
+  "otherSlowPreserved": true,
+  "disableCleanup": true,
+  "jumpAndReland": true,
+  "bridgeUnaffected": true
+}
