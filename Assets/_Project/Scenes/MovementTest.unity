@@ -273,9 +273,20 @@ MonoBehaviour:
   gravity: -25
   coyoteTime: 0.12
   jumpBufferTime: 0.12
+  groundSnapDistance: 0.6
+  doubleJumpEnabled: 0
+  doubleJumpHeight: 1.8
   inputEnabled: 1
   speedMultiplier: 1
   lockRotation: 0
+  rollDuration: 0.52
+  rollDistance: 3.8
+  rollCooldown: 0.18
+  rollExitSpeed: 0.9
+  airDashEnabled: 1
+  airDashDuration: 0.3
+  airDashDistance: 4.2
+  airDashEndLift: 2.5
   cameraTransform: {fileID: 1749019260}
   canPushRocks: 1
   aiControlled: 0
@@ -398,6 +409,10 @@ MonoBehaviour:
   controller: {fileID: 0}
   combat: {fileID: 0}
   health: {fileID: 0}
+  weaponPresenter: {fileID: 0}
+  idleChangeInterval: {x: 5.5, y: 8.5}
+  bowWoodColor: {r: 0.32, g: 0.14, b: 0.055, a: 1}
+  shieldColor: {r: 0.12, g: 0.24, b: 0.38, a: 1}
 --- !u!1 &228620421
 GameObject:
   m_ObjectHideFlags: 0
@@ -2119,6 +2134,109 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 949613471}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1123719944
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1123719946}
+  - component: {fileID: 1123719945}
+  m_Layer: 0
+  m_Name: ClimbTestCourse
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1123719945
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1123719944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53b67d51ee7b8de468659303eb201618, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ClimbTestCourse
+  blocks:
+  - label: "1.0m \u7246"
+    shape: 0
+    position: {x: -9.6, y: 0}
+    height: 1
+    size: {x: 2.4, y: 2.4}
+    seed: 3
+    yaw: 0
+  - label: "1.6m \u7246"
+    shape: 0
+    position: {x: -6.4, y: 0}
+    height: 1.6
+    size: {x: 2.4, y: 2.4}
+    seed: 3
+    yaw: 0
+  - label: "2.2m \u7246"
+    shape: 0
+    position: {x: -3.2, y: 0}
+    height: 2.2
+    size: {x: 2.4, y: 2.4}
+    seed: 3
+    yaw: 0
+  - label: "2.8m \u7246\uFF08\u8981\u8DF3\uFF09"
+    shape: 0
+    position: {x: 0, y: 0}
+    height: 2.8
+    size: {x: 2.4, y: 2.4}
+    seed: 3
+    yaw: 0
+  - label: "1.8m \u77F3"
+    shape: 1
+    position: {x: 3.2, y: 0}
+    height: 1.8
+    size: {x: 1.5, y: 0}
+    seed: 3
+    yaw: 0
+  - label: "2.6m \u77F3"
+    shape: 1
+    position: {x: 6.4, y: 0}
+    height: 2.6
+    size: {x: 1.7, y: 0}
+    seed: 7
+    yaw: 40
+  - label: "3.4m \u77F3\uFF08\u8981\u8DF3\uFF09"
+    shape: 1
+    position: {x: 9.6, y: 0}
+    height: 3.4
+    size: {x: 1.9, y: 0}
+    seed: 11
+    yaw: 90
+  climb:
+    enabled: 1
+    reach: 1.35
+    seconds: 2.1
+    facingAngle: 55
+    waistClearance: 0.08
+    ledgeHeight: {x: 0.5, y: 2.5}
+  material: {fileID: 0}
+  showHint: 1
+--- !u!4 &1123719946
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1123719944}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: 20, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1127470652
 GameObject:
   m_ObjectHideFlags: 0
@@ -3700,6 +3818,7 @@ MonoBehaviour:
   targetOffset: {x: 0, y: 1.6, z: 0}
   shoulderOffset: 0
   followSmoothTime: 0.05
+  rollFollowSmoothTime: 0.14
   distance: 5
   minDistance: 2
   maxDistance: 9
@@ -3709,12 +3828,24 @@ MonoBehaviour:
   minPitch: -30
   maxPitch: 70
   startPitch: 15
+  edgePanMargin: 52
+  edgePanSpeed: 92
   collisionMask:
     serializedVersion: 2
     m_Bits: 4294967295
   collisionRadius: 0.25
-  returnSpeed: 6
+  returnDamping: 0.4
   pivotClearance: 0.6
+  aimDistance: 2.2
+  aimShoulder: 0.7
+  aimOffset: {x: 0, y: 0.7, z: 0}
+  aimFov: 32
+  aimBlendSpeed: 7
+  aimSensitivityScale: 0.55
+  climbDistanceScale: 0.7
+  climbPivotDrop: 0.35
+  cinemachineCamera: {fileID: 0}
+  cameraTarget: {fileID: 0}
   yaw: 0
   pitch: 0
 --- !u!81 &1749019262
@@ -4555,3 +4686,4 @@ SceneRoots:
   - {fileID: 1749951600}
   - {fileID: 1977209977}
   - {fileID: 84598737}
+  - {fileID: 1123719946}

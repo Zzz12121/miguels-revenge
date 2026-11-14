@@ -27,6 +27,8 @@ public class ThirdPersonCamera : MonoBehaviour
     public float shoulderOffset = 0f;
     [Tooltip("跟隨平滑時間，0 = 完全不延遲")]
     public float followSmoothTime = 0.05f;
+    [Tooltip("翻滾時鏡頭跟得慢一點（秒）：角色一下子衝出去時畫面不會跟著猛拉，滾完再慢慢回到 followSmoothTime")]
+    public float rollFollowSmoothTime = 0.14f;
 
     [Header("距離 / 縮放")]
     public float distance = 5f;
@@ -85,6 +87,8 @@ public class ThirdPersonCamera : MonoBehaviour
     public Transform cameraTarget;
 
     [HideInInspector] public float yaw, pitch;
+    ThirdPersonController targetMotor;
+    float currentFollowSmooth;
     Vector3 smoothedPivot, pivotVelocity;
     readonly RaycastHit[] hits = new RaycastHit[16];
     CharacterController targetBody;
@@ -231,8 +235,12 @@ public class ThirdPersonCamera : MonoBehaviour
 
         // 注視點（平滑跟隨）
         Vector3 pivot = target.position + targetOffset + ClimbPivotShift();
-        smoothedPivot = followSmoothTime > 0f
-            ? Vector3.SmoothDamp(smoothedPivot, pivot, ref pivotVelocity, followSmoothTime)
+        if (targetMotor == null && target != null) targetMotor = target.GetComponent<ThirdPersonController>();
+        bool rolling = targetMotor != null && targetMotor.IsRolling;
+        currentFollowSmooth = Mathf.MoveTowards(currentFollowSmooth <= 0f ? followSmoothTime : currentFollowSmooth,
+            rolling ? Mathf.Max(followSmoothTime, rollFollowSmoothTime) : followSmoothTime, Time.deltaTime * (rolling ? 2f : .4f));
+        smoothedPivot = currentFollowSmooth > 0f
+            ? Vector3.SmoothDamp(smoothedPivot, pivot, ref pivotVelocity, currentFollowSmooth)
             : pivot;
 
         Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);

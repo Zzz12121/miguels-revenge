@@ -147,6 +147,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     SkinnedMeshRenderer[] ghostRenderers;
     // Animator 裡有「AirDash」狀態（之後用 Tripo 做的側閃動畫）就播它；沒有就用程式擺姿勢
     static readonly int AirDashStateHash = Animator.StringToHash("AirDash");
+    // 翻滾（Tripo 做的 CW_Roll）：Animator 有 Roll 狀態 + RollTime 參數（GeminiGrowUp > 安裝 玩家跳躍・下落・攀爬動畫）時播動畫，
+    // 播放進度由 RollTime 控制 = 0.65×已經滾了多遠的比例 + 0.35×時間比例（跟 Art/PlayerCatWarrior/roll_merge.py 做動畫時的公式一樣，
+    // 所以身體翻過去的進度跟實際移動對得上：滾得快轉得快、撞到牆就慢下來）。沒有的話退回原本的程式翻滾。
+    static readonly int RollStateHash = Animator.StringToHash("Roll");
+    static readonly int RollTimeHash = Animator.StringToHash("RollTime");
+    const float RollClipTravelWeight = .65f, RollClipFadeIn = .06f;
+    bool rollClipMode;
+    bool? hasRollClip;
     bool? hasAirDashState;
     bool playingAirDashState;
 
@@ -300,7 +308,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 盾牌 / 拉弓動畫播放中、或站在船上（移動腳本停用）：不要切去待機 / 移動 / 跳躍動畫
         bool overriding = shieldBow != null && shieldBow.Overriding;
         bool onBoat = controller != null && !controller.isActiveAndEnabled;
-        if (!overriding && !onBoat) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
+        bool rollingNow = controller != null && controller.IsRolling;
+        if (!overriding && !onBoat && !rollingNow) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
         UpdateSprintJumpFeedback(grounded);
         if (!overriding) UpdateIdleCycle(normalizedSpeed, grounded);
 
@@ -439,7 +448,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
         if (controller != null && controller.IsRolling)
         {
-            ApplyRollVisual();
+            if (!rollClipMode) ApplyRollVisual();
             return;
         }
 
@@ -608,26 +617,52 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void UpdateRollAnimationState()
     {
         bool rolling = controller != null && controller.IsRolling;
-        if (rolling && !wasRolling)
+        if (rolling && !wasRolling && HasRollClip())
+        {
+            slashStartedAt = float.NegativeInfinity;
+            rollClipMode = true;
+            animator.SetFloat(RollTimeHash, 0f);
+            animator.CrossFadeInFixedTime(RollStateHash, RollClipFadeIn, 0, 0f);
+        }
+        else if (rolling && !wasRolling)
         {
             slashStartedAt = float.NegativeInfinity;
             animatorSpeedBeforeRoll = animator.speed;
-            animator.Play("Idle", 0, 0f);
-            animator.Update(0f);
+            // 不再先切回站姿（那一下會跳）：停在當下的姿勢（跑步中就是跑步那一格），縮成球的動作從這個姿勢慢慢接過去
             animator.speed = 0f;
             CacheVisualRoot();
             CaptureRollPose();
         }
-        else if (!rolling && wasRolling)
+        if (rolling && rollClipMode)
+            animator.SetFloat(RollTimeHash, Mathf.Clamp01(RollClipTravelWeight * controller.RollTravelFraction
+                                                          + (1f - RollClipTravelWeight) * controller.RollNormalizedTime));
+        if (!rolling && wasRolling)
         {
-            RestoreRollVisualState();
-            animator.CrossFadeInFixedTime("Idle", .05f, 0, 0f);
+            if (rollClipMode) { rollClipMode = false; wasRolling = false; }
+            else RestoreRollVisualState();
+            // 滾完直接接上走 / 跑（翻滾結束時保留了移動速度），混合久一點，不會一下子跳回站姿
+            float normalized = controller.CurrentSpeed / Mathf.Max(.01f, controller.sprintSpeed);
+            string next = normalized >= .68f ? "Run" : normalized > .05f ? "Walk" : "Idle";
+            animator.CrossFadeInFixedTime(animator.HasState(0, Animator.StringToHash(next)) ? next : "Idle", .18f, 0, 0f);
+            if (next != "Idle") ScheduleNextIdle(1f);
         }
         wasRolling = rolling;
     }
 
+    bool HasRollClip()
+    {
+        if (hasRollClip == null)
+        {
+            bool param = false;
+            foreach (var p in animator.parameters) if (p.nameHash == RollTimeHash) param = true;
+            hasRollClip = param && animator.HasState(0, RollStateHash);
+        }
+        return hasRollClip.Value;
+    }
+
     void RestoreRollVisualState()
     {
+        if (rollClipMode) { rollClipMode = false; wasRolling = false; return; }
         if (!wasRolling && (animator == null || animator.speed > .001f)) return;
         RestoreRollPose();
         if (animator != null) animator.speed = Mathf.Max(.01f, animatorSpeedBeforeRoll);
@@ -758,7 +793,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         float curlIn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / RollDiveEnd));
         float curlOut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollSpinEnd) / (1f - RollSpinEnd)));
         float curl = curlIn * curlOut;
-        float spinT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollDiveEnd * .5f) / (RollSpinEnd - RollDiveEnd * .5f)));
+        // 轉一圈的進度跟著「實際滾了多遠」：一開始滾得快、轉得快，減速時轉得慢（像真的球在地上滾），撞到牆就不會原地空轉
+        float travel = controller.RollTravelFraction;
+        float spinT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((travel - .03f) / .85f));
         // 蹲低：比身體縮起來晚一點放開，起身時先蹲著、再站直
         float lowOut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollSpinEnd - .04f) / (1f - RollSpinEnd - .04f)));
         float low = curlIn * lowOut;

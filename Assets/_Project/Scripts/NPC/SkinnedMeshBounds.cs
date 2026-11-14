@@ -8,20 +8,21 @@ using UnityEngine;
 /// </summary>
 public static class SkinnedMeshBounds
 {
-    public static bool TryGet(GameObject root, out Bounds result)
+    /// <param name="ignoreBonePrefix">主要跟著這種名字開頭的骨頭動的頂點不算（例如 "SB_"：會晃動的頭髮 / 衣服）</param>
+    public static bool TryGet(GameObject root, out Bounds result, string ignoreBonePrefix = null)
     {
         result = default;
         bool any = false;
         foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
         {
-            if (!TryGet(smr, out var b)) continue;
+            if (!TryGet(smr, out var b, ignoreBonePrefix)) continue;
             if (!any) { result = b; any = true; }
             else result.Encapsulate(b);
         }
         return any;
     }
 
-    public static bool TryGet(SkinnedMeshRenderer smr, out Bounds best)
+    public static bool TryGet(SkinnedMeshRenderer smr, out Bounds best, string ignoreBonePrefix = null)
     {
         best = default;
         if (smr == null || smr.sharedMesh == null) return false;
@@ -34,6 +35,22 @@ public static class SkinnedMeshBounds
             if (b == null) continue;
             if (boneCount++ == 0) bones = new Bounds(b.position, Vector3.zero);
             else bones.Encapsulate(b.position);
+        }
+
+        bool[] skip = null;
+        if (!string.IsNullOrEmpty(ignoreBonePrefix))
+        {
+            var bonesArr = smr.bones;
+            var weights = smr.sharedMesh.boneWeights;
+            if (weights != null && weights.Length == smr.sharedMesh.vertexCount)
+            {
+                skip = new bool[weights.Length];
+                for (int i = 0; i < weights.Length; i++)
+                {
+                    int bi = weights[i].boneIndex0; // 權重最大的那根骨頭
+                    skip[i] = bi >= 0 && bi < bonesArr.Length && bonesArr[bi] != null && bonesArr[bi].name.StartsWith(ignoreBonePrefix);
+                }
+            }
         }
 
         var mesh = new Mesh();
@@ -49,7 +66,7 @@ public static class SkinnedMeshBounds
                 if (verts.Length == 0) continue;
                 foreach (var m in new[] { noScale, smr.transform.localToWorldMatrix })
                 {
-                    var b = Measure(verts, m);
+                    var b = Measure(verts, m, skip);
                     float score = boneCount < 2 ? (found ? float.PositiveInfinity : 0f) : Score(b, bones);
                     if (score < bestScore) { bestScore = score; best = b; found = true; }
                 }
@@ -62,11 +79,16 @@ public static class SkinnedMeshBounds
         return found;
     }
 
-    static Bounds Measure(Vector3[] verts, Matrix4x4 m)
+    static Bounds Measure(Vector3[] verts, Matrix4x4 m, bool[] skip)
     {
-        var b = new Bounds(m.MultiplyPoint3x4(verts[0]), Vector3.zero);
-        for (int i = 1; i < verts.Length; i++) b.Encapsulate(m.MultiplyPoint3x4(verts[i]));
-        return b;
+        Bounds b = default; bool any = false;
+        for (int i = 0; i < verts.Length; i++)
+        {
+            if (skip != null && i < skip.Length && skip[i]) continue;
+            var p = m.MultiplyPoint3x4(verts[i]);
+            if (!any) { b = new Bounds(p, Vector3.zero); any = true; } else b.Encapsulate(p);
+        }
+        return any ? b : new Bounds(m.MultiplyPoint3x4(verts[0]), Vector3.zero);
     }
 
     /// <summary>越小越好：大小跟骨頭範圍差幾倍（取 log）＋ 中心偏多遠</summary>

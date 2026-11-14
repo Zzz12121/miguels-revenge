@@ -7,7 +7,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate），後兩段是 Tripo 做的。
+/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate）、翻滾（CW_Roll），後三段是 Tripo 做的。
 ///
 /// 動畫放在 Models/PlayerCharacter/PlayerCatWarrior_AirClimb.fbx（Art/PlayerCatWarrior/player_anim_generator.py 產生）。
 ///  1. 匯入設定是自動的（下面的 AssetPostprocessor）：Humanoid、跟原本的貓戰士用同一套骨架對應，
@@ -197,6 +197,19 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             Clear(push);
             if (idle != null) Add(push, idle, 0.25f, 0.92f);
             log.Add("AC_PlayerCatWarrior：加上 PushGate（推大門）狀態");
+        }
+
+        // 翻滾（Tripo 做的 CW_Roll，原地版）：由 PlayerVisualAnimator 在翻滾開始時切進來；
+        // 播放進度用 RollTime 參數控制（Motion Time），翻滾結束時程式自己接回跑 / 走 / 待機，萬一沒接手就播完回待機
+        if (clips.TryGetValue("CW_Roll", out var rollClip))
+        {
+            EnsureFloat(ctrl, "RollTime", 0f);
+            var roll = Find("Roll") ?? sm.AddState("Roll", new Vector3(600, 600));
+            roll.motion = rollClip; roll.speed = 1f; roll.writeDefaultValues = true;
+            roll.timeParameterActive = true; roll.timeParameter = "RollTime";
+            Clear(roll);
+            if (idle != null) Add(roll, idle, 0.2f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 Roll（翻滾）狀態");
         }
 
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；

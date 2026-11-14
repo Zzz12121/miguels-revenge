@@ -70,10 +70,15 @@ public class ThirdPersonController : MonoBehaviour
     public bool lockRotation = false;
 
     [Header("翻滾閃避（V；靶場預設 C，可按 K 設定）")]
-    [Min(0.2f)] public float rollDuration = 0.48f;
-    [Min(0.5f)] public float rollDistance = 5.2f;
+    [Min(0.2f)] public float rollDuration = 0.52f;
+    [Tooltip("翻滾總共前進幾公尺（原本 5.2；平均速度 = 距離 / 時間，跟跑步速度差越多看起來越突兀）")]
+    [Min(0.5f)] public float rollDistance = 3.8f;
     [Min(0f)] public float rollCooldown = 0.18f;
+    [Tooltip("翻滾結束時還按著方向鍵：保留多少走路速度直接接著跑（0 = 滾完停下來）")]
+    [Range(0f, 1.2f)] public float rollExitSpeed = 0.9f;
     public bool IsRolling { get; private set; }
+    /// <summary>翻滾已經滾了全程距離的幾成（0～1，動畫用：身體轉的角度跟著實際滾的距離）</summary>
+    public float RollTravelFraction => IsRolling || rollPending ? Mathf.Clamp01(rollProgress / Mathf.Max(.01f, rollDistance)) : 0f;
     public float RollNormalizedTime => IsRolling ? Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration)) : 0f;
     public bool IsControlImmune => IsRolling || IsAirDashing || IsScriptedMoving;
     public event System.Action OnRollStarted;
@@ -218,6 +223,7 @@ public class ThirdPersonController : MonoBehaviour
     bool rollCommitted;
     bool rollPending;
     float rollTravel;
+    float rollProgress, rollEntrySpeed, rollExitSpeedNow, rollPeak;
     float nextRollTime;
 
     // 之後做動畫 / UI 時可以讀這些值
@@ -636,8 +642,14 @@ public class ThirdPersonController : MonoBehaviour
         // Affordability first; payment is committed only after the controller really moves.
         if (Stamina != null && !Stamina.CanAffordRoll){Stamina.TrySpendRoll();return;}
         requestedDirection.y = 0f;
-        rollDirection = requestedDirection.sqrMagnitude > .001f ? requestedDirection.normalized : transform.forward;
+        bool hasInput = requestedDirection.sqrMagnitude > .001f;
+        rollDirection = hasInput ? requestedDirection.normalized : transform.forward;
         FaceDirection(rollDirection);
+        // 速度曲線：從原本跑的速度接上去，一開始最快、之後慢慢減速，結束時剛好是走路速度（還按著方向鍵）→ 直接接著跑，不會停一下再起步
+        rollEntrySpeed = Mathf.Max(0f, Vector3.Dot(horizontalVelocity, rollDirection));
+        rollExitSpeedNow = walkSpeed * speedMultiplier * (hasInput ? rollExitSpeed : .3f); // 沒按方向鍵：滾完慢慢停下來
+        rollPeak = SolveRollPeak();
+        rollProgress = 0f;
         horizontalVelocity = Vector3.zero;
         verticalVelocity = -2f;
         ballistic = false;
@@ -703,9 +715,10 @@ public class ThirdPersonController : MonoBehaviour
         if(!inputEnabled || ActionsLocked || IsStunned){EndRoll();return;}
         float u = Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration));
         // 半正弦速度：起步與收尾不突兀，積分後仍約等於設定距離。
-        float speed = rollDistance / Mathf.Max(.01f, rollDuration) * (Mathf.PI * .5f) * Mathf.Sin(Mathf.Clamp01(u+dt/rollDuration*.5f) * Mathf.PI);
+        float speed = RollSpeed(Mathf.Clamp01(u + dt / rollDuration * .5f), rollPeak);
         Vector3 before=transform.position;
         controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
+        rollProgress += Mathf.Max(0f, Vector3.Dot(transform.position - before, rollDirection));
         if(!rollCommitted)
         {
             rollTravel+=Mathf.Max(0,Vector3.Dot(transform.position-before,rollDirection));
@@ -720,6 +733,30 @@ public class ThirdPersonController : MonoBehaviour
         }
         if (u < 1f) return;
         EndRoll();
+        horizontalVelocity = rollDirection * rollExitSpeedNow; // 滾完直接接著跑
+    }
+
+    /// <summary>翻滾速度（u = 0～1）：前 14% 從進場速度加速上去，之後一路減速到結束速度</summary>
+    float RollSpeed(float u, float peak)
+    {
+        float burst = rollExitSpeedNow + (peak - rollExitSpeedNow) * Mathf.Pow(1f - u, 1.2f);
+        return Mathf.Lerp(rollEntrySpeed, burst, Mathf.SmoothStep(0f, 1f, u / .14f));
+    }
+
+    /// <summary>算出最高速度，讓整段翻滾剛好前進 rollDistance</summary>
+    float SolveRollPeak()
+    {
+        const int n = 48;
+        float a = 0f, b = 0f;
+        for (int i = 0; i < n; i++)
+        {
+            float u = (i + .5f) / n;
+            a += RollSpeed(u, 0f);
+            b += RollSpeed(u, 1f);
+        }
+        a /= n; b = b / n - a;
+        float target = rollDistance / Mathf.Max(.01f, rollDuration);
+        return Mathf.Max(rollExitSpeedNow, b > 1e-4f ? (target - a) / b : target);
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed, out bool rollPressed)
