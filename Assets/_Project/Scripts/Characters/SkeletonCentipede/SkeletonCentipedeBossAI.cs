@@ -264,7 +264,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         if (!isClone)
         {
             health.ShowBar = true;
-            GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
+            GameAudio.PlayBattleMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
             OnFightStarted?.Invoke();
         }
         brain = StartCoroutine(Brain());

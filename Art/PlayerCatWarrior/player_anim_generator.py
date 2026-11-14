@@ -182,12 +182,13 @@ def jump_tuck(extra=0.0):
     leg('Right', Vector((rf.x + 0.005, hp.y + 0.10, 0.20 - extra * 0.05)), Vector((rf.x, -0.7, 0.4)))
     aim('Left_Foot', (0, -0.45, -1)); aim('Right_Foot', (0, -0.2, -1))
     sh = head('Left_UpperArm').z
-    # 手往兩側上方張開保持平衡，手肘微彎
-    arm('Left', Vector((x + 0.25, -0.09, sh - 0.08 - extra * 0.03)), Vector((x + 0.25, 0.25, sh - 0.35)))
-    arm('Right', Vector((x - 0.25, -0.07, sh - 0.10 - extra * 0.03)), Vector((x - 0.25, 0.25, sh - 0.35)))
+    # 起跳甩上去的手往下收：手腕在胸口～腰之間、稍微往外，手肘彎著往後收（左右一高一低，不要像 T 字張開）
+    arm('Left', Vector((x + 0.24, -0.10 + extra * 0.02, sh - 0.15 - extra * 0.05)), Vector((x + 0.28, 0.3, sh - 0.1)))
+    arm('Right', Vector((x - 0.22, -0.04 + extra * 0.02, sh - 0.20 - extra * 0.04)), Vector((x - 0.28, 0.3, sh - 0.1)))
+    curl('Left', 0.35); curl('Right', 0.35)
 
 def fall_pose(phase):
-    """下落：腳往下伸準備著地（膝蓋微彎、一前一後），手往兩側張開、微微上下擺"""
+    """下落：腳往下伸準備著地（膝蓋微彎、一前一後），手放在身體兩側稍微往外抬保持平衡（手肘彎、一高一低），微微上下擺"""
     idle()
     lf, rf = feet_now(); x = center(); hp = head('Hips')
     s = math.sin(phase * 2 * math.pi)
@@ -196,8 +197,9 @@ def fall_pose(phase):
     leg('Right', Vector((rf.x - 0.01, hp.y + 0.06, 0.20 - 0.025 * s)), Vector((rf.x - 0.05, -0.7, 0.45)))
     aim('Left_Foot', (0, -0.25, -1)); aim('Right_Foot', (0, -0.15, -1))
     sh = head('Left_UpperArm').z
-    arm('Left', Vector((x + 0.26, -0.06, sh - 0.06 + 0.025 * s)), Vector((x + 0.25, 0.25, sh - 0.35)))
-    arm('Right', Vector((x - 0.26, -0.04, sh - 0.07 - 0.025 * s)), Vector((x - 0.25, 0.25, sh - 0.35)))
+    arm('Left', Vector((x + 0.25, -0.07, sh - 0.13 + 0.02 * s)), Vector((x + 0.3, 0.3, sh - 0.05)))
+    arm('Right', Vector((x - 0.23, -0.02, sh - 0.18 - 0.02 * s)), Vector((x - 0.3, 0.3, sh - 0.05)))
+    curl('Left', 0.3); curl('Right', 0.3)
 
 def land_pose(depth, lean, arms_fwd):
     """落地緩衝：腳踩在原本的位置，膝蓋彎下去吸收衝擊，上身前傾、手往前下方平衡"""

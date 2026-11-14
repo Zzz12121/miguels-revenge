@@ -460,7 +460,7 @@ public class BossController : MonoBehaviour
             arena.GenerateTerrain(keepFlat);
         }
         StartCoroutine(Brain());
-        GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, musicFadeIn);
+        GameAudio.PlayBattleMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, musicFadeIn);
         OnFightStarted?.Invoke();
     }
 

@@ -21,6 +21,10 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     [SerializeField, Min(0f)] float lingerAfterUse = 3f;
     [Tooltip("首次抽刀時，先讓粒子聚合多久才顯示完整刀身。")]
     [SerializeField, Range(0f, 0.3f)] float materializeRevealDelay = 0.035f;
+    [Tooltip("收刀時播放散成粒子＋溶解＋電弧音效。關閉 = 刀直接消失，沒有動畫和音效。")]
+    [SerializeField] bool animateSheathe = false;
+    [Tooltip("拔刀時播放粒子聚合＋溶解浮現＋電弧。關閉 = 刀直接出現在手上，沒有動畫。")]
+    [SerializeField] bool animateDraw = false;
     [Tooltip("從四周聚合到刀身的粒子數。")]
     [SerializeField, Range(12, 240)] int materializeParticleCount = 144;
     [Tooltip("武器散成霧時的粒子數。")]
@@ -200,6 +204,16 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
             return;
         }
 
+        if (!animateDraw)
+        {
+            // 拔刀不播動畫：直接以原本材質顯示在手上
+            pendingReveal = false;
+            dissolveAmount = 0f;
+            RestoreMaterials();
+            SetWeaponRenderers(true);
+            return;
+        }
+
         // 只有真正從「無刀」切換成「有刀」時播放聚合；連段期間直接揮刀，不重播出場特效。
         if (!wasDispersing) dissolveAmount = 1f;
         SetWeaponRenderers(true);
@@ -212,6 +226,13 @@ public sealed class PlayerWeaponPresenter : MonoBehaviour
     void DisperseAndHide()
     {
         if (!drawn) return;
+        if (!animateSheathe)
+        {
+            // 收刀不播動畫和音效：直接回到腰後並隱藏
+            drawUntilUnscaledTime = 0f;
+            SetDrawnImmediate(false);
+            return;
+        }
         pendingReveal = false;
         EmitDisperse(disperseParticleCount);
         PlayArcSound(true);

@@ -162,7 +162,7 @@ public class GreenEyeDemonAI : MonoBehaviour
         FightActive = true;
         health.ShowBar = true;
         foreach (var a in attacks) a.nextReady = 0f;
-        GameAudio.PlayMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
+        GameAudio.PlayBattleMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
         OnFightStarted?.Invoke();
         brain = StartCoroutine(Brain());
     }
