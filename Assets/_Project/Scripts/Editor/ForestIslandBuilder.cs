@@ -98,6 +98,7 @@ public static class ForestIslandBuilder
         SetupCentipedeBoss();
         BuildBridge(env, out Vector3 spawn);
         BuildBridgeSoldiers();
+        BuildBridgeRearMist();
         BuildCliffRocks(env);
         BuildArenaDressing(env);
         BuildForest(env, treePrefabs);
@@ -365,6 +366,67 @@ public static class ForestIslandBuilder
 
     static float GroundY(float x, float z) =>
         terrain != null ? terrain.SampleHeight(new Vector3(x, 0f, z)) + terrain.transform.position.y : DesignHeight(x, z);
+
+    // =====================================================================
+    //  吊橋後方的吞噬迷霧：玩家往回逃 → 霧越來越濃、持續扣血、越走越慢，走到盡頭前一定會死
+    // =====================================================================
+
+    const string RearMistName = "BridgeRearMist (MistPursuitZone)";
+
+    [MenuItem("GeminiGrowUp/孤島森林：更新吊橋後方迷霧（不重建整個場景）")]
+    public static void PatchRearMist()
+    {
+        if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
+        var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+        BuildBridgeRearMist();
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log("[ForestIsland] 已更新吊橋後方的迷霧");
+    }
+
+    static void BuildBridgeRearMist()
+    {
+        var old = GameObject.Find(RearMistName);
+        if (old != null) Object.DestroyImmediate(old);
+        var root = new GameObject(RearMistName);
+
+        // 迷霧從玩家出生點後方幾公尺開始，到橋尾封口前為止
+        var zone = root.AddComponent<MistPursuitZone>();
+        zone.start = BridgePoint(BridgeSpawnDistance + 3f, 0f, 0f);
+        zone.end = BridgePoint(BridgeLength - 7f, 0f, 0f);
+        zone.halfWidth = 6f;
+        zone.minDamagePerSecond = 4f;
+        zone.maxDamagePerSecond = 30f;
+        zone.deathAt = 0.85f;
+        zone.slowestMultiplier = 0.22f;
+        zone.maxFogDensity = 0.13f;
+        zone.fogColor = new Color(0.78f, 0.8f, 0.8f);
+
+        var cloud = mCloud != null ? mCloud : AssetDatabase.LoadAssetAtPath<Material>($"{MatDir}/M_FI_CloudSea.mat");
+        // 霧牆：從出生點後方開始越來越密，把橋尾整個遮住
+        for (int i = 0; i < 3; i++)
+        {
+            float s0 = BridgeSpawnDistance + 4f + i * 10f;
+            var ps = NewPS($"RearMistBank_{i}", root.transform, BridgePoint(s0 + 6f, 0f, 2f));
+            var m = ps.main;
+            m.loop = true; m.prewarm = true; m.duration = 6f;
+            m.startLifetime = new ParticleSystem.MinMaxCurve(7f, 11f);
+            m.startSpeed = 0f;
+            m.startSize = new ParticleSystem.MinMaxCurve(6f, 12f);
+            m.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+            float a = 0.35f + i * 0.15f;
+            m.startColor = new ParticleSystem.MinMaxGradient(new Color(0.8f, 0.82f, 0.83f, a), new Color(0.88f, 0.9f, 0.9f, a + 0.1f));
+            m.maxParticles = 60 + i * 20;
+            m.simulationSpace = ParticleSystemSimulationSpace.World;
+            var e = ps.emission; e.rateOverTime = 7f + i * 3f;
+            var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Box; sh.scale = new Vector3(14f, 7f, 12f);
+            var vel = ps.velocityOverLifetime; vel.enabled = true; vel.space = ParticleSystemSimulationSpace.World;
+            // 霧往島的方向慢慢湧過來（追著玩家）
+            vel.x = new ParticleSystem.MinMaxCurve(-0.3f, 0.3f); vel.y = new ParticleSystem.MinMaxCurve(-0.05f, 0.1f); vel.z = new ParticleSystem.MinMaxCurve(0.2f, 0.7f);
+            var col = ps.colorOverLifetime; col.enabled = true; col.color = FadeInOut(Color.white, 0.2f, 0.7f, 1f);
+            SetRenderer(ps, cloud, 1.2f);
+        }
+    }
 
     // =====================================================================
     //  吊橋上的骷髏騎士（Enemy_SkeletonKnight；沒有的話先建立，失敗就退回 Enemy_Grunt）
@@ -648,7 +710,7 @@ public static class ForestIslandBuilder
     /// 不規則石柱：由下往上逐圈縮小，半徑用雜訊擾動，出現節理與凹凸。
     /// 中心在原點，y 從 bottom 到 top。name = null 時不存 asset（給合併用）。
     /// </summary>
-    static Mesh RockColumnMesh(string name, float bottom, float top, float radius, float topScale, int seed, float roughness)
+    internal static Mesh RockColumnMesh(string name, float bottom, float top, float radius, float topScale, int seed, float roughness)
     {
         const int sides = 14;
         float height = top - bottom;
@@ -706,7 +768,7 @@ public static class ForestIslandBuilder
         return mesh;
     }
 
-    static Mesh CombineAndSave(string name, List<CombineInstance> parts, string dir)
+    internal static Mesh CombineAndSave(string name, List<CombineInstance> parts, string dir)
     {
         var mesh = new Mesh { name = name, indexFormat = IndexFormat.UInt32 };
         mesh.CombineMeshes(parts.ToArray(), true, true);
