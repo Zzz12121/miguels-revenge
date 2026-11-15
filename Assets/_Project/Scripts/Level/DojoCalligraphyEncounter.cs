@@ -160,7 +160,8 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
     }
     IEnumerator Sequence()
     {
-        int next=0;yield return new WaitForSeconds(.8f);
+        // Flying ink and four-stroke are follow-ups, not entries in the regular cycle.
+        int next=2;yield return new WaitForSeconds(.8f);
         EntranceComplete=false;
         entranceDistance=Form.leapSlam.jumpDistance;entranceHeight=Form.leapSlam.jumpHeight;entranceOverride=true;
         Form.leapSlam.jumpDistance=100;Form.leapSlam.jumpHeight=6;
@@ -171,7 +172,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
         {
             if(!escapeAtHalfHealth&&!UltimateTriggered&&health.Health<=health.maxHealth*ultimateHealthThreshold)
             {UltimateTriggered=true;yield return Cast(9);yield return new WaitForSeconds(betweenAttacks);continue;}
-            yield return Cast(next);next=(next+1)%9;
+            yield return Cast(next);next=next==8?2:next+1;
             if(!Alive)yield break;yield return new WaitForSeconds(betweenAttacks);
             if(!escapeAtHalfHealth&&!UltimateTriggered&&health.Health<=health.maxHealth*ultimateHealthThreshold)continue;
             bool teleported=false;

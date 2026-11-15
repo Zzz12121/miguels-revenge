@@ -1,5 +1,9 @@
 # Codex project context
 
+## 2026-11-15 regular skill cycle excludes ranged follow-ups
+
+- Dojo regular cycle now runs skill indices2 through8, excluding Flying Ink(0) and Four-stroke(1). Existing teleport follow-up remains50% ink melee /50% Four-stroke; existing distance fallback and leap-slam entrance are unchanged. Minimal compilation check and direct push requested.
+
 ## 2026-11-15 skipped opening uses the85% road position
 
 - Normal tea-room cut and skipped opening share RepositionPlayerOnRoad. Before the terrace dialogue, apply the same85% destination if skipping bypassed the tea-room shot; preserve the existing off-camera normal reposition. Brief early-skip check covers the final destination and control release. Direct push authorized.
