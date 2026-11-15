@@ -421,7 +421,10 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         {
             Phase="Elder arriving on terrace";BeginMasterWalk();
             while(dist<total && !skip){AdvanceMaster(total);yield return null;}
-            dist=total;PlaceMaster(true);playerStop=PlayerFeet();
+            dist=total;PlaceMaster(true);
+            // Skipping before the tea-room shot must reach the same road position.
+            if(!PlayerRepositioned)RepositionPlayerOnRoad();
+            playerStop=PlayerFeet();
         }
         else if (!met) yield return Meeting(Find(DojoCutsceneShot.Kind.Meeting));
 
@@ -508,10 +511,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         {
             // The tea-room shot contains no player or courtyard: reposition only after its cut.
             yield return null;
-            float fromZ=gate?gate.transform.position.z:5;
-            float toZ=terraceStop?terraceStop.position.z:76.6f;
-            playerStop=new Vector3(explorationStop.x,0,Mathf.Lerp(fromZ,toZ,hiddenRoadProgress));
-            TeleportPlayer(playerStop,meetForward);PlayerRepositioned=true;
+            RepositionPlayerOnRoad();
         }
         // 拍喝茶時：從端起來前一點點開始播，3 秒內剛好拍到端起來、喝、放下
         if (!shot.masterWalks && !masterWalking && shot.kind == DojoCutsceneShot.Kind.Fixed && masterAnim != null) masterAnim.Play(SitState, 0, teaShotStart);
@@ -618,6 +618,15 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     }
 
     // ---------------- 玩家 ----------------
+
+    void RepositionPlayerOnRoad()
+    {
+        float fromZ=gate?gate.transform.position.z:5;
+        float toZ=terraceStop?terraceStop.position.z:76.6f;
+        playerStop=new Vector3(explorationStop.x,0,Mathf.Lerp(fromZ,toZ,hiddenRoadProgress));
+        TeleportPlayer(playerStop,meetForward);
+        PlayerRepositioned=true;
+    }
 
     void SetPlayerLocked(bool locked)
     {
