@@ -7,7 +7,35 @@ public sealed partial class VoidRendSkillDemo
     [Min(1f)] public float drawDashSpeed = 48f;
     [Range(.06f, .3f)] public float drawBlendSeconds = .14f;
     [Range(10f, 50f)] public float drawForwardLean = 32f;
-    [Range(.025f, .12f)] public float drawGhostInterval = .045f;
+    [Range(.015f, .12f)] public float drawGhostInterval = .022f;
+
+    [Header("Skill 1 / 開場：固定特寫鏡頭（鏡頭 A）蹲低 → 爆衝")]
+    [Tooltip("轉向目標之後，蹲低準備衝刺停多久（秒）")]
+    [Range(.2f, 2f)] public float openingCrouchSeconds = .75f;
+    [Tooltip("鏡頭 A 的位置（公尺，以角色腳底為準）：x 負 = 左邊、y = 離地高度（放在腳旁邊、幾乎貼地）、z 負 = 後面")]
+    public Vector3 openingCameraGroundLevel = new Vector3(-.5f, .12f, -1.15f);
+    [Tooltip("鏡頭 A 看的位置：0 = 看角色胸口、1 = 看目標")]
+    [Range(0f, 1f)] public float openingLookTowardTarget = .55f;
+    [Range(30f, 90f)] public float openingCameraFov = 60f;
+    [Tooltip("蹲低的時候鏡頭慢慢往前推近多少（公尺）")]
+    [Range(0f, 1f)] public float openingCameraPushIn = .3f;
+    [Tooltip("爆衝最短 / 最長花幾秒（太短看不清楚、太長沒有速度感）")]
+    public Vector2 openingDashSeconds = new Vector2(.26f, .6f);
+    [Tooltip("殘影顏色（跟空中側閃同一種殘影）與存活秒數")]
+    public Color drawGhostColor = new Color(.55f, .8f, 1f, .45f);
+    [Range(.1f, 1f)] public float drawGhostLife = .38f;
+
+    [Header("Skill 1 / 衝到目標後：鏡頭 2 先特寫刀和表情，再慢慢拉遠")]
+    [Tooltip("特寫時鏡頭離角色多遠（公尺）")]
+    [Range(1.2f, 5f)] public float spinCloseUpDistance = 2.3f;
+    [Tooltip("特寫時看的高度（公尺，介於臉和頭頂的刀之間）")]
+    [Range(1f, 2.5f)] public float spinCloseUpFocusHeight = 1.75f;
+    [Tooltip("特寫鏡頭在角色正面偏右幾度")]
+    [Range(-90f, 90f)] public float spinCloseUpAngle = 35f;
+    [Range(25f, 70f)] public float spinCloseUpFov = 45f;
+    [Tooltip("轉刀時間的前多少比例維持特寫，之後才開始拉遠")]
+    [Range(0f, .8f)] public float spinCloseUpHold = .2f;
+    SkinnedMeshRenderer[] drawGhostRenderers;
     readonly Dictionary<Transform, HumanoidBonePose> drawEntryPose = new();
     float nextDrawGhostTime;
     Vector3 drawEntryGrip;
@@ -40,8 +68,10 @@ public sealed partial class VoidRendSkillDemo
         Vector3 leftRest = leftFoot ? leftFoot.position : caster.position;
         Vector3 rightRest = rightFoot ? rightFoot.position : caster.position;
         Vector3 waist = pelvis.position;
-        pelvis.position -= up * (.15f * scale * (1f - cut));
-        RotateBoneWorld(spine, right, Mathf.Lerp(drawForwardLean, -5f, cut));
+        // 開場蹲低時慢慢再壓低一點、身體再往前傾一點（蓄力的感覺，不會整段僵住）；衝出去之後維持壓到最低的姿勢
+        float coil = Stage == "DrawPrepare" ? Mathf.SmoothStep(0, 1, Mathf.Clamp01(age / Mathf.Max(.01f, openingCrouchSeconds))) : 1f;
+        pelvis.position -= up * ((.15f + .07f * coil) * scale * (1f - cut));
+        RotateBoneWorld(spine, right, Mathf.Lerp(drawForwardLean + 8f * coil, -5f, cut));
         RotateBoneWorld(spine, up, Mathf.Lerp(-12f, 14f, cut));
 
         // Left knee drives forward with the calf folded back; right leg trails almost straight.
@@ -95,7 +125,10 @@ public sealed partial class VoidRendSkillDemo
     {
         if (!playing || Stage != "ApproachRun" || Time.unscaledTime < nextDrawGhostTime) return;
         nextDrawGhostTime = Time.unscaledTime + drawGhostInterval;
-        CreateAfterimage(true);
+        // 跟空中側閃同一種殘影（AfterimageGhost），密一點、留久一點，鏡頭固定時才看得出一路衝過去
+        if (drawGhostRenderers == null || drawGhostRenderers.Length == 0)
+            drawGhostRenderers = caster.GetComponentsInChildren<SkinnedMeshRenderer>();
+        AfterimageGhost.Spawn(drawGhostRenderers, drawGhostColor, drawGhostLife);
         // Small parallel, broken arcs follow the silhouette, never a solid white screen flash.
         for (int i = 0; i < 4; i++)
         {
