@@ -76,7 +76,7 @@ public static class DojoOpeningCutsceneInstaller
         var cut = root.AddComponent<DojoOpeningCutscene>();
         cut.gate = gate;
         cut.master = master;
-        cut.drinkTea = false; // IK 端茶先關掉，等 Tripo 的喝茶動畫
+        cut.holdTeaCup = true;
 
         var sit = new GameObject("SitPoint").transform;
         sit.SetParent(root.transform, false);
@@ -95,10 +95,23 @@ public static class DojoOpeningCutsceneInstaller
         Vector3 inward = GateInward(gate, tableCenter);
         var meet = new GameObject("MeetPoint").transform;
         meet.SetParent(root.transform, false);
-        Vector3 meetPos = preset ? new Vector3(0f, 0f, 36f) : gatePos + inward * 20f;
+        Vector3 meetPos = preset ? new Vector3(0f, 0f, 76.6f-cut.meetingGap*.5f) : gatePos + inward * 20f;
         meetPos.y = gatePos.y;
         meet.SetPositionAndRotation(meetPos, Quaternion.LookRotation(inward));
         cut.meetPoint = meet;
+        if(preset)
+        {
+            var stop=new GameObject("TerraceStop").transform;stop.SetParent(root.transform,false);stop.position=new Vector3(0,1.2f,76.6f);cut.terraceStop=stop;cut.bossArenaRadius=36;
+            var form=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Boss/PF_DojoCalligraphyForm.prefab");
+            if(form)
+            {
+                if(!master.GetComponent<DojoMasterBoss>())master.gameObject.AddComponent<DojoMasterBoss>();
+                var encounter=master.GetComponent<DojoCalligraphyEncounter>();if(!encounter)encounter=master.gameObject.AddComponent<DojoCalligraphyEncounter>();
+                encounter.formPrefab=form.GetComponent<CalligraphyBossCombat>();
+                cut.wineFlaskPrefab=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Environment/FinalDojoArena/PF_DojoWineFlask.prefab");
+                DojoEncounterPresentationInstaller.Configure(cut);
+            }
+        }
 
         // 編輯器裡也先把老師父放到坐墊上（實際坐姿在遊戲開始時對齊）
         Undo.RecordObject(master, "放置老師父");
@@ -127,7 +140,6 @@ public static class DojoOpeningCutsceneInstaller
         Point(cut, pathRoot, new Vector3(9.5f, 1.2f, 84.5f));   // 8.8  走出茶室
         Point(cut, pathRoot, new Vector3(1.2f, 1.2f, 79.6f));   // 18.4 大廳、正門內
         Point(cut, pathRoot, new Vector3(0f, 1.2f, 76.6f));     // 21.7 緣側
-        Point(cut, pathRoot, new Vector3(0f, 0f, 72.3f));       // 26.0 台階下（再來沿石板路走到會面點，老師父停在 z≈38）
 
         var s = Shot(cut, shotRoot, "Shot_01_推門特寫", DojoCutsceneShot.Kind.PlayerCloseUp, Vector3.zero, Vector3.forward, 36f);
         s.masterWalks = false; s.dollySpeed = 0f;
@@ -137,10 +149,8 @@ public static class DojoOpeningCutsceneInstaller
         s = Shot(cut, shotRoot, "Shot_03_走出茶室", DojoCutsceneShot.Kind.Fixed, new Vector3(16.4f, 2.4f, 86.6f), new Vector3(10.8f, 1.8f, 87.3f), 40f);
         s.startMeters = 2.0f; s.dollySpeed = 0.3f;
         // 主屋正面：台階前低角度往上拍屋簷和正門（Kevin 選的畫面），老師父從正門走出來、走下台階
-        s = Shot(cut, shotRoot, "Shot_04_走下台階", DojoCutsceneShot.Kind.Fixed, new Vector3(2.0f, 1.2f, 68.5f), new Vector3(3.0f, 5.0f, 78.0f), 55f);
+        s = Shot(cut, shotRoot, "Shot_04_露臺停步", DojoCutsceneShot.Kind.Fixed, new Vector3(2.0f, 1.2f, 68.5f), new Vector3(3.0f, 5.0f, 78.0f), 55f);
         s.startMeters = 21.4f; s.dollySpeed = 0.3f;
-        s = Shot(cut, shotRoot, "Shot_05_庭院石板路", DojoCutsceneShot.Kind.Fixed, new Vector3(2.4f, 1.1f, 49.5f), new Vector3(0f, 1.5f, 55.5f), 40f);
-        s.startMeters = 42.5f; s.dollySpeed = 0.3f;
         Shot(cut, shotRoot, "Shot_06_高空俯視會面", DojoCutsceneShot.Kind.Meeting, Vector3.zero, Vector3.forward, 40f);
     }
 

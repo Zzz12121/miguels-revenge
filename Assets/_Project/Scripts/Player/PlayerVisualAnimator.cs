@@ -147,7 +147,29 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     SkinnedMeshRenderer[] ghostRenderers;
     // Animator 裡有「AirDash」狀態（之後用 Tripo 做的側閃動畫）就播它；沒有就用程式擺姿勢
     static readonly int AirDashStateHash = Animator.StringToHash("AirDash");
+    // 翻滾（Tripo 做的 CW_Roll）：Animator 有 Roll 狀態 + RollTime 參數（GeminiGrowUp > 安裝 玩家跳躍・下落・攀爬動畫）時播動畫，
+    // 播放進度由 RollTime 控制 = 0.65×已經滾了多遠的比例 + 0.35×時間比例（跟 Art/PlayerCatWarrior/roll_merge.py 做動畫時的公式一樣，
+    // 所以身體翻過去的進度跟實際移動對得上：滾得快轉得快、撞到牆就慢下來）。沒有的話退回原本的程式翻滾。
+    static readonly int RollStateHash = Animator.StringToHash("Roll");
+    static readonly int RollTimeHash = Animator.StringToHash("RollTime");
+    const float RollClipTravelWeight = .65f, RollClipFadeIn = .06f;
+    bool rollClipMode;
+    bool? hasRollClip;
     bool? hasAirDashState;
+    // 地面三連段的 Tripo 動畫（CW_Slash1～3 → Animator 狀態 Slash1～3，播放進度由 SlashTime 參數控制）：
+    // 有的那一刀就播動畫（身體、腳、手臂都用動畫），刀的方向和左手握柄還是照原本的刀路（SlashPaths）算，所以刀照樣砍得到對的地方；
+    // 沒有的那一刀照舊用程式擺的短版袈裟斬。時間軸跟程式版完全一樣（抬手 Prepare → 揮 Cut → 停住 hold → 收刀），
+    // MeleeCombat 判定傷害的時間點不用改。SlashClipKeys = 動畫裡「開始抬手、舉到最高、砍到底、停住結束、收完」是第幾格 / 總格數。
+    static readonly int SlashTimeHash = Animator.StringToHash("SlashTime");
+    static readonly float[][] SlashClipKeys =
+    {
+        null,                                            // 第一刀：還沒有動畫
+        null,                                            // 第二刀：還沒有動畫
+        new[] { 4f / 40f, 14f / 40f, 25f / 40f, 29f / 40f, 36f / 40f }, // 第三刀 CW_Slash3（Tripo 原檔第 12～52 格）
+    };
+    readonly bool?[] hasSlashClip = new bool?[3];
+    int slashClipIndex = -1;
+    bool slashClipLeaving;
     bool playingAirDashState;
 
     static readonly SlashPath[] SlashPaths =
@@ -282,6 +304,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         }
 
         UpdateRollAnimationState();
+        UpdateSlashClip();
 
         float normalizedSpeed = 0f;
         bool grounded = true;
@@ -300,7 +323,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 盾牌 / 拉弓動畫播放中、或站在船上（移動腳本停用）：不要切去待機 / 移動 / 跳躍動畫
         bool overriding = shieldBow != null && shieldBow.Overriding;
         bool onBoat = controller != null && !controller.isActiveAndEnabled;
-        if (!overriding && !onBoat) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
+        bool rollingNow = controller != null && controller.IsRolling;
+        if (!overriding && !onBoat && !rollingNow && slashClipIndex < 0) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
         UpdateSprintJumpFeedback(grounded);
         if (!overriding) UpdateIdleCycle(normalizedSpeed, grounded);
 
@@ -367,8 +391,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             float impact = -landingVelocity;
             float rate = impact < 5f ? 2.2f : impact < 9f ? 1.5f : impact < 14f ? 1.15f : 0.9f;
             if (HasParameter(LandRateHash)) animator.SetFloat(LandRateHash, rate);
-            if (landingVelocity < -2.5f)
-                ThirdPersonCamera.ShakeMain(Mathf.Clamp(-landingVelocity * 0.018f, 0.06f, 0.16f), 0.15f);
+            // 落地不再震鏡頭（會跟落地動畫疊在一起，看起來太晃）
             landingVelocity = 0f;
         }
         previousGrounded = grounded;
@@ -411,7 +434,16 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 空中輕砍：保留跳躍 / 下落動畫，只在上面疊揮刀
         bool dash = combat != null && combat.IsDashSlash;
         bool air = dash || (combat != null && combat.IsAirSlash);
-        if (!air) animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
+        int clipIndex = comboIndex % 3;
+        bool useClip = !air && (combat == null || !combat.IsPlunging) && HasSlashClip(clipIndex);
+        slashClipIndex = useClip ? clipIndex : -1;
+        slashClipLeaving = false;
+        if (useClip)
+        {
+            animator.SetFloat(SlashTimeHash, SlashClipKeys[clipIndex][0]);
+            animator.CrossFadeInFixedTime("Slash" + (clipIndex + 1), 0.08f, 0, 0f);
+        }
+        else if (!air) animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
         slashSide = dash ? -2 : air ? -1 : comboIndex;
         slashStartedAt = Time.time;
         plungeSlash = false;
@@ -441,12 +473,13 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
         if (controller != null && controller.IsRolling)
         {
-            ApplyRollVisual();
+            if (!rollClipMode) ApplyRollVisual();
             return;
         }
 
         GroundFeet();
         SmoothStepHeight();
+        ApplyJumpDynamics();
         ApplyShortKesaSlash();
         ApplyAirDashPose();
         UpdateBowAndShieldVisuals();
@@ -467,15 +500,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         float pounceAge = Time.unscaledTime - pounceStartedAt;
         if (pounceAge < 0f || pounceAge > 0.62f || controller == null) return;
 
-        if (pounceAge < 0.11f)
-        {
-            float crouch = Mathf.Sin(pounceAge / 0.11f * Mathf.PI) * 0.13f;
-            if (hips != null) hips.localPosition += Vector3.down * crouch;
-            if (chest != null) chest.localRotation *= Quaternion.Euler(11f, 0f, 0f);
-            if (leftUpperLeg != null) leftUpperLeg.localRotation *= Quaternion.Euler(-9f, 0f, 0f);
-            if (rightUpperLeg != null) rightUpperLeg.localRotation *= Quaternion.Euler(-9f, 0f, 0f);
-        }
-        else if (!controller.IsGrounded)
+        // 起跳那一下的蹬地交給 ApplyJumpDynamics（以前這裡會在已經離地往上衝的時候把身體往下壓，看起來像腳卡住）
+        if (pounceAge >= 0.11f && !controller.IsGrounded)
         {
             float airWeight = Mathf.Sin(Mathf.Clamp01((pounceAge - 0.11f) / 0.51f) * Mathf.PI);
             if (chest != null) chest.localRotation *= Quaternion.Euler(20f * airWeight, 0f, 0f);
@@ -610,26 +636,88 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void UpdateRollAnimationState()
     {
         bool rolling = controller != null && controller.IsRolling;
-        if (rolling && !wasRolling)
+        if (rolling && !wasRolling && HasRollClip())
+        {
+            slashStartedAt = float.NegativeInfinity;
+            rollClipMode = true;
+            animator.SetFloat(RollTimeHash, 0f);
+            animator.CrossFadeInFixedTime(RollStateHash, RollClipFadeIn, 0, 0f);
+        }
+        else if (rolling && !wasRolling)
         {
             slashStartedAt = float.NegativeInfinity;
             animatorSpeedBeforeRoll = animator.speed;
-            animator.Play("Idle", 0, 0f);
-            animator.Update(0f);
+            // 不再先切回站姿（那一下會跳）：停在當下的姿勢（跑步中就是跑步那一格），縮成球的動作從這個姿勢慢慢接過去
             animator.speed = 0f;
             CacheVisualRoot();
             CaptureRollPose();
         }
-        else if (!rolling && wasRolling)
+        if (rolling && rollClipMode)
+            animator.SetFloat(RollTimeHash, Mathf.Clamp01(RollClipTravelWeight * controller.RollTravelFraction
+                                                          + (1f - RollClipTravelWeight) * controller.RollNormalizedTime));
+        if (!rolling && wasRolling)
         {
-            RestoreRollVisualState();
-            animator.CrossFadeInFixedTime("Idle", .05f, 0, 0f);
+            if (rollClipMode) { rollClipMode = false; wasRolling = false; }
+            else RestoreRollVisualState();
+            // 滾完直接接上走 / 跑（翻滾結束時保留了移動速度），混合久一點，不會一下子跳回站姿
+            float normalized = controller.CurrentSpeed / Mathf.Max(.01f, controller.sprintSpeed);
+            string next = normalized >= .68f ? "Run" : normalized > .05f ? "Walk" : "Idle";
+            animator.CrossFadeInFixedTime(animator.HasState(0, Animator.StringToHash(next)) ? next : "Idle", .18f, 0, 0f);
+            if (next != "Idle") ScheduleNextIdle(1f);
         }
         wasRolling = rolling;
     }
 
+    bool HasSlashClip(int index)
+    {
+        if (index < 0 || index >= SlashClipKeys.Length || SlashClipKeys[index] == null) return false;
+        if (hasSlashClip[index] == null)
+        {
+            bool param = false;
+            foreach (var p in animator.parameters) if (p.nameHash == SlashTimeHash) param = true;
+            hasSlashClip[index] = param && animator.HasState(0, Animator.StringToHash("Slash" + (index + 1)));
+        }
+        return hasSlashClip[index].Value;
+    }
+
+    /// <summary>把揮刀經過的時間換成動畫的播放進度；停住結束時開始混回走 / 跑 / 待機</summary>
+    void UpdateSlashClip()
+    {
+        if (slashClipIndex < 0) return;
+        if (controller != null && controller.IsRolling) { slashClipIndex = -1; return; }
+        var path = CurrentSlash;
+        float age = Time.time - slashStartedAt;
+        float[] k = SlashClipKeys[slashClipIndex];
+        float t1 = path.Prepare, t2 = t1 + path.Cut, t3 = t2 + path.hold, t4 = path.Total;
+        float time = age < t1 ? Mathf.Lerp(k[0], k[1], age / t1)
+                   : age < t2 ? Mathf.Lerp(k[1], k[2], (age - t1) / path.Cut)
+                   : age < t3 ? Mathf.Lerp(k[2], k[3], (age - t2) / Mathf.Max(.001f, path.hold))
+                   : Mathf.Lerp(k[3], k[4], Mathf.Clamp01((age - t3) / Mathf.Max(.001f, t4 - t3)));
+        animator.SetFloat(SlashTimeHash, time);
+        if (age >= t3 && !slashClipLeaving)
+        {
+            slashClipLeaving = true;
+            float normalized = controller != null ? controller.CurrentSpeed / Mathf.Max(.01f, controller.sprintSpeed) : 0f;
+            string next = normalized >= .68f ? "Run" : normalized > .05f ? "Walk" : "Idle";
+            animator.CrossFadeInFixedTime(animator.HasState(0, Animator.StringToHash(next)) ? next : "Idle", SlashRecover, 0, 0f);
+        }
+        if (age > t4) slashClipIndex = -1;
+    }
+
+    bool HasRollClip()
+    {
+        if (hasRollClip == null)
+        {
+            bool param = false;
+            foreach (var p in animator.parameters) if (p.nameHash == RollTimeHash) param = true;
+            hasRollClip = param && animator.HasState(0, RollStateHash);
+        }
+        return hasRollClip.Value;
+    }
+
     void RestoreRollVisualState()
     {
+        if (rollClipMode) { rollClipMode = false; wasRolling = false; return; }
         if (!wasRolling && (animator == null || animator.speed > .001f)) return;
         RestoreRollPose();
         if (animator != null) animator.speed = Mathf.Max(.01f, animatorSpeedBeforeRoll);
@@ -760,7 +848,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         float curlIn = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(u / RollDiveEnd));
         float curlOut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollSpinEnd) / (1f - RollSpinEnd)));
         float curl = curlIn * curlOut;
-        float spinT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollDiveEnd * .5f) / (RollSpinEnd - RollDiveEnd * .5f)));
+        // 轉一圈的進度跟著「實際滾了多遠」：一開始滾得快、轉得快，減速時轉得慢（像真的球在地上滾），撞到牆就不會原地空轉
+        float travel = controller.RollTravelFraction;
+        float spinT = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((travel - .03f) / .85f));
         // 蹲低：比身體縮起來晚一點放開，起身時先蹲著、再站直
         float lowOut = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((u - RollSpinEnd - .04f) / (1f - RollSpinEnd - .04f)));
         float low = curlIn * lowOut;
@@ -952,6 +1042,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void GroundFeet()
     {
+        if (DebugSkipGroundFeet) { groundDrop = 0f; return; }
         if (controller == null || hips == null || leftFoot == null || rightFoot == null) return;
         Transform actor = controller.transform;
         if (!controller.IsGrounded || controller.IsRolling)
@@ -1010,6 +1101,97 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         rightFoot.rotation = rightRot;
     }
 
+
+    // ---------------- 跳躍時重心跟著動（起跳蹬地、空中姿勢、落地緩衝）----------------
+    // 起跳：離地後一小段時間腳還往起跳點伸（腿蹬直），手往上甩，上身先前傾再挺起來
+    // 空中：上升時微微後仰、腿往後帶；接近最高點縮腿；往下掉時腿伸直準備落地（只是不縮，大腿不往前後甩）、手稍微抬起來平衡；往前衝就前傾、側移就往那邊倒
+    // 落地：交給落地動畫（Land）就好。腳一碰地，空中的腿部姿勢立刻歸零（不然腿還往下伸著，身體會先被撐直一下才突然蹲下去）
+    const float JumpPushTime = .13f;       // 起跳後腳往起跳點伸多久 (秒)
+    const float JumpArmSwing = 32f;        // 起跳時手往前上方甩多少度
+    const float JumpTuck = 14f;            // 最高點縮腿 (度)
+    const float JumpMomentumLean = 9f;     // 空中往移動方向倒 (度，全速時)
+    // 測試用（JumpDriftProbe 會輪流關掉，找出落地位移是哪一層造成的）
+    public static bool DebugSkipJumpDynamics, DebugSkipGroundFeet, DebugSkipStepSmooth;
+    bool dynGrounded = true;
+    float takeoffAt = float.NegativeInfinity, airBlend, tuckBlend;
+    Vector3 takeoffLeft, takeoffRight, airLean;
+
+    void ApplyJumpDynamics()
+    {
+        if (controller == null || hips == null || Time.deltaTime <= 0f || DebugSkipJumpDynamics) return;
+        Transform actor = controller.transform;
+        Vector3 up = actor.up;
+        bool grounded = controller.IsGrounded;
+        float vy = controller.VerticalVelocity;
+        bool special = controller.IsAirDashing || controller.IsScriptedMoving;
+        float dt = Time.deltaTime;
+
+        // ---- 狀態變化：起跳 / 落地 ----
+        if (dynGrounded && !grounded && vy > 1.5f && !special)
+            takeoffAt = Time.time;
+        if (!dynGrounded && grounded) takeoffAt = float.NegativeInfinity;
+        dynGrounded = grounded;
+        if (grounded && leftFoot != null && rightFoot != null)
+        {
+            takeoffLeft = leftFoot.position;
+            takeoffRight = rightFoot.position;
+        }
+
+        // ---- 空中姿勢（離地後 0.12 秒混進來；落地時 0.06 秒很快退掉，不會一幀內跳一下）----
+        airBlend = Mathf.MoveTowards(airBlend, !grounded && !special ? 1f : 0f, dt / (grounded ? .06f : .12f));
+        float since = Time.time - takeoffAt;
+        float push = since >= 0f && since < JumpPushTime ? 1f - Mathf.SmoothStep(0f, 1f, since / JumpPushTime) : 0f;
+        if (airBlend <= .001f && push <= 0f) { airLean = Vector3.zero; return; }
+
+        // 上升 / 最高點 / 下落：u = +1 剛起跳、0 最高點、-1 往下掉得很快
+        float v0 = Mathf.Sqrt(2f * Mathf.Abs(controller.gravity) * Mathf.Max(.1f, controller.jumpHeight));
+        float u = Mathf.Clamp(vy / Mathf.Max(1f, v0), -1f, 1f);
+        float targetTuck = 1f - Mathf.Abs(u);
+        tuckBlend = Mathf.MoveTowards(tuckBlend, targetTuck, dt * 4f);
+        float falling = Mathf.Clamp01(-u);
+        float rising = Mathf.Clamp01(u);
+
+        // 往移動方向倒（重心跟著衝出去的方向）
+        Vector3 hv = controller.HorizontalVelocity;
+        float maxSpeed = Mathf.Max(1f, controller.sprintSpeed);
+        Vector3 leanTarget = new Vector3(Vector3.Dot(hv, actor.right), 0f, Vector3.Dot(hv, actor.forward)) / maxSpeed;
+        airLean = Vector3.MoveTowards(airLean, Vector3.ClampMagnitude(leanTarget, 1f), dt * 4f);
+        float a = airBlend;
+        RotateBoneWorld(hips, actor.right, JumpMomentumLean * .5f * airLean.z * a - 4f * rising * a);
+        RotateBoneWorld(chest, actor.right, JumpMomentumLean * airLean.z * a + 6f * falling * a + 8f * push);
+        RotateBoneWorld(hips, actor.forward, -JumpMomentumLean * .6f * airLean.x * a);
+
+        // 腿：起跳時往起跳點伸直蹬地 → 最高點縮起來 → 往下掉時慢慢伸直（縮腿量跟著速度歸零）
+        // 注意：大腿不能再額外往後轉（以前「往下伸」其實是把腳往後甩約 8 公分，落地歸零時腳就往前跳一下）
+        float tuck = JumpTuck * tuckBlend * a;
+        RotateBoneWorld(leftUpperLeg, actor.right, -tuck - 6f * rising * a);
+        RotateBoneWorld(rightUpperLeg, actor.right, -tuck + 4f * rising * a);
+        RotateBoneWorld(leftLowerLeg, actor.right, 1.4f * tuck);
+        RotateBoneWorld(rightLowerLeg, actor.right, 1.4f * tuck);
+        if (push > 0f && leftFoot != null && rightFoot != null)
+        {
+            Quaternion lr = leftFoot.rotation, rr = rightFoot.rotation;
+            SolveLimbWorld(leftUpperLeg, leftLowerLeg, leftFoot, Vector3.Lerp(leftFoot.position, takeoffLeft, push), actor.forward - actor.right * .2f);
+            SolveLimbWorld(rightUpperLeg, rightLowerLeg, rightFoot, Vector3.Lerp(rightFoot.position, takeoffRight, push), actor.forward + actor.right * .2f);
+            // 腳尖往下（蹬地的樣子）
+            leftFoot.rotation = Quaternion.AngleAxis(25f * push, actor.right) * lr;
+            rightFoot.rotation = Quaternion.AngleAxis(25f * push, actor.right) * rr;
+        }
+
+        // 手：起跳時往前上方甩上去、慢慢放下；往下掉時微微抬起來平衡（揮刀時手交給揮刀）
+        bool slashing = Time.time - slashStartedAt < CurrentSlash.Total;
+        if (!slashing)
+        {
+            float swing = since >= 0f && since < .45f ? Mathf.Sin(Mathf.Clamp01(since / .45f) * Mathf.PI) : 0f;
+            float arms = JumpArmSwing * swing + 12f * falling * a;
+            RotateBoneWorld(leftUpperArm, actor.right, -arms);
+            RotateBoneWorld(rightUpperArm, actor.right, -arms);
+            // 往兩側張開一點（繞前方軸：左手負、右手正）
+            RotateBoneWorld(leftUpperArm, actor.forward, -10f * falling * a);
+            RotateBoneWorld(rightUpperArm, actor.forward, 10f * falling * a);
+        }
+    }
+
     // ---------------- 踩上 / 走下小台階（庭院踏腳石）時身體不要瞬間彈一下 ----------------
     // 角色控制器遇到矮於 stepOffset 的東西會「一幀」直接升上去，模型跟著瞬間跳高。
     // 偵測到這種一幀內的高度跳動，就讓模型先留在原本的高度，再慢慢追上膠囊。
@@ -1019,6 +1201,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void SmoothStepHeight()
     {
+        if (DebugSkipStepSmooth) { stepSmoothOffset = 0f; return; }
         if (controller == null || hips == null) return;
         float y = controller.transform.position.y;
         if (float.IsNaN(lastActorY) || Time.deltaTime <= 0f) { lastActorY = y; return; }
@@ -1079,6 +1262,13 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         bool airborne = path.airborne || (controller != null && !controller.IsGrounded);
         float weight = prepare * recover;
         Transform actor = controller != null ? controller.transform : transform;
+        if (slashClipIndex >= 0)
+        {
+            // Tripo 動畫負責身體和手臂：這裡只把刀轉到刀路的方向、左手握在右手下面
+            float clipWind = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(cut / .45f));
+            AimBladeAndSupport(path, cut, clipWind, weight, actor, Quaternion.identity);
+            return;
+        }
         // 身體旋轉：抬手時腰和胸往起刀的那一側扭（蓄力），揮的時候一路扭到收刀那一側（甩身），收刀時回正。
         // 臀部轉一部分、胸口再多轉一部分，上半身合起來約 ±60°；揮到一半身體往前壓（挑斬是先壓低再後仰）
         float twist = Mathf.Lerp(path.twistFrom, path.twistTo, cut) * weight;
@@ -1166,39 +1356,51 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             Quaternion wrist = rightHand.rotation;
             SolveArmWorld(rightUpperArm, rightForearm, rightHand, goal, Local(path.pole));
             rightHand.rotation = wrist;
-            if (weaponPresenter != null)
-            {
-                Vector3 blade = Local(Vector3.Slerp(Vector3.Slerp(path.bladeFrom, path.bladeTo, cut), path.windBlade, wind));
-                Vector3 edge = default;
-                if (path.edgeFollowsSwing || path.edgeFlat > 0f)
-                {
-                    // 刀鋒朝劍尖移動的方向；edgeFlat 再決定要從「朝上」往這個方向放橫多少
-                    Vector3 axis = Vector3.Cross(Local(path.bladeFrom), Local(path.bladeTo));
-                    Vector3 swingEdge = axis.sqrMagnitude > .0001f ? Vector3.Cross(axis.normalized, blade) : actor.up;
-                    Vector3 baseEdge = path.edgeFollowsSwing ? swingEdge : actor.up;
-                    Vector3 flatEdge = Vector3.Cross(blade, actor.up);
-                    if (Vector3.Dot(flatEdge, Local(path.bladeTo - path.bladeFrom)) < 0f) flatEdge = -flatEdge; // 放橫時刀鋒朝揮的那一側
-                    edge = flatEdge.sqrMagnitude > .0001f
-                        ? Vector3.Slerp(baseEdge.normalized, flatEdge.normalized, path.edgeFlat)
-                        : baseEdge;
-                    // 這把刀模型的刀鋒在劍身「上方」的反面，整個翻過來
-                    if (FlipBladeEdge) edge = -edge;
-                }
-                weaponPresenter.AimSlashBlade(blade, edge);
-            }
+            AimBladeAndSupport(path, cut, wind, weight, actor, tilt);
+        }
+    }
 
-            if (leftUpperArm != null)
+
+    /// <summary>刀的方向（照刀路）＋ 沒拿刀的左手（雙手刀握在右手下面、單手刀往外伸出去平衡）</summary>
+    void AimBladeAndSupport(SlashPath path, float cut, float wind, float weight, Transform actor, Quaternion tilt)
+    {
+        Vector3 Local(Vector3 v)
+        {
+            v = tilt * v;
+            return actor.right * v.x + actor.up * v.y + actor.forward * v.z;
+        }
+        if (weaponPresenter != null)
+        {
+            Vector3 blade = Local(Vector3.Slerp(Vector3.Slerp(path.bladeFrom, path.bladeTo, cut), path.windBlade, wind));
+            Vector3 edge = default;
+            if (path.edgeFollowsSwing || path.edgeFlat > 0f)
             {
-                // 單手刀：沒拿刀的左手跟著揮刀往外伸出去平衡（往刀的反方向甩）；雙手刀：左手握在右手下面（劍柄尾端）
-                Vector3 bladeDir = weaponPresenter != null && weaponPresenter.BladeTip != null && weaponPresenter.BladePivot != null
-                    ? (weaponPresenter.BladeTip.position - weaponPresenter.BladePivot.position).normalized
-                    : actor.forward;
-                Vector3 supportGoal = path.twoHanded
-                    ? rightHand.position - bladeDir * SlashGripGap
-                    : leftUpperArm.position + Local(Vector3.Lerp(path.offFrom, path.offTo, cut));
-                supportGoal = Vector3.Lerp(leftHand.position, supportGoal, weight);
-                SolveArmWorld(leftUpperArm, leftForearm, leftHand, supportGoal, -actor.right - actor.up * .5f);
+                // 刀鋒朝劍尖移動的方向；edgeFlat 再決定要從「朝上」往這個方向放橫多少
+                Vector3 axis = Vector3.Cross(Local(path.bladeFrom), Local(path.bladeTo));
+                Vector3 swingEdge = axis.sqrMagnitude > .0001f ? Vector3.Cross(axis.normalized, blade) : actor.up;
+                Vector3 baseEdge = path.edgeFollowsSwing ? swingEdge : actor.up;
+                Vector3 flatEdge = Vector3.Cross(blade, actor.up);
+                if (Vector3.Dot(flatEdge, Local(path.bladeTo - path.bladeFrom)) < 0f) flatEdge = -flatEdge; // 放橫時刀鋒朝揮的那一側
+                edge = flatEdge.sqrMagnitude > .0001f
+                    ? Vector3.Slerp(baseEdge.normalized, flatEdge.normalized, path.edgeFlat)
+                    : baseEdge;
+                // 這把刀模型的刀鋒在劍身「上方」的反面，整個翻過來
+                if (FlipBladeEdge) edge = -edge;
             }
+            weaponPresenter.AimSlashBlade(blade, edge);
+        }
+
+        if (leftUpperArm != null)
+        {
+            // 單手刀：沒拿刀的左手跟著揮刀往外伸出去平衡（往刀的反方向甩）；雙手刀：左手握在右手下面（劍柄尾端）
+            Vector3 bladeDir = weaponPresenter != null && weaponPresenter.BladeTip != null && weaponPresenter.BladePivot != null
+                ? (weaponPresenter.BladeTip.position - weaponPresenter.BladePivot.position).normalized
+                : actor.forward;
+            Vector3 supportGoal = path.twoHanded
+                ? rightHand.position - bladeDir * SlashGripGap
+                : leftUpperArm.position + Local(Vector3.Lerp(path.offFrom, path.offTo, cut));
+            supportGoal = Vector3.Lerp(leftHand.position, supportGoal, weight);
+            SolveArmWorld(leftUpperArm, leftForearm, leftHand, supportGoal, -actor.right - actor.up * .5f);
         }
     }
 

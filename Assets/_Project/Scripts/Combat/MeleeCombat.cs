@@ -131,6 +131,13 @@ public abstract class MeleeCombat : MonoBehaviour
     protected virtual float PitchScale => 1f;
     /// <summary>每一刀開始時呼叫（index = 第幾段，從 0 開始）</summary>
     protected virtual void OnSwingStart(int index) { }
+
+    /// <summary>
+    /// 每一刀「判定傷害」的那一刻呼叫一次（不管有沒有打到）：一般刀是判定時間的正中間，跳劈是落地那一下。
+    /// center / radius = 判定球；index = 第幾刀（空中斬、突進斬是 0）；landing = 跳劈落地。PlayerCombat 用它放空氣波動。
+    /// </summary>
+    protected virtual void OnStrikeMoment(Vector3 center, float radius, int index, bool landing) { }
+    Vector3 HitCenter(float forward = -1f) => transform.position + transform.forward * (forward >= 0f ? forward : hitForwardOffset);
     /// <summary>每一刀開始時通知外面（模型動畫用）</summary>
     public event System.Action<int> OnSwing;
 
@@ -214,11 +221,13 @@ public abstract class MeleeCombat : MonoBehaviour
         hitThisSwing.Clear();
         float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * damageScale;
         float t = 0f;
+        bool struck = false;
         while (t < cut)
         {
             t += Time.deltaTime;
             weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / cut)));
             DoHitCheck(damage, hitRadius * dashSlashRadiusScale, hitForwardOffset * .45f);
+            if (!struck && t >= cut * .5f) { struck = true; OnStrikeMoment(HitCenter(hitForwardOffset * .45f), hitRadius * dashSlashRadiusScale, 0, false); }
             yield return null;
         }
         float r = 0f;
@@ -338,7 +347,7 @@ public abstract class MeleeCombat : MonoBehaviour
         if (IsPlunging) damage *= plungeDamageScale;
         float t = 0f;
         float swing = SwingFor(index);
-        bool plungeHeld = false;
+        bool plungeHeld = false, struck = false;
         while (t < swing)
         {
             t += Time.deltaTime;
@@ -360,12 +369,15 @@ public abstract class MeleeCombat : MonoBehaviour
                     // 落地衝擊：範圍大一點
                     DoHitCheck(damage, hitRadius * plungeLandingRadiusScale);
                     OnPlungeLanded?.Invoke(transform.position);
+                    OnStrikeMoment(HitCenter(), hitRadius * plungeLandingRadiusScale, index, true);
+                    struck = true;
                 }
             }
             float k = Mathf.Clamp01(t / swing);
             // 用一般 Lerp（不是 LerpAngle），揮劍才會經過前方而不是從背後繞
             weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, k));
             DoHitCheck(damage);
+            if (!struck && !IsPlunging && t >= swing * .5f) { struck = true; OnStrikeMoment(HitCenter(), hitRadius, index, false); }
             yield return null;
         }
         IsPlunging = false;
@@ -388,11 +400,13 @@ public abstract class MeleeCombat : MonoBehaviour
         hitThisSwing.Clear();
         float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * airSlashDamageScale;
         float t = 0f;
+        bool struck = false;
         while (t < airSlashSwing)
         {
             t += Time.deltaTime;
             weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / airSlashSwing)));
             DoHitCheck(damage);
+            if (!struck && t >= airSlashSwing * .5f) { struck = true; OnStrikeMoment(HitCenter(), hitRadius, 0, false); }
             yield return null;
         }
     }

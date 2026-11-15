@@ -1,0 +1,24 @@
+{
+  "scenicTravelMeters": 9.332211,
+  "headYawRange": [
+    -64.98958,
+    64.99733
+  ],
+  "headLiftDegrees": 40.6966667,
+  "cameraOrbitDegrees": 160.0,
+  "minimumCameraDistance": 4.175859,
+  "hiddenRoadZ": 65.87318,
+  "elderVisibleWalkMeters": 21.2272415,
+  "hiddenWalkMeters": 7.06543159,
+  "armAnglesFromVertical": [
+    44.99993,
+    45.00004
+  ],
+  "flightSamples": 592,
+  "collisionViolations": 0,
+  "pathDeviationMeters": 1.8373673,
+  "avoidanceCorners": 2,
+  "finalToriiPosition": "(65.32, 1.90, 127.38)",
+  "existingPathFogUnchanged": true,
+  "success": true
+}

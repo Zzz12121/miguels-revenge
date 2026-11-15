@@ -7,7 +7,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate），後兩段是 Tripo 做的。
+/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate）、翻滾（CW_Roll）、地面連段（CW_Slash1～3，有幾刀就裝幾刀），後面幾段是 Tripo 做的。
 ///
 /// 動畫放在 Models/PlayerCharacter/PlayerCatWarrior_AirClimb.fbx（Art/PlayerCatWarrior/player_anim_generator.py 產生）。
 ///  1. 匯入設定是自動的（下面的 AssetPostprocessor）：Humanoid、跟原本的貓戰士用同一套骨架對應，
@@ -71,9 +71,12 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
         {
             string n = c.takeName.Split('|').Last();
             c.name = n;
-            // 根節點不要自己動：整個身體的位置 / 方向都烘進姿勢，以檔案原本的原點為準（玩家的位置由程式控制）
+            // 根節點不要自己動：整個身體的位置 / 方向都烘進姿勢（玩家的位置由程式控制）
             c.lockRootRotation = true; c.keepOriginalOrientation = true;
             c.lockRootHeightY = true; c.keepOriginalPositionY = true; c.heightFromFeet = false;
+            // 前後左右：照檔案原本的原點（Based Upon Original）。這些動畫已經用 Art/PlayerCatWarrior/recenter_clips.py 平移過，
+            // 站姿時髖部剛好在待機動畫（Tripo 動作庫，以重心對齊）在遊戲裡的位置，切換跳躍 / 落地 / 翻滾 / 揮刀時身體不會前後左右偏。
+            // （不能用 Center of Mass：每段動畫以「自己第一格」的重心對齊，落地動畫第一格是蹲下的開頭，會整個往後偏約 5 公分，切回待機時腳往前滑）
             c.lockRootPositionXZ = true; c.keepOriginalPositionXZ = true;
             c.loopTime = n == "CW_Fall";
             c.loopPose = false;
@@ -197,6 +200,33 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             Clear(push);
             if (idle != null) Add(push, idle, 0.25f, 0.92f);
             log.Add("AC_PlayerCatWarrior：加上 PushGate（推大門）狀態");
+        }
+
+        // 翻滾（Tripo 做的 CW_Roll，原地版）：由 PlayerVisualAnimator 在翻滾開始時切進來；
+        // 播放進度用 RollTime 參數控制（Motion Time），翻滾結束時程式自己接回跑 / 走 / 待機，萬一沒接手就播完回待機
+        if (clips.TryGetValue("CW_Roll", out var rollClip))
+        {
+            EnsureFloat(ctrl, "RollTime", 0f);
+            var roll = Find("Roll") ?? sm.AddState("Roll", new Vector3(600, 600));
+            roll.motion = rollClip; roll.speed = 1f; roll.writeDefaultValues = true;
+            roll.timeParameterActive = true; roll.timeParameter = "RollTime";
+            Clear(roll);
+            if (idle != null) Add(roll, idle, 0.2f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 Roll（翻滾）狀態");
+        }
+
+        // 地面三連段（Tripo 做的 CW_Slash1～3）：由 PlayerVisualAnimator 揮刀時切進來，播放進度用 SlashTime 參數控制；
+        // 停住結束時程式自己混回跑 / 走 / 待機，萬一沒接手就播完回待機
+        for (int i = 1; i <= 3; i++)
+        {
+            if (!clips.TryGetValue("CW_Slash" + i, out var slashClip)) continue;
+            EnsureFloat(ctrl, "SlashTime", 0f);
+            var st = Find("Slash" + i) ?? sm.AddState("Slash" + i, new Vector3(600, 660 + 60 * i));
+            st.motion = slashClip; st.speed = 1f; st.writeDefaultValues = true;
+            st.timeParameterActive = true; st.timeParameter = "SlashTime";
+            Clear(st);
+            if (idle != null) Add(st, idle, 0.24f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 Slash" + i + "（第 " + i + " 刀）狀態");
         }
 
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；

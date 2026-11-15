@@ -17,6 +17,13 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
     bool dissolving,hitInSwing;
     Vector3 previousTip;
     CalligraphyBossCombat.MeleeSettings settings=new();
+    public bool IsFlanking {get;private set;}
+    public int FlankSide {get;private set;}
+    public float ChaseSpeed=>settings.cloneMoveSpeed*(IsFlanking?1.4f:1);
+    public bool WithinStrikeRange {get;private set;}
+    public int Swings {get;private set;}
+    GameObject shockwave;
+    public void ConfigureFlank(int side,GameObject impact){IsFlanking=true;FlankSide=side>=0?1:-1;shockwave=impact;}
     public void Configure(CalligraphyBossCombat.MeleeSettings value)
     {settings=value;hitsRemaining=value.cloneHits;lifetime=value.cloneLifetime;}
     public static CalligraphyClone Spawn(GameObject template,CalligraphyInkField field,PlayerHealth victim,Vector3 position,Quaternion rotation,bool combat,Transform parent,CalligraphyBrushPresentation snapshot=null)
@@ -80,6 +87,7 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
         foreach(var r in renderers)if(r)CalligraphyGeometry.Tint(r,new Color(.003f,.006f,.009f),appear*.58f,Mathf.Max(dissolve,(1-appear)*.8f));
         if(dissolve>=1){Destroy(gameObject);return;}
         if(dissolving || !combatClone || !player || player.IsDead || CalligraphyPaintingWorld.BlocksTether)return;
+        if(IsFlanking){UpdateFlank();return;}
         Vector3 direction=player.transform.position-transform.position;direction.y=0;
         if(direction.sqrMagnitude>.01f)transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),220*Time.deltaTime);
         float distance=direction.magnitude;
@@ -107,6 +115,42 @@ public sealed class CalligraphyClone : MonoBehaviour,IDamageable
         }
         emissionClock-=Time.deltaTime;
         if(emissionClock<=0 && brush){emissionClock=.12f;ink.Emit(brush.brushTip.position,-transform.forward,.35f,1.3f);}
+        if(brush)previousTip=brush.brushTip.position;
+    }
+    void UpdateFlank()
+    {
+        Vector3 facing=Vector3.ProjectOnPlane(player.transform.forward,Vector3.up).normalized;
+        Vector3 target=player.transform.position+facing*(FlankSide*2.25f);
+        Vector3 move=Vector3.ProjectOnPlane(target-transform.position,Vector3.up);
+        Vector3 direction=Vector3.ProjectOnPlane(player.transform.position-transform.position,Vector3.up);
+        if(direction.sqrMagnitude>.01f)transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),440*Time.deltaTime);
+        if(move.magnitude>.25f)
+        {
+            Vector3 step=move.normalized*Mathf.Min(move.magnitude,ChaseSpeed*Time.deltaTime);
+            // Go around the player rather than passing through their body to reach the assigned flank.
+            Vector3 toPlayer=Vector3.ProjectOnPlane(player.transform.position-transform.position,Vector3.up);
+            if(toPlayer.magnitude<2 && Vector3.Dot(step.normalized,toPlayer.normalized)>.5f)
+                step=Vector3.Cross(Vector3.up,toPlayer.normalized)*FlankSide*step.magnitude;
+            bool blocked=false;
+            foreach(var h in Physics.SphereCastAll(transform.position+Vector3.up,.4f,step.normalized,step.magnitude+.08f,~0,QueryTriggerInteraction.Ignore))
+                if(!h.transform.IsChildOf(transform) && !h.collider.GetComponentInParent<CalligraphyClone>() && !h.collider.GetComponentInParent<DojoMasterBoss>() && !h.collider.GetComponentInParent<PlayerHealth>()){blocked=true;break;}
+            if(!blocked){var at=CalligraphyGeometry.Ground(transform.position+step,transform);if(Mathf.Abs(at.y-transform.position.y)<.45f)transform.position=at;}
+        }
+        WithinStrikeRange=direction.magnitude<=3.6f && Mathf.Abs(player.transform.position.y-transform.position.y)<1.6f;
+        if(!WithinStrikeRange)
+        {attackClock=0;hitInSwing=false;if(brush){brush.ClearCombatPose();previousTip=brush.brushTip.position;}return;}
+        float segment=Mathf.Max(.1f,settings.cloneStrokeSeconds);
+        float old=attackClock;attackClock+=Time.deltaTime;
+        float phase=(attackClock%segment)/segment;int style=((int)(attackClock/segment))%5;
+        if((int)(old/segment)!=(int)(attackClock/segment))hitInSwing=false;
+        if(brush)brush.SetCombatPose(4+style,phase);
+        if(phase>=.38f && phase-Time.deltaTime/segment<.38f){Swings++;CalligraphyMeleeEffects.Play(brush,style,settings.vfxScale);}
+        if(phase>.38f && phase<.72f && !hitInSwing && brush && CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,.7f))
+        {
+            hitInSwing=true;
+            if(CalligraphyPlayerHitGate.Hit(player,settings.cloneDamage,direction.normalized,"被水墨分身擊倒",brush.brushTip.position))
+                DojoMeleeImpact.Play(shockwave,brush.brushTip.position,direction);
+        }
         if(brush)previousTip=brush.brushTip.position;
     }
 }
