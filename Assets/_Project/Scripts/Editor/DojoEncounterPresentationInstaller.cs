@@ -23,7 +23,7 @@ public static class DojoEncounterPresentationInstaller
             EditorUtility.SetDirty(shot);
         }
         var encounter=cut.master.GetComponent<DojoCalligraphyEncounter>();encounter.escapeAtHalfHealth=true;
-        encounter.brushAssemblyMaterial=EnsureMaterial("BrushInkAssembly","Project/Dojo Brush Ink Assembly");encounter.brushAssemblySeconds=2.1f;
+        encounter.brushAssemblyMaterial=EnsureMaterial("BrushInkAssembly","Project/Dojo Brush Ink Assembly");encounter.brushAssemblySeconds=.8f;
         encounter.meleeShockwave=Fx("Ying Yang Burst Shockwave");EditorUtility.SetDirty(encounter);
         var escape=cut.master.GetComponent<DojoElderEscape>();if(!escape)escape=cut.master.gameObject.AddComponent<DojoElderEscape>();
         escape.casting=Fx("Extras/ARPG_White__Casting_Hand_attach");escape.embers=Fx("Extras/ARPG_White__Embers");

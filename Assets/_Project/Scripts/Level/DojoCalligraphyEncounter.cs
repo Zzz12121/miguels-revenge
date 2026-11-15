@@ -14,7 +14,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
     public bool EntranceComplete {get;private set;}
     public bool escapeAtHalfHealth=true;
     public float armsRevealSeconds=1.5f;
-    public float brushAssemblySeconds=2.1f;
+    public float brushAssemblySeconds=.8f;
     public Material brushAssemblyMaterial;
     public bool ArmsRaised {get;private set;}
     bool revealingArms;

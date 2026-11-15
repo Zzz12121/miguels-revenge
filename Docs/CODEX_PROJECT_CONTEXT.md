@@ -1,5 +1,9 @@
 # Codex project context
 
+## 2026-11-15 faster brush summon and control handoff
+
+- Brush ink reassembly now takes0.8s (previous2.1s); defaults, installer and saved dojo scene agree. Existing progressive reveal stays intact. The opening dialogue callback immediately disables movement again while retaining the cutscene action lock; only cutscene Finish after the completed summon restores control. Shared StoryDialogue behavior is unchanged. User requested minimal checks and direct push.
+
 ## 2026-11-15 final dojo polish (latest)
 
 - Final steering before push: hidden player road position is85%, Z65.86 (supersedes75%/Z58.7 below). Updated runtime default, saved scene, installer and scenic check. Reposition remains off camera during elder's tea-room shot.

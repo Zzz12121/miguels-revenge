@@ -288184,7 +288184,7 @@ MonoBehaviour:
   meleeShockwave: {fileID: 1043212140908705569, guid: a7a9f0ca11789a748a3640dbdc82f491, type: 3}
   escapeAtHalfHealth: 1
   armsRevealSeconds: 1.5
-  brushAssemblySeconds: 2.1
+  brushAssemblySeconds: 0.8
   brushAssemblyMaterial: {fileID: 2100000, guid: 3743b644ac55cd44d9f4f701e3e3ef4b, type: 2}
   ultimateHealthThreshold: 0.25
 --- !u!114 &2050552538

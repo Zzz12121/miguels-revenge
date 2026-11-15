@@ -440,7 +440,17 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         inDialogue = true;
         if (masterAnim != null) masterAnim.updateMode = AnimatorUpdateMode.UnscaledTime; // 對話時遊戲暫停，老師父還是會比手畫腳
         bool done = false;
-        StoryDialogue.Play(BuildLines(), () => done = true);
+        StoryDialogue.Play(BuildLines(), () =>
+        {
+            // Dialogue restores movement on exit; this cutscene still owns the action lock.
+            // Keep movement disabled until the brush reveal finishes and Finish releases it.
+            if(controller != null)
+            {
+                controller.inputEnabled = false;
+                controller.StopHorizontalMotion();
+            }
+            done = true;
+        });
         while (!done) yield return null;
         inDialogue = false;
 
