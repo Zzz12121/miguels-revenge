@@ -229,6 +229,7 @@ public class ThirdPersonController : MonoBehaviour
     // 之後做動畫 / UI 時可以讀這些值
     public bool IsGrounded => controller != null && controller.isGrounded && verticalVelocity <= 0f;
     public float CurrentSpeed => horizontalVelocity.magnitude;
+    public Vector3 HorizontalVelocity => horizontalVelocity;
     public float VerticalVelocity => verticalVelocity;
 
     // 受擊僵直：這段時間內不吃移動 / 跳躍輸入（擊退照樣有效）
