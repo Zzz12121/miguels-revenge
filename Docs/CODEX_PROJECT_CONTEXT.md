@@ -1,5 +1,9 @@
 # Codex project context
 
+## 2026-11-15 close entrance during elder cutaway and after skip
+
+- After the player courtyard stroll, opening cutscene releases its hand-driven door override and requests the gate own closing animation before elder shots. Finish also requests closing so skipped flows retain a closed gate with player at85%. New DojoCourtyardGate.TryClose works without player proximity, starts from the visible hinge angle and preserves sweep protection/reopening safety. Normal manual gate interaction is retained. User requested minimal checks and direct push.
+
 ## 2026-11-15 teleport doubles must summon outside brush range
 
 - Separated basic brush melee range guards from the index2 chasing-double summon in the encounter scheduler and combat adapter. Summon windup now runs before checking the master own brush-strike distance, so leaving3.6m during teleport/reassembly no longer replaces the selected doubles with a projectile. Master swings still stop out of range, doubles retain their front/rear chase and own strike-distance checks. Wait for all doubles including dissolve before the next cast; a summon no longer adds a ranged fallback afterwards. Basic melee keeps its existing ranged fallback. Teleport selection remains50/50.

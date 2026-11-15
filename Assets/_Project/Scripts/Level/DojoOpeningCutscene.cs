@@ -408,6 +408,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             while(doorPhase>=0 && !skip)yield return null;
             FinishDoorNow();
             yield return ExploreCourtyard();
+            CloseGateForStory();
         }
         bool met = false;
         for (int i = 0; i < shots.Count && !skip; i++)
@@ -607,6 +608,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         exploring=false;Phase="Finished";
         StopPlayerWalk();
         FinishDoorNow();
+        CloseGateForStory();
         if (vcam != null) Destroy(vcam.gameObject);
         vcam = null;
         if (flying) flying = false; // 已經飛到玩家鏡頭的位置，直接交接，不用再重設
@@ -823,6 +825,14 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         doorAngle = gate.openDegrees;
         ApplyDoor(doorAngle);
         doorPhase = gate.IsMoving ? 3 : -1;
+    }
+
+    void CloseGateForStory()
+    {
+        if(gate == null || gate.CloseBlocked) return;
+        // Release the hand-driven opening before the gate's own closing animation.
+        doorPhase = -1;
+        if(gate.TryClose()) gate.enabled = true;
     }
 
     void ApplyDoor(float angle)

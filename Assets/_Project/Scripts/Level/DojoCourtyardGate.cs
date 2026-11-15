@@ -74,6 +74,20 @@ public sealed class DojoCourtyardGate : MonoBehaviour
         return true;
     }
 
+    // Scripted closing does not require the player to stay beside the gate.
+    // Keep the same sweep protection used by manual closing.
+    public bool TryClose()
+    {
+        if(!IsOpen) return true;
+        if(PlayerInSweep()) return false;
+        IsOpen = false;
+        fromAngle = rightHinge ? Mathf.DeltaAngle(0,rightHinge.localEulerAngles.y) : angle;
+        targetAngle = 0;
+        progress = 0;
+        IsMoving = true;
+        return true;
+    }
+
     void Update()
     {
         if(!player)
