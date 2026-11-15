@@ -1,5 +1,10 @@
 # Codex project context
 
+## 2026-11-15 teleport doubles must summon outside brush range
+
+- Separated basic brush melee range guards from the index2 chasing-double summon in the encounter scheduler and combat adapter. Summon windup now runs before checking the master own brush-strike distance, so leaving3.6m during teleport/reassembly no longer replaces the selected doubles with a projectile. Master swings still stop out of range, doubles retain their front/rear chase and own strike-distance checks. Wait for all doubles including dissolve before the next cast; a summon no longer adds a ranged fallback afterwards. Basic melee keeps its existing ranged fallback. Teleport selection remains50/50.
+- Focused Play check: actual teleport, move player12m away, summon both flanking clones, wait for dissolve, verify no ranged replacement and retain basic melee distance guard. Compile and check passed; user authorized direct push with minimal tests.
+
 ## 2026-11-15 tether range cancellation and temporary dialogue
 
 - Tether targeting detects the actual hit surface beyond cast range. Clicking an out-of-range target, or losing range on a locked target, shows「距離過遠」and exits aiming through the existing cleanup, retaining feedback after cancellation. It does not keep the failed attempt armed for a second click.

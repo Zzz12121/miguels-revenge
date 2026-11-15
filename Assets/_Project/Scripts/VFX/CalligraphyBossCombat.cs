@@ -185,7 +185,6 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     void Melee()
     {
         if(encounterBasicMelee){EncounterBrushStrike();return;}
-        if(externallySequenced && !EncounterMeleeInRange){EncounterMeleeLostRange=true;brush.ClearCombatPose();FinishCast();return;}
         if(elapsed<1.2f)
         {
             brush.SetCombatPose(2,elapsed/1.2f);
@@ -205,6 +204,9 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             }
             return;
         }
+        // Summoning chasing doubles does not require brush-contact range. Only the
+        // master's own swings stop when the player leaves range; doubles keep chasing.
+        if(externallySequenced && !EncounterMeleeInRange){EncounterMeleeLostRange=true;brush.ClearCombatPose();FinishCast();return;}
         float t=elapsed-1.2f,segment=Mathf.Max(.1f,inkMelee.strokeSeconds);int index=(int)(t/segment);float phase=(t%segment)/segment;
         int style=index%5;
         brush.SetCombatPose(4+style,phase);
