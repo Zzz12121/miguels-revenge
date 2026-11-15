@@ -1,5 +1,10 @@
 # Codex project context
 
+## 2026-11-15 tether range cancellation and temporary dialogue
+
+- Tether targeting detects the actual hit surface beyond cast range. Clicking an out-of-range target, or losing range on a locked target, shows「距離過遠」and exits aiming through the existing cleanup, retaining feedback after cancellation. It does not keep the failed attempt armed for a second click.
+- Dojo opening uses placeholderDialogue=true: existing dialogue boxes and speaker portraits remain with blank body text; turn this off when new story text is authored. Half-health escape remark also has blank body text. Only the new player line「什麼，居然是用毛筆嗎？」plays after completed brush assembly. The cutscene keeps controls locked through that reaction, then hands control back. Other levels dialogue is unchanged. User requested minimal checks and direct push.
+
 ## 2026-11-15 regular skill cycle excludes ranged follow-ups
 
 - Dojo regular cycle now runs skill indices2 through8, excluding Flying Ink(0) and Four-stroke(1). Existing teleport follow-up remains50% ink melee /50% Four-stroke; existing distance fallback and leap-slam entrance are unchanged. Minimal compilation check and direct push requested.

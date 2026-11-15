@@ -112,6 +112,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     [Header("對話（內容之後可以直接在這裡改）")]
     public string masterName = "老師父";
     public string playerName = "米格爾";
+    [Tooltip("暫留空白劇情對話框；之後填寫劇情時關閉。召喚毛筆的反應台詞不受影響。")]
+    public bool placeholderDialogue = true;
     public Color masterColor = new Color(0.72f, 0.9f, 0.62f);
     public DialogueLine[] lines =
     {
@@ -464,6 +466,18 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         }
         var encounter=master.GetComponent<DojoCalligraphyEncounter>();
         if(encounter)yield return encounter.TransformAfterDialogue(TakeDrinkProp());
+        if(encounter && encounter.Transformed)
+        {
+            Phase="Player reacts to brush";inDialogue=true;done=false;
+            StoryDialogue.Play(new[]{StoryDialogue.L(playerName,player.transform,false,
+                "什麼，居然是用毛筆嗎？",PlanetStory.PlayerColor)},()=>
+            {
+                if(controller != null){controller.inputEnabled=false;controller.StopHorizontalMotion();}
+                done=true;
+            });
+            while(!done)yield return null;
+            inDialogue=false;
+        }
         if(!explorationFirst)yield return FlyToPlayer();
         Finish();
         StartBossFight();
@@ -1162,10 +1176,11 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         if (lines == null) return list;
         foreach (var l in lines)
         {
-            if (l == null || string.IsNullOrWhiteSpace(l.text)) continue;
+            if (l == null || (!placeholderDialogue && string.IsNullOrWhiteSpace(l.text))) continue;
+            string text=placeholderDialogue?string.Empty:l.text;
             list.Add(l.playerSpeaks
-                ? StoryDialogue.L(playerName, player != null ? player.transform : null, false, l.text, PlanetStory.PlayerColor)
-                : StoryDialogue.L(masterName, master, true, l.text, masterColor));
+                ? StoryDialogue.L(playerName, player != null ? player.transform : null, false, text, PlanetStory.PlayerColor)
+                : StoryDialogue.L(masterName, master, true, text, masterColor));
         }
         return list;
     }
