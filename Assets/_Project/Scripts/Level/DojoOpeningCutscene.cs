@@ -16,8 +16,25 @@ using UnityEngine.InputSystem;
 /// 選單 GeminiGrowUp > 道場 > 建立開場演出 會把這個物件、路線、鏡頭都擺好，之後可以在場景裡直接拖動調整。
 /// </summary>
 [DisallowMultipleComponent]
+[DefaultExecutionOrder(150)]
 public sealed class DojoOpeningCutscene : MonoBehaviour
 {
+    [Header("先探索前院")]
+    public bool explorationFirst=true;
+    public float explorationSeconds=5f;
+    public Vector3 explorationStop=new Vector3(0,0,36);
+    [Range(.1f,1)] public float scenicWalkInput=.42f;
+    [Range(0,1)] public float hiddenRoadProgress=.85f;
+    public float scenicHeadYaw=65,scenicHeadLift=38;
+    public bool PlayerRepositioned {get;private set;}
+    public float HeadYaw {get;private set;}
+    public float HeadLift {get;private set;}
+    public float ScenicCameraOrbit {get;private set;}
+    public float HiddenWalkMeters {get;private set;}
+    public string Phase {get;private set;}="Waiting";
+    public float ExplorationElapsed {get;private set;}
+    bool exploring;
+    float glance;
     [System.Serializable]
     public class DialogueLine
     {
@@ -38,6 +55,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     public List<Transform> path = new List<Transform>();
     [Tooltip("兩人會面的庭院中心。藍色箭頭（Z）指向主屋：老師父停在箭頭那一側，玩家停在另一側")]
     public Transform meetPoint;
+    [Tooltip("指定時老師父只走到露臺，不走入前院；玩家停在露臺前。")]
+    public Transform terraceStop;
     [Tooltip("鏡頭（依序播放）")]
     public List<DojoCutsceneShot> shots = new List<DojoCutsceneShot>();
 
@@ -81,6 +100,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     [Header("老師父喝茶")]
     [Tooltip("坐著喝茶（Tripo 的喝茶動畫）時，右手端起來的時候手上拿著茶杯（複製場景裡最近的 TeaCup；找不到就用一個簡單的陶杯）")]
     public bool holdTeaCup = true;
+    [Tooltip("開場手持酒壺；對話後甩出並切換為毛筆戰鬥形態。")]
+    public GameObject wineFlaskPrefab;
     [Tooltip("找不到桌上的 TeaCup 時，自動做的陶杯顏色")]
     public Color fallbackCupColor = new Color(0.82f, 0.78f, 0.68f);
     [Tooltip("喝茶動畫裡「喝」那一刻在動畫的哪裡（0～1）：用來量茶杯要拿在手的哪個位置")]
@@ -254,7 +275,14 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         // 杯子保持原本直立的方向，杯口稍微往嘴的方向傾
         Quaternion cupRot = Quaternion.AngleAxis(-20f, Vector3.Cross(Vector3.up, Flat(master.forward).normalized)) * (cupSource != null ? cupSource.rotation : Quaternion.identity);
 
-        if (cupSource != null)
+        if(wineFlaskPrefab!=null)
+        {
+            cup=Instantiate(wineFlaskPrefab).transform;
+            Vector3 neckToPalm=toMouth.sqrMagnitude>.0001f?toMouth.normalized:Vector3.up;
+            cupRot=Quaternion.FromToRotation(Vector3.up,neckToPalm);
+            cupPos=Palm()-neckToPalm*.12f;
+        }
+        else if (cupSource != null)
         {
             cup = Instantiate(cupSource.gameObject).transform;
             cup.localScale = cupSource.lossyScale; // 桌上的杯子可能在有縮放的父物件底下：複製出來要保持一樣大
@@ -265,7 +293,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             cup = MakeFallbackCup();
             cupRot = Quaternion.AngleAxis(-20f, Vector3.Cross(Vector3.up, Flat(master.forward).normalized));
         }
-        cup.name = "TeaCup_Master";
+        cup.name = wineFlaskPrefab?"WineFlask_Master":"TeaCup_Master";
         cup.SetPositionAndRotation(cupPos, cupRot);
         cup.SetParent(armHand, true);                 // 之後跟著手動
         cupLocalScale = cup.localScale;
@@ -295,6 +323,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     void UpdateCupVisibility()
     {
         if (cup == null) { drinking = false; return; }
+        if(wineFlaskPrefab){cup.localScale=cupLocalScale;return;}
         float raise = Mathf.InverseLerp(cupRestHeight, cupSipHeight, Palm().y - master.position.y);
         float show = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.3f, 0.55f, raise));
         cup.localScale = cupLocalScale * Mathf.Max(0.0001f, show);
@@ -303,9 +332,11 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     void PutCupDown()
     {
         drinking = false;
+        if(wineFlaskPrefab&&master&&master.GetComponent<DojoCalligraphyEncounter>())return;
         if (cup != null) Destroy(cup.gameObject); // 起身時手上的茶杯收掉（桌上原本的茶杯還在）
         cup = null;
     }
+    Transform TakeDrinkProp(){drinking=false;var prop=cup;cup=null;return prop;}
 
     static Transform FindDeep(Transform root, string name)
     {
@@ -330,7 +361,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             if (allowSkip && !skip && !inDialogue && !GameUI.OverlayOpen
                 && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
                 skip = true;
-            if (!playerWalking && !playerArrived && !inDialogue && Time.time - playStartedAt >= playerWalkDelay) StartPlayerWalk();
+            if (!explorationFirst && !playerWalking && !playerArrived && !inDialogue && Time.time - playStartedAt >= playerWalkDelay) StartPlayerWalk();
             UpdatePlayerWalk();
             return;
         }
@@ -347,6 +378,13 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         // 門的轉動在 DojoCourtyardGate.Update 裡；這裡在它之後蓋掉，讓門跟著手
         if (doorPhase >= 0) DriveDoor(Time.deltaTime);
         if (drinking) UpdateCupVisibility();
+        if(exploring && playerAnim && playerAnim.isHuman)
+        {
+            var headBone=playerAnim.GetBoneTransform(HumanBodyBones.Head);
+            if(headBone)headBone.rotation=Quaternion.AngleAxis(glance,Vector3.up)*Quaternion.AngleAxis(-HeadLift,player.transform.right)*headBone.rotation;
+            var chest=playerAnim.GetBoneTransform(HumanBodyBones.UpperChest);
+            if(chest)chest.rotation=Quaternion.AngleAxis(glance*.2f,Vector3.up)*Quaternion.AngleAxis(-HeadLift*.18f,player.transform.right)*chest.rotation;
+        }
     }
 
     IEnumerator Play()
@@ -354,20 +392,38 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         running = played = true;
         playStartedAt = Time.time;
         skip = inDialogue = masterWalking = playerWalking = playerArrived = false;
+        PlayerRepositioned=false;
         SetPlayerLocked(true);
         StartPush();
         BuildRoutes();
         CreateCamera();
 
+        if(explorationFirst)
+        {
+            Phase="Pushing gate";
+            var push=Find(DojoCutsceneShot.Kind.PlayerCloseUp);
+            if(push)yield return RunShot(push);
+            while(doorPhase>=0 && !skip)yield return null;
+            FinishDoorNow();
+            yield return ExploreCourtyard();
+        }
         bool met = false;
         for (int i = 0; i < shots.Count && !skip; i++)
         {
             var shot = shots[i];
             if (shot == null || !shot.gameObject.activeInHierarchy) continue;
+            if(explorationFirst && shot.kind==DojoCutsceneShot.Kind.PlayerCloseUp)continue;
+            if(explorationFirst && shot.kind==DojoCutsceneShot.Kind.Meeting)continue;
             if (shot.kind == DojoCutsceneShot.Kind.Meeting) { yield return Meeting(shot); met = true; break; }
             yield return RunShot(shot);
         }
-        if (!met) yield return Meeting(Find(DojoCutsceneShot.Kind.Meeting));
+        if(explorationFirst)
+        {
+            Phase="Elder arriving on terrace";BeginMasterWalk();
+            while(dist<total && !skip){AdvanceMaster(total);yield return null;}
+            dist=total;PlaceMaster(true);playerStop=PlayerFeet();
+        }
+        else if (!met) yield return Meeting(Find(DojoCutsceneShot.Kind.Meeting));
 
         // 面對面，開始說話
         StopPlayerWalk();
@@ -378,7 +434,9 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             masterAnim.CrossFadeInFixedTime(TalkState, 0.35f, 0, 0f);
         }
         yield return new WaitForSeconds(0.4f);
+        if(explorationFirst){Phase="Returning to player";yield return FlyToPlayer();}
 
+        Phase="Dialogue from player view";
         inDialogue = true;
         if (masterAnim != null) masterAnim.updateMode = AnimatorUpdateMode.UnscaledTime; // 對話時遊戲暫停，老師父還是會比手畫腳
         bool done = false;
@@ -391,9 +449,36 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             masterAnim.updateMode = AnimatorUpdateMode.Normal;
             masterAnim.speed = idleTalkSpeed;
         }
-        yield return FlyToPlayer();
+        var encounter=master.GetComponent<DojoCalligraphyEncounter>();
+        if(encounter)yield return encounter.TransformAfterDialogue(TakeDrinkProp());
+        if(!explorationFirst)yield return FlyToPlayer();
         Finish();
         StartBossFight();
+    }
+
+    IEnumerator ExploreCourtyard()
+    {
+        Phase="Exploring courtyard";exploring=true;ExplorationElapsed=0;
+        TeleportPlayer(new Vector3(explorationStop.x,explorationStop.y,14),meetForward);
+        playerRoute.Clear();playerRoute.Add(explorationStop);StartPlayerWalk();
+        float oldInput=playerWalkInput;playerWalkInput=scenicWalkInput;
+        for(float t=0;t<explorationSeconds && !skip;t+=Time.deltaTime)
+        {
+            ExplorationElapsed=t;
+            float envelope=Mathf.SmoothStep(0,1,t/.5f)*Mathf.SmoothStep(0,1,(explorationSeconds-t)/.5f);
+            glance=Mathf.Sin(t*1.32f)*scenicHeadYaw*envelope;HeadYaw=glance;
+            HeadLift=(16+Mathf.Sin(t*.85f)*scenicHeadLift*.65f)*envelope;
+            var feet=PlayerFeet();var look=feet+Vector3.up*1.45f;
+            float orbit=Mathf.SmoothStep(0,1,t/2.2f);ScenicCameraOrbit=160*orbit;
+            var behind=Quaternion.AngleAxis(ScenicCameraOrbit+glance*.08f,Vector3.up)*(-meetForward*Mathf.Lerp(4.5f,4.2f,orbit));
+            Vector3 cameraPos=look+behind+Vector3.up*.45f;
+            // Frame the face and torso while the actor looks up; keep the camera wide.
+            SetCamera(cameraPos,Quaternion.LookRotation(look+Vector3.up*(HeadLift*.003f)-cameraPos),60);
+            yield return null;
+        }
+        ExplorationElapsed=explorationSeconds;playerWalkInput=oldInput;StopPlayerWalk();exploring=false;
+        if(skip)TeleportPlayer(explorationStop,meetForward);
+        playerStop=PlayerFeet();playerArrived=true;Phase="Watching elder";
     }
 
     void StartBossFight()
@@ -401,7 +486,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         if (!startBossFight || master == null) return;
         var boss = master.GetComponent<DojoMasterBoss>();
         if (boss == null) boss = master.gameObject.AddComponent<DojoMasterBoss>();
-        boss.arenaCenter = (masterStop + playerStop) * 0.5f;
+        boss.arenaCenter = terraceStop?new Vector3(0,0,55):(masterStop + playerStop) * 0.5f;
         boss.arenaRadius = bossArenaRadius;
         boss.BeginFight();
     }
@@ -409,19 +494,44 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     IEnumerator RunShot(DojoCutsceneShot shot)
     {
         PlaceCamera(shot, shot.kind);
+        if(explorationFirst && !PlayerRepositioned && shot.kind==DojoCutsceneShot.Kind.Fixed)
+        {
+            // The tea-room shot contains no player or courtyard: reposition only after its cut.
+            yield return null;
+            float fromZ=gate?gate.transform.position.z:5;
+            float toZ=terraceStop?terraceStop.position.z:76.6f;
+            playerStop=new Vector3(explorationStop.x,0,Mathf.Lerp(fromZ,toZ,hiddenRoadProgress));
+            TeleportPlayer(playerStop,meetForward);PlayerRepositioned=true;
+        }
         // 拍喝茶時：從端起來前一點點開始播，3 秒內剛好拍到端起來、喝、放下
         if (!shot.masterWalks && !masterWalking && shot.kind == DojoCutsceneShot.Kind.Fixed && masterAnim != null) masterAnim.Play(SitState, 0, teaShotStart);
         if (shot.masterWalks)
         {
             BeginMasterWalk();
             float start = shot.startMeters < 0f ? total + shot.startMeters : shot.startMeters;
-            start = Mathf.Min(start, total - masterApproach);
+            start = Mathf.Min(start, explorationFirst?total:total-masterApproach);
             if (dist < start) { dist = start; PlaceMaster(true); }
         }
-        for (float t = 0f; t < shotSeconds && !skip; t += Time.deltaTime)
+        float duration=shotSeconds,sectionEnd=total;
+        if(explorationFirst && shot.masterWalks)
         {
-            AdvanceMaster(total - masterApproach); // 會面前先停在會面鏡頭的起點，等會面鏡頭再走完
-            if (shot.kind == DojoCutsceneShot.Kind.Fixed && shot.dollySpeed > 0f) Dolly(shot);
+            // Finish this visible section before the next shot. No walking against an artificial limit.
+            float end=total;
+            int at=shots.IndexOf(shot);
+            for(int j=at+1;j<shots.Count;j++)if(shots[j]&&shots[j].gameObject.activeInHierarchy&&shots[j].masterWalks&&shots[j].kind==DojoCutsceneShot.Kind.Fixed)
+            {end=shots[j].startMeters<0?total+shots[j].startMeters:shots[j].startMeters;break;}
+            duration=Mathf.Max(.1f,(end-dist)/Mathf.Max(.01f,walkSpeed*walkAnimSpeed));
+            sectionEnd=end;
+        }
+        for (float t = 0f; t < duration && !skip && (!explorationFirst||!shot.masterWalks||dist<sectionEnd-.005f); t += Time.deltaTime)
+        {
+            AdvanceMaster(explorationFirst?sectionEnd:total-masterApproach);
+            if(explorationFirst&&shot.masterWalks&&shot.name.Contains("走出茶室"))
+            {
+                Vector3 cameraAt=shot.transform.position;
+                SetCamera(cameraAt,Quaternion.LookRotation(master.position+Vector3.up*1.15f-cameraAt),shot.fov);
+            }
+            else if (shot.kind == DojoCutsceneShot.Kind.Fixed && shot.dollySpeed > 0f) Dolly(shot);
             yield return null;
         }
     }
@@ -470,6 +580,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
 
     void Finish()
     {
+        exploring=false;Phase="Finished";
         StopPlayerWalk();
         FinishDoorNow();
         if (vcam != null) Destroy(vcam.gameObject);
@@ -482,7 +593,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             tpc.pitch = 8f;
             tpc.SnapToTarget();
         }
-        if (masterColliders != null) foreach (var c in masterColliders) if (c != null) c.enabled = true;
+        if (masterColliders != null && !(master.GetComponent<DojoCalligraphyEncounter>()?.Transformed??false))
+            foreach (var c in masterColliders) if (c != null) c.enabled = true;
         if (gate != null) gate.enabled = true;
         SetPlayerLocked(false);
         running = false;
@@ -733,9 +845,18 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         if (meetForward.sqrMagnitude < 0.01f) meetForward = inward;
         masterStop = m + meetForward * (meetingGap * 0.5f);
         playerStop = m - meetForward * (meetingGap * 0.5f);
+        if(terraceStop)
+        {
+            masterStop=terraceStop.position;playerStop=masterStop-meetForward*meetingGap;
+            playerStop.y=GroundAt(playerStop,masterStop.y+2,0);
+        }
 
         pts.Clear(); cum.Clear();
-        foreach (var p in path) if (p != null) pts.Add(p.position);
+        foreach (var p in path)if(p!=null)
+        {
+            if(terraceStop&&Vector3.Dot(Flat(p.position-masterStop),meetForward)<-.05f)break;
+            pts.Add(p.position);
+        }
         if (pts.Count == 0) pts.Add(master.position);
         pts.Add(masterStop);
         cum.Add(0f);
@@ -782,8 +903,30 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     void AdvanceMaster(float limit)
     {
         if (!masterWalking || dist >= limit) return;
-        dist = Mathf.Min(limit, dist + walkSpeed * walkAnimSpeed * Time.deltaTime);
+        float multiplier=1;
+        if(explorationFirst)
+        {
+            var ahead=PointAt(Mathf.Min(limit,dist+.9f),out _);
+            if(!MasterInView(master.position)&&!MasterInView(ahead))multiplier=6;
+        }
+        float next=Mathf.Min(limit,dist+walkSpeed*walkAnimSpeed*multiplier*Time.deltaTime);
+        if(multiplier>1)HiddenWalkMeters+=next-dist;
+        dist=next;if(masterAnim)masterAnim.speed=walkAnimSpeed*multiplier;
         PlaceMaster(false);
+    }
+    bool MasterInView(Vector3 feet)
+    {
+        var camera=Camera.main;if(!camera)return true;
+        var bounds=new Bounds(feet+Vector3.up, new Vector3(1,2.2f,1));
+        if(!GeometryUtility.TestPlanesAABB(GeometryUtility.CalculateFrustumPlanes(camera),bounds))return false;
+        foreach(var offset in new[]{Vector3.up*1.7f,Vector3.up*1.2f,Vector3.up*1.2f+master.right*.35f,Vector3.up*1.2f-master.right*.35f})
+        {
+            var delta=feet+offset-camera.transform.position;bool blocked=false;
+            foreach(var hit in Physics.RaycastAll(camera.transform.position,delta.normalized,delta.magnitude-.15f,~0,QueryTriggerInteraction.Ignore))
+                if(!hit.transform.IsChildOf(master)&&!hit.collider.GetComponentInParent<PlayerHealth>()){blocked=true;break;}
+            if(!blocked)return true;
+        }
+        return false;
     }
 
     void PlaceMaster(bool snap)

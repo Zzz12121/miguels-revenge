@@ -24,7 +24,8 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     public UnityEvent<Vector3> onDragonImpact=new();
     public bool Active {get;private set;}
     public bool IsDead=>Health<=0;
-    public float Health {get;private set;}
+    float ownHealth;
+    public float Health {get=>encounterHealth?encounterHealth.Health:ownHealth;private set=>ownHealth=value;}
     public int SelectedSkill {get;private set;}
     public string SkillName=>SkillNames[Mathf.Clamp(SelectedSkill,0,SkillNames.Length-1)];
     public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍","交叉運筆・墨光","躍筆重砸","連環墨浪","點墨落印","墨相鎮海・浮墨天階"};
@@ -79,6 +80,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
         if(amount<=0 || IsDead)return;
         var attack=CalligraphyAttackContext.Current;
         if(attack.cast!=0 && TryEvade(attack.cast,attack.skill))return;
+        if(encounterHealth){encounterHealth.TakeDamage(amount,point);lastDamage=Time.time;return;}
         Health=Mathf.Max(0,Health-amount);lastDamage=Time.time;
         if(IsDead)
         {
@@ -120,6 +122,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),240*Time.deltaTime);
         if(!casting)
         {
+            if(externallySequenced)return;
             cooldown-=Time.deltaTime;
             float wanted=SelectedSkill==2 || SelectedSkill==7?meleeDistance*.7f:7;
             bool shouldWalk=direction.magnitude>wanted+.3f;
@@ -181,6 +184,8 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     void Melee()
     {
+        if(encounterBasicMelee){EncounterBrushStrike();return;}
+        if(externallySequenced && !EncounterMeleeInRange){EncounterMeleeLostRange=true;brush.ClearCombatPose();FinishCast();return;}
         if(elapsed<1.2f)
         {
             brush.SetCombatPose(2,elapsed/1.2f);
@@ -194,6 +199,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
                     if(!ClonePosition(i==0?-1:1,out var p))continue;
                     var clone=CalligraphyClone.Spawn(cloneTemplate,ink,player,p,transform.rotation,true,effectsRoot);
                     clone.Configure(inkMelee);
+                    if(externallySequenced)clone.ConfigureFlank(i==0?1:-1,encounterShockwave);
                     clones.Add(clone);live++;
                 }
             }
@@ -209,7 +215,8 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,inkMelee.hitRadius))
         {
             released=index+2;
-            CalligraphyPlayerHitGate.Hit(player,inkMelee.damage,d.normalized*2,"被遊墨行者的巨筆擊倒",brush.brushTip.position);
+            if(EncounterMeleeContact!=null)EncounterMeleeContact.Invoke(inkMelee.damage,d.normalized,brush.brushTip.position);
+            else CalligraphyPlayerHitGate.Hit(player,inkMelee.damage,d.normalized*2,"被遊墨行者的巨筆擊倒",brush.brushTip.position);
             ink.Burst(brush.brushTip.position,1,12);
         }
         if(t>=Mathf.Max(1,inkMelee.comboCount)*segment)FinishCast();
@@ -262,6 +269,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     {
         float recovery=skillRecovery!=null && SelectedSkill<skillRecovery.Length && skillRecovery[SelectedSkill]>0?skillRecovery[SelectedSkill]:recoverySeconds;
         casting=false;elapsed=0;brush.ClearCombatPose();
+        if(externallySequenced){CompletedEncounterCasts++;encounterBasicMelee=false;return;}
         if(SelectedSkill==3)nextPainting=Time.time+paintingCooldown;
         if(SelectedSkill==4)nextDragon=Time.time+dragonCooldown;
         if(practiceImmortal){WaitingForPreview=true;SetWalking(false);return;}
@@ -290,6 +298,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     void OnDestroy(){if(effectsRoot)Destroy(effectsRoot.gameObject);}
     void OnGUI()
     {
+        if(encounterHealth)return;
         if(!CalligraphyWorldIsolation.Allows(transform))return;
         if(!Active)return;
         float width=360,x=(Screen.width-width)*.5f;

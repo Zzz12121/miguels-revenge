@@ -48,12 +48,9 @@ public static class VoidRendDemoBuilder
         caster.transform.SetPositionAndRotation(new Vector3(0f, 0f, -1.8f), Quaternion.identity);
         AttachKatana(caster.transform, swordMat);
 
-        GameObject dummy = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-        dummy.name = "VoidRend_DummyTarget";
+        GameObject dummy = new GameObject("VoidRend_PracticeAimPoint");
         dummy.transform.position = new Vector3(0f, 1f, 2.25f);
         dummy.transform.localScale = new Vector3(0.78f, 1.05f, 0.78f);
-        dummy.GetComponent<MeshRenderer>().sharedMaterial = dummyMat;
-        Object.DestroyImmediate(dummy.GetComponent<CapsuleCollider>());
 
         GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
         GameObject controller = (GameObject)PrefabUtility.InstantiatePrefab(prefab);

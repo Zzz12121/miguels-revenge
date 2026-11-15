@@ -69,6 +69,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
 
     public bool FightActive { get; private set; }
     public bool IsDefeated => dead;
+    DojoCalligraphyEncounter calligraphy;
     public event System.Action OnFightStarted, OnDefeated;
 
     static readonly int WalkState = Animator.StringToHash("Walk");
@@ -107,6 +108,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         health.ShowBar = false;
         health.Invulnerable = true;   // 演出 / 對話時打不到
         anim = GetComponentInChildren<Animator>();
+        calligraphy=GetComponent<DojoCalligraphyEncounter>();
         hips = Find("Hips"); spine = Find("Spine");
         rUpper = Find("Right_UpperArm"); rLower = Find("Right_LowerArm"); rHand = Find("Right_Hand");
         lUpper = Find("Left_UpperArm"); lLower = Find("Left_LowerArm"); lHand = Find("Left_Hand");
@@ -121,6 +123,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
     void OnDisable()
     {
         health.OnDied -= OnBossDied;
+        if(calligraphy)calligraphy.StopFight();
         if (player != null) { player.OnDied -= OnPlayerDied; player.OnRespawned -= OnPlayerRespawned; }
     }
 
@@ -139,6 +142,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
     /// <summary>開場演出結束時呼叫：從現在的位置開打</summary>
     public void BeginFight()
     {
+        if(GetComponent<DojoElderEscape>()?.Started??false)return;
         if (FightActive || dead) return;
         FindPlayer();
         if (!armed)
@@ -149,7 +153,8 @@ public sealed class DojoMasterBoss : MonoBehaviour
             if (arenaCenter == Vector3.zero) arenaCenter = homePos;
         }
         FightActive = true;
-        foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = true;
+        if(!calligraphy || !calligraphy.Transformed)
+            foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = true;
         health.bossName = bossName;
         health.ShowBar = true;
         health.Invulnerable = false;
@@ -158,7 +163,8 @@ public sealed class DojoMasterBoss : MonoBehaviour
         nextFlash = Time.time + 4f;
         GameAudio.PlayBattleMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
         OnFightStarted?.Invoke();
-        brain = StartCoroutine(Brain());
+        if(calligraphy&&calligraphy.Transformed)calligraphy.BeginFight(player);
+        else brain = StartCoroutine(Brain());
     }
 
     void Update()
@@ -380,7 +386,23 @@ public sealed class DojoMasterBoss : MonoBehaviour
     {
         pushDir.y = 0f;
         Vector3 knock = (pushDir.sqrMagnitude > 0.001f ? pushDir.normalized : transform.forward) * knockback + Vector3.up * knockUp;
-        if (player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+        if(player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+    }
+    public void DeliverBrushHit(float damage,Vector3 direction,Vector3 point)
+    {
+        if(!FightActive||dead||!PlayerAlive)return;
+        bool received=false;System.Action<float> receipt=amount=>received|=amount>0;
+        player.OnDamaged+=receipt;
+        try{Hurt(damage,direction,"被老師父的毛筆擊中",palmKnockback,3f);}
+        finally{player.OnDamaged-=receipt;}
+        if(received && calligraphy)DojoMeleeImpact.Play(calligraphy.meleeShockwave,point,direction);
+        CombatVFX.Impact(point,new Color(1f,.85f,.55f));
+    }
+    public void SuspendForEscape()
+    {
+        FightActive=false;armed=false;inArenaTimer=0;StopAllCoroutines();brain=null;
+        if(calligraphy)calligraphy.StopFight();health.Invulnerable=true;
+        GameAudio.StopMusic(1.5f);
     }
 
     bool InFan(float range, float halfAngle)
@@ -400,6 +422,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         dead = true;
         FightActive = false;
         StopAllCoroutines();
+        if(calligraphy)calligraphy.StopFight(true);
         StopWalking();
         SetStance(Stance.None, 4f);
         if (anim != null)
@@ -418,6 +441,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         if (dead || !FightActive) return;
         FightActive = false;
         StopAllCoroutines();
+        if(calligraphy)calligraphy.StopFight();
         StopWalking();
         SetStance(Stance.Guard, 4f);
         PlayTalkIdle();
@@ -434,6 +458,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         health.ShowBar = false;
         health.Invulnerable = false;
         phase2 = false;
+        if(calligraphy)calligraphy.ResetForRematch();
         inArenaTimer = 0f;
         SetStance(Stance.Guard, 6f);
         PlayTalkIdle();
@@ -527,6 +552,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
 
     void LateUpdate()
     {
+        if(calligraphy&&calligraphy.Transformed)return;
         bool active = (FightActive || armed) && !dead && stance != Stance.None;
         ikWeight = Mathf.MoveTowards(ikWeight, active ? 1f : 0f, Time.deltaTime * 4f);
         if (ikWeight <= 0.001f || rHand == null || lHand == null || spine == null) return;

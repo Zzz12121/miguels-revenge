@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "progressiveBrushAssembly": true,
+  "cloneDissolveWait": true,
+  "teleportMelee": 991,
+  "teleportFourStroke": 1009,
+  "cloneSpeed": 5.6,
+  "relativeSpeed": 0.7,
+  "tailLifetime": 0.5,
+  "nativeOnly": true,
+  "orbitingOriginalEffects": 10,
+  "continuedDuringCameraReturn": 7.780633,
+  "removedAfterPlayerCamera": true
+}
