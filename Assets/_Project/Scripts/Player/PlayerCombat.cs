@@ -548,6 +548,25 @@ public class PlayerCombat : MeleeCombat
         GUI.color = Color.white;
     }
 
+    [Header("揮刀的空氣波動（判定傷害的那一刻，打沒打到都有）")]
+    public bool strikeAirWave = true;
+    [Tooltip("波動半徑 = 判定球半徑 × 這個")]
+    [Range(.2f, 1.5f)] public float strikeWaveScale = .75f;
+    [Tooltip("扭曲強度：一般刀 / 第三刀、重擊、跳劈落地")]
+    [Range(0f, 1f)] public float strikeWaveStrength = .22f, heavyWaveStrength = .32f;
+    [Tooltip("擴散時間（秒）")]
+    public float strikeWaveTime = .28f, heavyWaveTime = .4f;
+
+    protected override void OnStrikeMoment(Vector3 center, float radius, int index, bool landing)
+    {
+        if (!strikeAirWave) return;
+        bool big = landing || index == 2 || heavySwing;
+        Vector3 at = center + Vector3.up * (landing ? -.3f : .2f); // 判定球中心大約在腰的高度；跳劈落地放低一點
+        float r = radius * strikeWaveScale * (big ? 1.3f : 1f);
+        ShockwaveFx.Spawn(at, r, big ? heavyWaveTime : strikeWaveTime, big ? heavyWaveStrength : strikeWaveStrength);
+        if (big) ShockwaveFx.Spawn(at, r * .55f, heavyWaveTime * .8f, strikeWaveStrength, .07f); // 第二圈
+    }
+
     protected override void OnSwingStart(int index)
     {
         attackQueued = false;

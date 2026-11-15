@@ -237,6 +237,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         foreach (var t in FindObjectsByType<Transform>(FindObjectsSortMode.None))
         {
             if (t.name != "TeaCup") continue;
+            // 場景裡的 TeaCup 可能只是空的定位點（沒有模型）：複製它手上會什麼都看不到，這種就不算，改用自己做的陶杯
+            if (t.GetComponentInChildren<Renderer>() == null) continue;
             float d = Vector3.Distance(t.position, sitPoint.position);
             if (d < best) { best = d; cupSource = t; }
         }
