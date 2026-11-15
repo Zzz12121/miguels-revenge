@@ -351,6 +351,22 @@ public sealed partial class VoidRendSkillDemo
         if (practiceOrbitCamera != null) practiceOrbitCamera.enabled = false;
     }
 
+    /// <summary>收招結束前把玩家鏡頭打開（放在角色背後），讓技能鏡頭可以混過去。沒有玩家鏡頭就回傳 false</summary>
+    bool BeginCameraHandoff()
+    {
+        cameraHandedOff = false;
+        cameraHandoffWeight = 0f;
+        if (practiceOrbitCamera == null || caster == null) return false;
+        practiceOrbitCamera.target = caster;
+        practiceOrbitCamera.yaw = caster.eulerAngles.y;
+        practiceOrbitCamera.pitch = Mathf.Clamp(practiceOrbitCamera.pitch, 5f, 20f);
+        practiceOrbitCamera.enabled = true;
+        practiceOrbitCamera.SnapToTarget();
+        cameraHandoffPivot = caster.position + Vector3.up * .4f;
+        cameraHandedOff = true;
+        return true;
+    }
+
     void RestorePracticeControlsAfterSkill()
     {
         practiceControlsSuspended = false;
@@ -366,7 +382,9 @@ public sealed partial class VoidRendSkillDemo
         {
             practiceOrbitCamera.target = caster;
             practiceOrbitCamera.enabled = true;
-            practiceOrbitCamera.SnapToTarget();
+            // 收招時已經交接過（鏡頭已經在跟了）就不要再瞬間對準，不然會跳一下
+            if (!cameraHandedOff) practiceOrbitCamera.SnapToTarget();
+            cameraHandedOff = false;
         }
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;

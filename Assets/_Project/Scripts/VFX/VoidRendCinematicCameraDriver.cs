@@ -20,6 +20,6 @@ public sealed class VoidRendCinematicCameraDriver : MonoBehaviour
         if (owner == candidate) owner = null;
     }
 
-    void LateUpdate() => owner?.ApplyQueuedCinematicCameraPose();
+    void LateUpdate() => owner?.ApplyQueuedCinematicCameraPose(true);
     void OnPreCull() => owner?.ApplyQueuedCinematicCameraPose();
 }

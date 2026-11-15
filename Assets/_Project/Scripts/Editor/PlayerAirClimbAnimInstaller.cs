@@ -229,6 +229,19 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             log.Add("AC_PlayerCatWarrior：加上 Slash" + i + "（第 " + i + " 刀）狀態");
         }
 
+        // 技能 1（虛空裂斬）用的姿勢動畫：技能開始時 VoidRendSkillDemo 會把它們取樣存起來（技能期間 Animator 是關掉的），
+        // 所以這兩個狀態不需要轉換，只要存在就好。VR_Summon = 單手舉高讓刀飛上去（轉刀）、VR_Horse = 拔刀的低馬步（突進斬）
+        // VR_Iai = 居合低伏預備（砍完停在空中的收招姿勢）
+        foreach (var pair in new[] { ("CW_VRSummon", "VR_Summon"), ("CW_VRHorse", "VR_Horse"), ("CW_VRIai", "VR_Iai") })
+        {
+            if (!clips.TryGetValue(pair.Item1, out var vrClip)) continue;
+            var st = Find(pair.Item2) ?? sm.AddState(pair.Item2, new Vector3(900, 600 + (pair.Item2 == "VR_Horse" ? 60 : pair.Item2 == "VR_Iai" ? 120 : 0)));
+            st.motion = vrClip; st.speed = 1f; st.writeDefaultValues = true;
+            Clear(st);
+            if (idle != null) Add(st, idle, 0.2f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 " + pair.Item2 + "（技能 1 的姿勢）");
+        }
+
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；
         // 往下掉要真的有在掉（速度 < -3.5）才切，走下小台階、斜坡時不會一直閃成下落的姿勢（站在地上時速度是 -2）
         foreach (var s in new[] { idle, walk, run })
