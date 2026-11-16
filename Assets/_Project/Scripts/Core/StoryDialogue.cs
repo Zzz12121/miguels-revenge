@@ -80,6 +80,14 @@ public class StoryDialogue : MonoBehaviour
         }
         UpdateSpeakers();
         GameAudio.Play("SFX/RPG/bookOpen", Vector3.zero, 0.6f, 1.1f, 0f, 0f);
+        Speak();
+    }
+
+    /// <summary>英文配音：唸現在這句（沒有配音就不出聲）</summary>
+    void Speak()
+    {
+        var line = lines[index];
+        DialogueVoice.Speak(line.text, line.who != null ? line.who.position : Vector3.zero);
     }
 
     void UpdateSpeakers()
@@ -114,11 +122,12 @@ public class StoryDialogue : MonoBehaviour
         lineStart = Time.unscaledTime;
         GameAudio.Play("SFX/RPG/bookFlip1", Vector3.zero, 0.5f, 1f, 0.1f, 0f);
         if (index >= lines.Count) Finish();
-        else UpdateSpeakers();
+        else { UpdateSpeakers(); Speak(); }
     }
 
     void Finish()
     {
+        DialogueVoice.Stop();
         current = null;
         Time.timeScale = prevTimeScale;
         if (controller != null)

@@ -106,6 +106,12 @@ public class PlayerCombat : MeleeCombat
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)
             gameObject.AddComponent<EnergyTetherSkill>();
+        // 跳躍、落地、揮刀、打中的音效（只加聲音）
+        if (GetComponent<PlayerSfx>() == null) gameObject.AddComponent<PlayerSfx>();
+        // 揮刀時上半身擺動更明顯（只疊在動作上面）
+        if (GetComponent<SwingBodyAccent>() == null) gameObject.AddComponent<SwingBodyAccent>();
+        // 拉弓瞄準時走路：腿輪流踏步，不會整個人在地上滑（只動腿）
+        if (GetComponent<BowAimFootwork>() == null) gameObject.AddComponent<BowAimFootwork>();
         // 幻影分身突進（空中側閃時按左鍵）/ 剪刀斬：自動補上
         phantom = GetComponent<PhantomStrike>();
         if (phantom == null) phantom = gameObject.AddComponent<PhantomStrike>();

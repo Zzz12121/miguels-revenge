@@ -2,8 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// 村長家後院通往道場的大門。僧侶答應開門之前門鎖著（Unlock 之後才推得開）。
-/// 解鎖後走到門前按 E（或直接往門走過去）把兩扇門往外推開，門洞裡亮起墨色漩渦；再按 E 進入，
-/// 換場景時畫面輪播四幅古畫（PaintingSlideshow）。
+/// 解鎖後走到門前按 E（或直接往門走過去）把兩扇門往外推開；門開了就沒有東西擋著，
+/// 直接穿過門洞走出去（超過門外 passDistance）就轉移到道場，換場景時畫面輪播四幅古畫（PaintingSlideshow）。
+/// （surface / glowLight 留空就不顯示傳送門的光。）
 /// </summary>
 public class DojoGate : MonoBehaviour
 {
@@ -30,6 +31,12 @@ public class DojoGate : MonoBehaviour
     public Texture2D[] slides;
 
     public float interactDistance = 4.5f;
+    [Tooltip("門開了之後要關掉的碰撞（門洞的擋板）")]
+    public Collider blocker;
+    [Tooltip("走出門外多遠就轉移 (m)")]
+    public float passDistance = 1.2f;
+    [Tooltip("門洞的半寬 (m)：在這個寬度內穿過去才算")]
+    public float gateHalfWidth = 2f;
 
     public bool IsUnlocked { get; private set; }
     public bool IsOpen { get; private set; }
@@ -53,11 +60,15 @@ public class DojoGate : MonoBehaviour
     }
 
     /// <summary>僧侶開了鎖：門還關著，要玩家自己推開</summary>
-    public void Unlock()
+    public void Unlock() => Unlock(false);
+
+    /// <param name="silent">true = 不播開鎖的聲音（從道場被抬回村子時，照之前的進度直接解鎖）</param>
+    public void Unlock(bool silent)
     {
+        VillageProgress.GateUnlocked = true; // 跨場景記住：之後回到村子不用再開一次
         if (IsUnlocked) return;
         IsUnlocked = true;
-        GameAudio.Play("SFX/RPG/metalLatch", transform.position, 1f, 0.6f, 0f, 1f, 80f);
+        if (!silent) GameAudio.Play("SFX/RPG/metalLatch", transform.position, 1f, 0.6f, 0f, 1f, 80f);
     }
 
     public void Push()
@@ -79,7 +90,11 @@ public class DojoGate : MonoBehaviour
                 if (doorHinges[i] != null) doorHinges[i].localRotation = Quaternion.Euler(0f, openAngles[i] * e, 0f);
             if (surface != null) surface.enabled = openT > 0.35f;
             if (glowLight != null) glowLight.intensity = lightIntensity * Mathf.Clamp01((openT - 0.3f) / 0.7f);
-            if (openT >= 1f) IsOpen = true;
+            if (openT >= 1f)
+            {
+                IsOpen = true;
+                if (blocker != null) blocker.enabled = false; // 門洞可以走過去了
+            }
         }
         if (glowLight != null && IsOpen) glowLight.intensity = lightIntensity * (1f + 0.2f * Mathf.Sin(Time.time * 3f));
 
@@ -104,7 +119,15 @@ public class DojoGate : MonoBehaviour
             return;
         }
         if (!IsOpen) return;
-        InteractPrompt.Offer(this, dist, string.IsNullOrEmpty(destinationTitle) ? "進入" : $"進入 → {destinationTitle}");
+        // 穿過門洞走到門外：直接轉移
+        Vector3 rel = player.transform.position - transform.position;
+        Vector3 across = Vector3.Cross(Vector3.up, pushDirection.normalized);
+        if (Vector3.Dot(rel, pushDirection.normalized) > passDistance && Mathf.Abs(Vector3.Dot(rel, across)) < gateHalfWidth + 0.5f)
+        {
+            Enter();
+            return;
+        }
+        InteractPrompt.Offer(this, dist, string.IsNullOrEmpty(destinationTitle) ? "穿過大門" : $"穿過大門 → {destinationTitle}");
         if (InteractPrompt.Pressed(this)) Enter();
     }
 

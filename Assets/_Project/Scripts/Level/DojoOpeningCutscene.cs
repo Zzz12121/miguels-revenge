@@ -340,6 +340,37 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     }
     Transform TakeDrinkProp(){drinking=false;var prop=cup;cup=null;return prop;}
 
+    // 喝酒的聲音（只加聲音）：手舉到嘴邊時酒壺咕嚕咕嚕、吞兩三口，放下來時「哈——」一口氣
+    bool sipSounding;
+    void DrinkSound()
+    {
+        if (cup == null || armHand == null || master == null || masterHead == null) return;
+        if (Mathf.Abs(cupSipHeight - cupRestHeight) < 0.05f) return;
+        float raise = Mathf.InverseLerp(cupRestHeight, cupSipHeight, Palm().y - master.position.y);
+        if (!sipSounding && raise > 0.85f)
+        {
+            sipSounding = true;
+            StartCoroutine(SipSounds());
+        }
+        else if (sipSounding && raise < 0.4f)
+        {
+            sipSounding = false;
+            GameAudio.Play("SFX/Gen/drink_ahh", masterHead.position, 0.45f, 0.82f, 0.05f, 1f, 18f);
+        }
+    }
+
+    IEnumerator SipSounds()
+    {
+        if (wineFlaskPrefab != null) GameAudio.Play("SFX/Gen/drink_pour", masterHead.position, 0.35f, 0.9f, 0.05f, 1f, 15f);
+        int gulps = Random.Range(2, 4);
+        for (int i = 0; i < gulps && drinking && masterHead != null; i++)
+        {
+            yield return new WaitForSeconds(i == 0 ? 0.25f : Random.Range(0.32f, 0.45f));
+            if (!drinking || masterHead == null) yield break;
+            GameAudio.Play("SFX/Gen/drink_gulp_" + Random.Range(1, 4), masterHead.position + Vector3.down * 0.12f, 0.6f, Random.Range(0.85f, 0.95f), 0f, 1f, 15f);
+        }
+    }
+
     static Transform FindDeep(Transform root, string name)
     {
         if (root.name == name) return root;
@@ -380,6 +411,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         // 門的轉動在 DojoCourtyardGate.Update 裡；這裡在它之後蓋掉，讓門跟著手
         if (doorPhase >= 0) DriveDoor(Time.deltaTime);
         if (drinking) UpdateCupVisibility();
+        if (drinking) DrinkSound();
         if(exploring && playerAnim && playerAnim.isHuman)
         {
             var headBone=playerAnim.GetBoneTransform(HumanBodyBones.Head);

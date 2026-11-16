@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 村民沒在跟玩家說話時的日常：照 stops 的順序走過去、在每一站做一件事（站著東張西望、坐下、打鐵、顧爐火、擦長椅、進屋），做完換下一站，繞一圈再從頭。
+/// 村民沒在跟玩家說話時的日常：照 stops 的順序走過去、在每一站做一件事（站著東張西望、坐下、打鐵、顧爐火、擦長椅、進屋、看書），做完換下一站，繞一圈再從頭。
 /// 玩家走近（noticeRadius 以內）或正在對話時停下來：坐著的先站起來、看著玩家；玩家走開（resumeRadius 以外）才接著做。
 /// 坐、打鐵這些動作專案裡沒有適合人形骨架的動畫，用程式在 LateUpdate 擺骨頭（蓋在待機動畫上）。
 /// 走路用 Animator 的 Speed / WalkRate（AC_Villager）。
@@ -28,6 +28,10 @@ public class NpcRoutine : MonoBehaviour
         Crouch,
         /// <summary>原地蹦蹦跳跳</summary>
         Hop,
+        /// <summary>雙手捧著書低頭看（偶爾翻頁）；seatY &gt; 0 就坐著看。書是 book（只有看書時才出現）</summary>
+        Read,
+        /// <summary>在桌上的藥缽裡磨藥：左手扶著藥缽、右手拿藥杵畫圈；seatY &gt; 0 就坐著磨。藥杵是 tool（只有磨藥時才出現）</summary>
+        Grind,
     }
 
     [System.Serializable]
@@ -40,6 +44,8 @@ public class NpcRoutine : MonoBehaviour
         public float seatY;
         [Tooltip("走到這一站的速度 (m/s)；0 = 用 walkSpeed。超過 runFrom 就用跑的")]
         public float speed;
+        [Tooltip("Inside 用：這間房子的正門。有的話先拉開門、踏上台階走到門檻才進屋（門隨後關上），出來時也是開門、走下台階、關門")]
+        public HouseEntryDoor door;
     }
 
     public Stop[] stops;
@@ -55,6 +61,16 @@ public class NpcRoutine : MonoBehaviour
     [Tooltip("開：玩家走近也繼續做自己的事（老漁夫坐著釣魚，不站起來）")]
     public bool ignorePlayer;
     public float resumeRadius = 6.5f;
+    [Tooltip("Read 的時候捧在手上的書（其他時候藏起來）；書的 +Y 是書頁那面、+Z 是書的上緣")]
+    public Transform book;
+    [Tooltip("Grind 的時候拿在右手的藥杵（其他時候藏起來）；+Y 是杵頭朝下的那一頭")]
+    public Transform tool;
+    [Tooltip("沒在看書的時候拿在右手輕輕搧的扇子（扇軸在原點、+Y 是扇面往上、+Z 是扇面朝前）；看書時收起來")]
+    public Transform fan;
+
+    [Header("左手受傷")]
+    [Tooltip("左手受傷不能動：一直垂在身體旁邊、不跟著走路擺（做事也不動），事情都用右手做")]
+    public bool injuredLeftArm;
 
     /// <summary>現在在做什麼（測試用）</summary>
     public Act CurrentAct => walking ? Act.Pass : stops != null && stops.Length > 0 ? stops[index].act : Act.Stand;
@@ -64,7 +80,7 @@ public class NpcRoutine : MonoBehaviour
     public float SitWeight => sitW;
 
     int index;
-    float timer, walkDone, walkLen, sitW, actW, insideT, crouchW, hopW, legSpeed;
+    float timer, walkDone, walkLen, sitW, actW, insideT, crouchW, hopW, readW, fanW, legSpeed;
     Vector3 modelRest;
     bool modelRestSet;
     bool walking, interrupted, hidden;
@@ -75,6 +91,7 @@ public class NpcRoutine : MonoBehaviour
     float seed;
 
     Transform hips, spine, head, lUp, lLow, lFoot, rUp, rLow, rFoot, lArm, lFore, lHand, rArm, rFore, rHand;
+    Transform lMiddle, rMiddle, lThumb, rThumb; // 手指根部：算手掌中心、手掌朝哪
     bool bonesFound;
 
     static readonly int SpeedId = Animator.StringToHash("Speed");
@@ -100,24 +117,41 @@ public class NpcRoutine : MonoBehaviour
         float dt = Time.deltaTime;
         bool talking = npc != null && npc.InConversation;
         bool near = false;
-        if (player != null && !hidden)
+        bool atDoor = doorPhase != DoorPhase.None; // 正在開門、上下台階：不停下來看玩家
+        if (player != null && !hidden && !atDoor)
         {
             Vector3 d = player.position - transform.position;
             d.y = 0f;
             near = !ignorePlayer && d.magnitude < (interrupted ? resumeRadius : noticeRadius);
             if (near && !talking && d.sqrMagnitude > 0.01f) Face(d, 220f);
         }
-        interrupted = (near || (talking && !ignorePlayer)) && !hidden;
+        interrupted = (near || (talking && !ignorePlayer)) && !hidden && !atDoor;
 
         var stop = stops[index];
         float speed = 0f;
-        float wantSit = 0f, wantAct = 0f, wantCrouch = 0f, wantHop = 0f;
+        float wantSit = 0f, wantAct = 0f, wantCrouch = 0f, wantHop = 0f, wantRead = 0f;
 
-        if (hidden)
+        if (atDoor)
         {
-            // 在屋裡：時間到了才出來
+            speed = UpdateDoor(stop, dt);
+        }
+        else if (hidden)
+        {
+            // 在屋裡：時間到了才出來（有門的先拉開門，門開了才走出來）
             insideT -= dt;
-            if (insideT <= 0f) SetHidden(false);
+            if (insideT <= 0f)
+            {
+                if (stop.act == Act.Inside && stop.door != null && stop.door.inside != null)
+                {
+                    // 有門：人出現在門檻後面（屋裡）、朝外，伸手拉開門才走出來
+                    Vector3 o = stop.door.outside != null ? stop.door.outside.position : stop.position;
+                    Vector3 inP = stop.door.inside.position;
+                    transform.SetPositionAndRotation(Inner(inP, o), Quaternion.LookRotation(Flat(o - inP).normalized));
+                    SetHidden(false, false);
+                    BeginDoor(DoorPhase.OpenOut);
+                }
+                else SetHidden(false);
+            }
         }
         else if (interrupted)
         {
@@ -136,7 +170,12 @@ public class NpcRoutine : MonoBehaviour
             {
                 walking = false;
                 timer = stop.duration;
-                if (stop.act == Act.Inside) { SetHidden(true); insideT = stop.duration; }
+                if (stop.act == Act.Inside)
+                {
+                    // 有門：先停在門口把門拉開（UpdateDoor 接著踏上台階進去）；沒有門就直接進屋
+                    if (stop.door != null) BeginDoor(DoorPhase.UpIn);
+                    else { SetHidden(true); insideT = stop.duration; }
+                }
             }
         }
         else
@@ -145,15 +184,38 @@ public class NpcRoutine : MonoBehaviour
             if (stop.act != Act.Pass) Face(Quaternion.Euler(0f, stop.yaw, 0f) * Vector3.forward, 160f);
             if (stop.act == Act.Sit) wantSit = 1f;
             else if (stop.act == Act.Hammer || stop.act == Act.Tend || stop.act == Act.Wipe) wantAct = 1f;
+            else if (stop.act == Act.Grind) { wantAct = 1f; if (stop.seatY > 0f) wantSit = 1f; }
             else if (stop.act == Act.Crouch) wantCrouch = 1f;
             else if (stop.act == Act.Hop) wantHop = 1f;
+            else if (stop.act == Act.Read) { wantRead = 1f; if (stop.seatY > 0f) wantSit = 1f; }
             timer -= dt;
-            // 坐著的要先站起來才走
-            if (timer <= 0f && sitW <= 0.02f && actW <= 0.05f && crouchW <= 0.05f && hopW <= 0.05f) StartWalk();
-            else if (timer <= 0f) { wantSit = 0f; wantAct = 0f; wantCrouch = 0f; wantHop = 0f; }
+            // 坐著的要先站起來才走（看書的先把書收起來）
+            if (timer <= 0f && sitW <= 0.02f && actW <= 0.05f && crouchW <= 0.05f && hopW <= 0.05f && readW <= 0.05f) StartWalk();
+            else if (timer <= 0f)
+            {
+                wantAct = 0f; wantCrouch = 0f; wantHop = 0f; wantRead = 0f;
+                if (readW <= 0.3f && actW <= 0.3f) wantSit = 0f;
+            }
         }
 
         sitW = Mathf.MoveTowards(sitW, wantSit, dt * 2.2f);
+        readW = Mathf.MoveTowards(readW, wantRead, dt * 2f);
+        if (fan != null)
+        {
+            fanW = Mathf.MoveTowards(fanW, readW < 0.05f && actW < 0.05f && !hidden && doorPhase == DoorPhase.None ? 1f : 0f, dt * 4f); // 拉門時先把扇子收起來
+            bool showFan = fanW > 0.35f && !hidden;
+            if (fan.gameObject.activeSelf != showFan) fan.gameObject.SetActive(showFan);
+        }
+        if (tool != null)
+        {
+            bool show = actW > 0.25f && !hidden && !walking && stops[index].act == Act.Grind;
+            if (tool.gameObject.activeSelf != show) tool.gameObject.SetActive(show);
+        }
+        if (book != null)
+        {
+            bool show = readW > 0.25f && !hidden;
+            if (book.gameObject.activeSelf != show) book.gameObject.SetActive(show);
+        }
         actW = Mathf.MoveTowards(actW, wantAct, dt * 3f);
         crouchW = Mathf.MoveTowards(crouchW, wantCrouch, dt * 3f);
         hopW = Mathf.MoveTowards(hopW, wantHop, dt * 4f);
@@ -181,14 +243,234 @@ public class NpcRoutine : MonoBehaviour
         if (walkLen < 0.05f) { walking = false; timer = stops[index].duration; }
     }
 
-    void SetHidden(bool hide)
+    void SetHidden(bool hide, bool sound = true)
     {
         hidden = hide;
         foreach (var r in renderers) if (r != null) r.enabled = !hide;
         if (npc != null) npc.enabled = !hide; // 在屋裡的時候不能對話
         foreach (var c in GetComponents<Collider>()) c.enabled = !hide;
-        if (!hide) { timer = 0f; GameAudio.Play("SFX/RPG/doorOpen_1", transform.position, 0.5f, 1.1f, 0.05f, 1f, 20f); }
+        if (!hide) timer = 0f;
+        if (!sound) return;
+        if (!hide) GameAudio.Play("SFX/RPG/doorOpen_1", transform.position, 0.5f, 1.1f, 0.05f, 1f, 20f);
         else GameAudio.Play("SFX/RPG/doorClose_2", transform.position, 0.5f, 1.1f, 0.05f, 1f, 20f);
+    }
+
+    // ---------------- 開門進屋 / 出屋 ----------------
+
+    // 進屋：UpIn 踏上台階到門前 → OpenIn 伸手拉開門 → StepIn 跨過門檻 → CloseIn 轉身、伸手把門拉上 → 人進屋（消失）
+    // 出屋：OpenOut 在門檻後面伸手拉開門 → StepOut 跨出門檻到門前 → CloseOut 轉身、伸手把門拉上 → DownOut 走下台階
+    enum DoorPhase { None, UpIn, OpenIn, StepIn, CloseIn, OpenOut, StepOut, CloseOut, DownOut }
+    DoorPhase doorPhase;
+    float doorT, handT;
+    Vector3 doorFrom;
+    // 拉門的手：0 = 沒拉，1 = 手放在門板的引手上；doorHandDoor 是現在拉的那扇門
+    float doorHandW;
+    HouseEntryDoor doorHandDoor;
+    bool doorHandStarted;
+
+    /// <summary>現在在門口開門、上下台階（測試用）</summary>
+    public bool AtDoor => doorPhase != DoorPhase.None;
+    public bool Hidden => hidden;
+    /// <summary>拉門的手放在門上多少（測試用）</summary>
+    public float DoorHandWeight => doorHandW;
+    public string DoorPhaseName => doorPhase.ToString();
+
+    void BeginDoor(DoorPhase phase)
+    {
+        doorPhase = phase;
+        doorT = 0f;
+        handT = 0f;
+        doorHandStarted = false;
+        doorFrom = transform.position;
+    }
+
+    /// <summary>屋裡、門檻後面 0.3 m（地板的高度）：在這裡轉身關門，門板滑回來不會碰到身體</summary>
+    static Vector3 Inner(Vector3 inP, Vector3 outP) => inP - Flat(outP - inP).normalized * 0.3f;
+
+    /// <summary>門前（門檻外約 0.4 m）：有緣側就站在緣側上，沒有就站在地上</summary>
+    Vector3 Porch(HouseEntryDoor door, Vector3 inP, Vector3 outP)
+    {
+        Vector3 outward = Flat(outP - inP).normalized;
+        Vector3 p = inP + outward * 0.55f;
+        float y = outP.y;
+        int n = Physics.RaycastNonAlloc(new Vector3(p.x, inP.y + 0.4f, p.z), Vector3.down, sitHits, inP.y + 0.4f - outP.y + 0.3f, ~0, QueryTriggerInteraction.Ignore);
+        float best = float.NegativeInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            var h = sitHits[i];
+            if (h.collider.transform.IsChildOf(transform)) continue;
+            if (h.point.y > best) best = h.point.y;
+        }
+        if (best > float.NegativeInfinity) y = Mathf.Clamp(best, outP.y, inP.y);
+        p.y = y;
+        return p;
+    }
+
+    /// <summary>
+    /// 伸手拉門：先轉向門（關門時要轉身）→ 兩手伸到兩片門板的引手上 → 門開始滑、手跟著門板推開 / 拉上 →
+    /// 門滑到手搆不到（開門）或關好了（關門）手放下來。回傳 true = 做完了。
+    /// </summary>
+    bool PullDoor(HouseEntryDoor door, Vector3 toDoor, bool open, float dt)
+    {
+        doorHandDoor = door;
+        Face(toDoor, 330f);
+        Vector3 f = transform.forward;
+        if (!doorHandStarted && Vector3.Angle(Flat(f), Flat(toDoor)) > 12f) { doorHandW = Mathf.MoveTowards(doorHandW, 0f, dt * 4f); return false; }
+        handT += dt;
+        const float reach = 0.35f;
+        if (!doorHandStarted)
+        {
+            doorHandW = Mathf.SmoothStep(0f, 1f, handT / reach);
+            if (handT >= reach)
+            {
+                doorHandStarted = true;
+                if (open) door.Open(); else door.Close();
+            }
+            return false;
+        }
+        if (open)
+        {
+            // 推到一半多手就搆不到了，手放下來、門自己滑到底
+            doorHandW = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 0.95f, door.Progress));
+            return door.IsOpen && doorHandW <= 0.001f;
+        }
+        // 關門：門板滑回來碰到手、一起拉到關好；關好了手才放下
+        if (!door.IsClosed) { doorHandW = 1f; return false; }
+        doorHandW = Mathf.MoveTowards(doorHandW, 0f, dt * 4f);
+        return doorHandW <= 0.001f;
+    }
+
+    /// <summary>
+    /// 進屋：踏上台階到門前 → 伸手拉開門 → 跨過門檻 → 轉身把門拉上 → 人進屋（消失）。
+    /// 出屋：人出現在門檻後面、伸手拉開門 → 跨出來 → 轉身把門拉上 → 走下台階。回傳這一幀走路的速度（Animator 用）。
+    /// </summary>
+    float UpdateDoor(Stop stop, float dt)
+    {
+        var door = stop.door;
+        if (door == null || door.inside == null) { doorPhase = DoorPhase.None; doorHandW = 0f; if (hidden) SetHidden(false); return 0f; }
+        Vector3 outP = door.outside != null ? door.outside.position : stop.position;
+        Vector3 inP = door.inside.position;
+        Vector3 inward = inP - outP;
+        inward.y = 0f;
+        Vector3 porch = Porch(door, inP, outP);
+        float stepSpeed = walkSpeed * 0.75f;
+        switch (doorPhase)
+        {
+            case DoorPhase.UpIn:
+            {
+                doorHandW = 0f;
+                doorT += stepSpeed * dt / Mathf.Max(0.25f, Flat(porch - doorFrom).magnitude);
+                transform.position = StepPath(doorFrom, porch, doorT);
+                Face(inward, 300f);
+                if (doorT >= 1f) BeginDoor(DoorPhase.OpenIn);
+                return doorT < 1f ? stepSpeed : 0f;
+            }
+            case DoorPhase.OpenIn:
+                if (PullDoor(door, inward, true, dt)) BeginDoor(DoorPhase.StepIn);
+                return 0f;
+            case DoorPhase.StepIn:
+            {
+                Vector3 inner = Inner(inP, outP);
+                doorT += stepSpeed * dt / Mathf.Max(0.3f, Flat(inner - doorFrom).magnitude);
+                transform.position = StepPath(doorFrom, inner, doorT);
+                Face(inward, 300f);
+                if (doorT >= 1f) BeginDoor(DoorPhase.CloseIn);
+                return stepSpeed;
+            }
+            case DoorPhase.CloseIn:
+                if (PullDoor(door, -inward, false, dt))
+                {
+                    SetHidden(true, false);
+                    insideT = stop.duration;
+                    doorPhase = DoorPhase.None;
+                }
+                return 0f;
+            case DoorPhase.OpenOut:
+                if (PullDoor(door, -inward, true, dt)) BeginDoor(DoorPhase.StepOut);
+                return 0f;
+            case DoorPhase.StepOut:
+            {
+                doorT += stepSpeed * dt / Mathf.Max(0.3f, Flat(porch - doorFrom).magnitude);
+                transform.position = StepPath(doorFrom, porch, doorT);
+                Face(-inward, 300f);
+                if (doorT >= 1f) BeginDoor(DoorPhase.CloseOut);
+                return stepSpeed;
+            }
+            case DoorPhase.CloseOut:
+                if (PullDoor(door, inward, false, dt)) BeginDoor(DoorPhase.DownOut);
+                return 0f;
+            case DoorPhase.DownOut:
+            {
+                doorHandW = 0f;
+                doorT += stepSpeed * dt / Mathf.Max(0.25f, Flat(outP - doorFrom).magnitude);
+                transform.position = StepPath(doorFrom, outP, doorT);
+                Face(-inward, 300f);
+                if (doorT >= 1f)
+                {
+                    doorPhase = DoorPhase.None;
+                    timer = 0f; // 接著走去下一站
+                }
+                return stepSpeed;
+            }
+        }
+        return 0f;
+    }
+
+    /// <summary>
+    /// 拉門的手（LateUpdate）：兩手各放在一片門板的引手上（左邊那片用左手），身體微微前傾；手肘往外下方彎。
+    /// 手掌朝著門板。門板滑遠了手搆不到就伸直（IK 只伸到手臂的長度）。
+    /// </summary>
+    void PoseDoorHands(float w, Vector3 up, Vector3 fwd, Vector3 side, float s)
+    {
+        var door = doorHandDoor;
+        if (door == null || door.panels == null) return;
+        float e = Mathf.SmoothStep(0f, 1f, w);
+        if (spine != null) spine.rotation = Quaternion.AngleAxis(7f * e, side) * spine.rotation;
+        float handY = transform.position.y + 1.02f * s;
+        for (int i = 0; i < door.panels.Length && i < 2; i++)
+        {
+            Vector3 grip = door.Grip(i, handY, transform.position);
+            bool left = Vector3.Dot(grip - transform.position, side) < 0f;
+            if (left && injuredLeftArm) continue; // 左手受傷：只用右手拉
+            Transform a = left ? lArm : rArm, b = left ? lFore : rFore, c = left ? lHand : rHand;
+            if (a == null || b == null || c == null) continue;
+            Vector3 pole = a.position - up * 0.45f * s + side * (left ? -0.4f : 0.4f) * s - fwd * 0.15f * s;
+            // 手掌中心放在引手上：手腕的目標往回退「手腕到手掌中心」那一段
+            Vector3 palmOff = Palm(c, left ? lMiddle : rMiddle, b, s) - c.position;
+            ReachIK(a, b, c, grip - palmOff, pole, e);
+            TurnPalm(c, left ? lMiddle : rMiddle, left ? lThumb : rThumb, left, (grip - a.position).normalized, e);
+        }
+    }
+
+    /// <summary>兩節骨頭的 IK（肩 → 手肘 → 手腕）：手伸到 target（搆不到就伸直指著它），手肘往 pole 那邊彎</summary>
+    static void ReachIK(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole, float w)
+    {
+        if (upper == null || lower == null || end == null || w <= 0.001f) return;
+        float l1 = Vector3.Distance(upper.position, lower.position), l2 = Vector3.Distance(lower.position, end.position);
+        if (l1 < 1e-4f || l2 < 1e-4f) return;
+        Vector3 root = upper.position, to = target - root;
+        if (to.sqrMagnitude < 1e-6f) return;
+        float d = Mathf.Clamp(to.magnitude, Mathf.Abs(l1 - l2) + 0.01f, (l1 + l2) * 0.999f);
+        Vector3 dir = to.normalized;
+        Vector3 bend = Vector3.ProjectOnPlane(pole - root, dir);
+        if (bend.sqrMagnitude < 1e-6f) bend = Vector3.ProjectOnPlane(lower.position - root, dir);
+        bend.Normalize();
+        float cos = Mathf.Clamp((l1 * l1 + d * d - l2 * l2) / (2f * l1 * d), -1f, 1f);
+        Vector3 elbow = root + dir * (l1 * cos) + bend * (l1 * Mathf.Sqrt(1f - cos * cos));
+        Aim(upper, lower, elbow - root, w);
+        Aim(lower, end, root + dir * d - lower.position, w);
+    }
+
+    static Vector3 Flat(Vector3 v) => new Vector3(v.x, 0f, v.z);
+
+    /// <summary>上下台階的路線：水平等速走過去，高度分兩段（先踩上 / 下第一階到一半高，再踩上 / 下第二階）</summary>
+    static Vector3 StepPath(Vector3 a, Vector3 b, float t)
+    {
+        t = Mathf.Clamp01(t);
+        Vector3 p = Vector3.Lerp(a, b, t);
+        float k = t < 0.45f ? 0.5f * Mathf.SmoothStep(0f, 1f, t / 0.45f) : 0.5f + 0.5f * Mathf.SmoothStep(0f, 1f, (t - 0.45f) / 0.55f);
+        p.y = a.y + (b.y - a.y) * k;
+        return p;
     }
 
     void Face(Vector3 dir, float degPerSec)
@@ -212,6 +494,8 @@ public class NpcRoutine : MonoBehaviour
         rUp = B(HumanBodyBones.RightUpperLeg); rLow = B(HumanBodyBones.RightLowerLeg); rFoot = B(HumanBodyBones.RightFoot);
         lArm = B(HumanBodyBones.LeftUpperArm); lFore = B(HumanBodyBones.LeftLowerArm); lHand = B(HumanBodyBones.LeftHand);
         rArm = B(HumanBodyBones.RightUpperArm); rFore = B(HumanBodyBones.RightLowerArm); rHand = B(HumanBodyBones.RightHand);
+        lMiddle = B(HumanBodyBones.LeftMiddleProximal); rMiddle = B(HumanBodyBones.RightMiddleProximal);
+        lThumb = B(HumanBodyBones.LeftThumbProximal); rThumb = B(HumanBodyBones.RightThumbProximal);
     }
 
     void LateUpdate()
@@ -230,18 +514,111 @@ public class NpcRoutine : MonoBehaviour
         if (sitW > 0.001f) PoseSit(stops[index].seatY, sitW, up, fwd, side, s);
         if (actW > 0.001f) PoseWork(stops[index].act, actW, time, up, fwd, side, s);
         if (crouchW > 0.001f) PoseCrouch(crouchW, time, up, fwd, side, s);
+        if (readW > 0.001f) PoseRead(readW, time, up, fwd, side, s);
         PoseHop(hopW, time, up, fwd, side, s);
+        if (fan != null && fanW > 0.001f) PoseFan(fanW, time, up, fwd, side, s);
+        if (doorHandW > 0.001f) PoseDoorHands(doorHandW, up, fwd, side, s);
+        if (injuredLeftArm) PoseInjuredArm(up, fwd, side, s);
     }
+
+    /// <summary>
+    /// 受傷的左手：整隻手臂無力地垂在身體旁邊（稍微離開身體、手肘微彎），走路、做事都不會擺；最後才擺，蓋掉所有動作。
+    /// 跟著胸口的方向（身體前傾、扭腰時手跟著）。垂著跟模型原本的姿勢很接近，衣服不會被拉走。
+    /// </summary>
+    void PoseInjuredArm(Vector3 up, Vector3 fwd, Vector3 side, float s)
+    {
+        if (lArm == null || lFore == null || lHand == null) return;
+        Vector3 bodyUp = spine != null ? spine.TransformDirection(Vector3.up) : up;
+        if (Vector3.Dot(bodyUp, up) < 0.3f) bodyUp = up;
+        Vector3 bodyFwd = Vector3.ProjectOnPlane(fwd, bodyUp).normalized;
+        Vector3 bodySide = Vector3.Cross(bodyUp, bodyFwd); // 身體的右邊
+        Aim(lArm, lFore, -bodyUp * 0.97f + bodyFwd * 0.06f - bodySide * 0.16f, 1f);
+        Aim(lFore, lHand, -bodyUp * 0.93f + bodyFwd * 0.22f - bodySide * 0.06f, 1f);
+    }
+
+    /// <summary>手掌中心：手腕往中指根部 60%（沒有手指骨頭就沿前臂方向往前 5 cm）</summary>
+    Vector3 Palm(Transform hand, Transform middle, Transform fore, float s)
+    {
+        if (middle != null) return Vector3.Lerp(hand.position, middle.position, 0.6f);
+        Vector3 d = fore != null ? (hand.position - fore.position).normalized : Vector3.zero;
+        return hand.position + d * 0.05f * s;
+    }
+
+    /// <summary>
+    /// 手掌轉向 want（繞手指的方向轉）：手掌法線 = 中指方向 × 拇指方向（左手反過來），只轉手腕不動手臂。
+    /// </summary>
+    static void TurnPalm(Transform hand, Transform middle, Transform thumb, bool left, Vector3 want, float w)
+    {
+        if (hand == null || middle == null || thumb == null || w <= 0.001f) return;
+        Vector3 along = (middle.position - hand.position).normalized;
+        Vector3 toThumb = thumb.position - hand.position;
+        Vector3 normal = Vector3.Cross(along, toThumb).normalized * (left ? -1f : 1f);
+        Vector3 a = Vector3.ProjectOnPlane(normal, along), b = Vector3.ProjectOnPlane(want, along);
+        if (a.sqrMagnitude < 1e-6f || b.sqrMagnitude < 1e-6f) return;
+        float angle = Vector3.SignedAngle(a, b, along) * w;
+        hand.rotation = Quaternion.AngleAxis(angle, along) * hand.rotation;
+    }
+
+    /// <summary>拿扇子：右手前臂抬到胸前，扇子立在手上、扇面朝著自己，手腕慢慢左右搧</summary>
+    void PoseFan(float w, float time, Vector3 up, Vector3 fwd, Vector3 side, float s)
+    {
+        float e = Mathf.SmoothStep(0f, 1f, w);
+        Aim(rArm, rFore, -up * 0.85f + fwd * 0.3f + side * 0.2f, e);
+        Aim(rFore, rHand, up * 0.55f + fwd * 0.6f - side * 0.25f, e);
+        if (rHand == null || !fan.gameObject.activeSelf) return;
+        float wave = Mathf.Sin(time * 2.4f) * 22f;
+        Vector3 face = Quaternion.AngleAxis(wave, up) * (-fwd * 0.75f - side * 0.35f).normalized; // 扇面朝自己（往臉搧）
+        Vector3 fanUp = (up + side * 0.25f + fwd * 0.1f).normalized;
+        // 扇骨握在手掌裡：扇軸（扇子的原點）在手掌中心下面一點，扇子從虎口往上伸出去
+        Vector3 grip = Palm(rHand, rMiddle, rFore, s);
+        fan.SetPositionAndRotation(grip - fanUp * 0.03f * s, Quaternion.LookRotation(-face, fanUp));
+    }
+
+    /// <summary>看書：上臂垂在身側、前臂往前往內收到胸前，雙手捧著書；低頭看，大約每 7 秒右手翻一頁</summary>
+    void PoseRead(float w, float time, Vector3 up, Vector3 fwd, Vector3 side, float s)
+    {
+        float e = Mathf.SmoothStep(0f, 1f, w);
+        float page = Mathf.Repeat(time / 7f, 1f);
+        float flip = page > 0.9f ? Mathf.Sin((page - 0.9f) / 0.1f * Mathf.PI) : 0f; // 翻頁：右手往左上掀一下
+        if (spine != null) spine.rotation = Quaternion.AngleAxis(6f * e, side) * spine.rotation;
+        // 兩手分開托著書的兩邊（書約 28 cm 寬，兩個手掌相距約 20 cm）
+        Aim(lArm, lFore, -up * 0.9f + fwd * 0.32f - side * 0.16f, e);
+        Aim(rArm, rFore, -up * 0.9f + fwd * 0.32f + side * 0.16f, e);
+        Aim(lFore, lHand, fwd * 0.85f + up * 0.32f + side * 0.2f, e);
+        Aim(rFore, rHand, fwd * 0.85f + up * (0.32f + 0.25f * flip) - side * (0.2f + 0.4f * flip), e);
+        if (head != null) head.rotation = Quaternion.AngleAxis((24f + Mathf.Sin(time * 0.5f) * 3f) * e, side) * head.rotation;
+
+        if (book == null || lHand == null || rHand == null || !book.gameObject.activeSelf) return;
+        // 書放在兩隻手掌上：書的下面貼著兩個手掌中心，書頁朝著眼睛；兩隻手掌朝上托著書
+        Vector3 lp = Palm(lHand, lMiddle, lFore, s), rp = Palm(rHand, rMiddle, rFore, s);
+        Vector3 mid = (lp + rp) * 0.5f;
+        Vector3 eye = head != null ? head.position + fwd * 0.08f * s : mid + up * 0.4f * s - fwd * 0.3f * s;
+        Vector3 toEye = (eye - mid).normalized;
+        TurnPalm(lHand, lMiddle, lThumb, true, toEye, e);
+        TurnPalm(rHand, rMiddle, rThumb, false, toEye, e * (1f - flip));
+        lp = Palm(lHand, lMiddle, lFore, s);
+        if (flip < 0.01f) rp = Palm(rHand, rMiddle, rFore, s);
+        mid = (lp + rp) * 0.5f;
+        Vector3 top = Vector3.ProjectOnPlane(fwd, toEye);
+        if (top.sqrMagnitude < 1e-4f) top = up;
+        book.SetPositionAndRotation(mid + toEye * 0.03f, Quaternion.LookRotation(top.normalized, toEye));
+    }
+
+    // 腳的骨頭（腳踝）離腳底多高（× 縮放）：坐下時腳放回地上用。站著時量出來的不準（待機動畫會抬腳、站在台階邊），用固定值
+    const float AnkleHeight = 0.08f;
+    static readonly RaycastHit[] sitHits = new RaycastHit[8];
 
     void PoseSit(float seatY, float w, Vector3 up, Vector3 fwd, Vector3 side, float s)
     {
-        // 屁股降到坐面上，大腿往前平放、小腿往下，雙手放在大腿上
-        float drop = Mathf.Max(0f, hips.position.y - (seatY + 0.1f * s));
-        hips.position -= up * drop * w;
+        // 屁股坐在坐面正中間（這一站的位置就是坐面中心），稍微往前一點點；以前只往下降，骨盆在身體前面的人會坐到椅子外面
+        Vector3 seat = new Vector3(transform.position.x, seatY + 0.1f * s, transform.position.z) + fwd * 0.04f * s;
+        hips.position = Vector3.Lerp(hips.position, seat, w);
+        // 大腿往前平放
         Aim(lUp, lLow, fwd - side * 0.12f - up * 0.05f, w);
         Aim(rUp, rLow, fwd + side * 0.12f - up * 0.05f, w);
-        Aim(lLow, lFoot, -up + fwd * 0.3f, w);
-        Aim(rLow, rFoot, -up + fwd * 0.3f, w);
+        // 小腿往下、腳平踩在地上（膝蓋正下方稍微往前）；搆不到地面（坐在棧橋邊）就自然垂著
+        PlantFoot(lUp, lLow, lFoot, w, up, fwd, side, s);
+        PlantFoot(rUp, rLow, rFoot, w, up, fwd, side, s);
         Aim(lArm, lFore, -up * 0.85f + fwd * 0.35f - side * 0.08f, w);
         Aim(rArm, rFore, -up * 0.85f + fwd * 0.35f + side * 0.08f, w);
         Aim(lFore, lHand, fwd - up * 0.35f, w);
@@ -249,6 +626,51 @@ public class NpcRoutine : MonoBehaviour
     }
 
     /// <summary>蹲下：屁股降到膝蓋高度附近，膝蓋往前、小腿往後收，低頭看地上，右手往前下方伸</summary>
+    /// <summary>
+    /// 坐著時把腳放到地上：小腿長度固定，腳落在膝蓋前下方剛好踩到地面的地方。
+    /// 椅子比腿高（小腿伸直還踩不到地）：大腿往下斜一點讓膝蓋降下來；地面遠到怎樣都踩不到（坐在棧橋邊）就自然垂著。
+    /// </summary>
+    void PlantFoot(Transform upLeg, Transform low, Transform foot, float w, Vector3 up, Vector3 fwd, Vector3 side, float s)
+    {
+        if (upLeg == null || low == null || foot == null) return;
+        float shin = Vector3.Distance(low.position, foot.position);
+        float thigh = Vector3.Distance(upLeg.position, low.position);
+        Quaternion footRot = foot.rotation;
+        float ground = GroundBelow(low.position, shin * 1.8f);
+        float ankle = AnkleHeight * s;
+        float dh = low.position.y - (ground + ankle);
+        bool reachable = !float.IsNegativeInfinity(ground) && dh < shin + thigh * 0.5f;
+        if (reachable && dh > shin * 0.97f)
+        {
+            // 膝蓋要降多少才踩得到：大腿繞左右軸往下轉
+            float need = dh - shin * 0.97f;
+            float angle = Mathf.Asin(Mathf.Clamp(need / Mathf.Max(0.05f, thigh), 0f, 0.6f)) * Mathf.Rad2Deg;
+            upLeg.rotation = Quaternion.AngleAxis(angle * w, side) * upLeg.rotation;
+            ground = GroundBelow(low.position, shin * 1.8f);
+            if (float.IsNegativeInfinity(ground)) reachable = false;
+            else dh = low.position.y - (ground + ankle);
+        }
+        Vector3 dir;
+        if (!reachable) dir = -up + fwd * 0.12f; // 搆不到：垂著
+        else
+        {
+            float dh2 = Mathf.Clamp(dh, 0.05f * s, shin);
+            float forward = Mathf.Sqrt(Mathf.Max(0f, shin * shin - dh2 * dh2));
+            dir = -up * dh2 + fwd * forward;
+        }
+        Aim(low, foot, dir, w);
+        foot.rotation = Quaternion.Slerp(foot.rotation, footRot, 0.5f); // 腳掌大致維持原本的角度
+    }
+
+    float GroundBelow(Vector3 from, float range)
+    {
+        float ground = float.NegativeInfinity;
+        int n = Physics.RaycastNonAlloc(from, Vector3.down, sitHits, range, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+            if (!sitHits[i].collider.transform.IsChildOf(transform)) ground = Mathf.Max(ground, sitHits[i].point.y);
+        return ground;
+    }
+
     void PoseCrouch(float w, float time, Vector3 up, Vector3 fwd, Vector3 side, float s)
     {
         float rest = hips.position.y - transform.position.y;
@@ -320,6 +742,21 @@ public class NpcRoutine : MonoBehaviour
                 float o = Mathf.Sin(time * 2f) * 0.18f;
                 Aim(rArm, rFore, fwd * 0.7f - up * 0.6f + side * 0.2f + up * o, w);
                 Aim(rFore, rHand, fwd - up * 0.2f + up * o, w);
+                break;
+            }
+            case Act.Grind:
+            {
+                // 磨藥：身體往前傾、低頭看藥缽；左手扶著藥缽，右手拿藥杵在缽裡畫圈
+                if (spine != null) spine.rotation = Quaternion.AngleAxis(16f * w, side) * spine.rotation;
+                if (head != null) head.rotation = Quaternion.AngleAxis(22f * w, side) * head.rotation;
+                float a = time * 3.4f;
+                Vector3 circle = (side * Mathf.Cos(a) + fwd * Mathf.Sin(a)) * 0.1f;
+                Aim(lArm, lFore, -up * 0.75f + fwd * 0.5f - side * 0.08f, w);
+                Aim(lFore, lHand, fwd * 0.75f - up * 0.35f + side * 0.4f, w);
+                Aim(rArm, rFore, -up * 0.7f + fwd * 0.55f + side * 0.1f + circle * 0.6f, w);
+                Aim(rFore, rHand, fwd * 0.7f - up * 0.55f - side * 0.3f + circle, w);
+                if (tool != null && rHand != null && tool.gameObject.activeSelf)
+                    tool.SetPositionAndRotation(rHand.position + fwd * 0.03f * s, Quaternion.FromToRotation(Vector3.up, (-up + fwd * 0.15f).normalized));
                 break;
             }
             case Act.Wipe:

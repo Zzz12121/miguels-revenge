@@ -202,6 +202,9 @@ public class GameManager : MonoBehaviour
         ReloadLevel();
     }
 
+    /// <summary>命補滿（不換場景）。漁村 → 道場這條主線倒下時用，不會 Game Over（VillageReturn）</summary>
+    public void RestoreLives() => Lives = maxLives;
+
     public void GoToMainMenu()
     {
         if (IsLoading) return;

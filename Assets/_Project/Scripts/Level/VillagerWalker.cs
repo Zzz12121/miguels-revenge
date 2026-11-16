@@ -29,6 +29,10 @@ public class VillagerWalker : MonoBehaviour
     public Animator animator;
     [Tooltip("走路動畫原本的前進速度（m/s，這個村民縮放 1 時）：用來調播放速度，腳步才不會滑")]
     public float animationWalkSpeed = 1.72f;
+    [Tooltip("走路速度超過這個就播跑步（Animator 的 Speed = 2，例如跑腿的少年）")]
+    public float runFrom = 2f;
+    [Tooltip("跑步動畫原本的前進速度（m/s，這個村民縮放 1 時）")]
+    public float animationRunSpeed = 3.4f;
 
     static readonly int SpeedId = Animator.StringToHash("Speed");
     static readonly int WalkRateId = Animator.StringToHash("WalkRate");
@@ -131,8 +135,9 @@ public class VillagerWalker : MonoBehaviour
         if (moved) phase += Time.deltaTime * speed / StrideLength * Mathf.PI * 2f;
         if (animator != null)
         {
-            float natural = animationWalkSpeed * Mathf.Max(0.01f, transform.lossyScale.y);
-            animator.SetFloat(SpeedId, walkBlend);
+            bool run = speed >= runFrom;
+            float natural = (run ? animationRunSpeed : animationWalkSpeed) * Mathf.Max(0.01f, transform.lossyScale.y);
+            animator.SetFloat(SpeedId, walkBlend * (run ? 2f : 1f));
             animator.SetFloat(WalkRateId, Mathf.Lerp(1f, speed / natural, walkBlend));
         }
         else ApplyPose();

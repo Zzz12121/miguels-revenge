@@ -8,7 +8,8 @@ using UnityEngine;
 /// 3. 習武場完成後，僧侶從祠堂後門走進習武場；跟他對話開始過招（MonkSparring），來回 5 回合
 /// 4. 看完祠堂地上的四幅古畫和一首詩（順序不限，也可以先看；混在裡面的村民的書不算）
 /// 5. 全部完成後跟僧侶對話，選擇開門，村長家後院的門就會變成傳送門
-/// 進度只存在這個場景裡，重新載入場景會從頭開始。
+/// 進度只存在這個場景裡，重新載入場景會從頭開始；只有「大門已經解鎖」會跨場景記住（VillageProgress），
+/// 從道場被抬回村子時大門直接是開的。
 /// </summary>
 public class ShrineTrial : MonoBehaviour
 {
@@ -64,6 +65,14 @@ public class ShrineTrial : MonoBehaviour
             elder.choiceProvider = ElderChoice;
         }
         if (course != null) course.markersAllowed = () => Accepted;
+
+        // 之前已經打開過後院的大門（例如在道場倒下、被抬回村子）：不用重新試煉，門直接是解鎖的
+        if (VillageProgress.GateUnlocked && finalGate != null)
+        {
+            Accepted = PortalOpened = true;
+            metMaster = metElder = true;
+            finalGate.Unlock(true);
+        }
 
         // 隱形牆放在 Ignore Raycast 層。鏡頭退到圍牆外時，拉索的瞄準線不能先打到牆，否則會鎖到空氣
         var tether = player != null ? player.GetComponent<EnergyTetherSkill>() : null;
@@ -140,20 +149,20 @@ public class ShrineTrial : MonoBehaviour
     static readonly string[] ElderStory =
     {
         "四十年前，村子外海住著一條海龍。每到秋天就掀起大浪，出海的船一艘接一艘沉下去，沒有人敢再出港。",
-        "那年來了一位雲遊的道人，叫做玄清。他一個人站上浪頭，跟海龍鬥了一整夜，一劍把牠逼回了深海。",
+        "那年來了一位雲遊的道人，叫做玄清。他一個人站上浪頭，跟海龍鬥了一整夜，一劍把牠逼回了深海。", "@一個人鬥了一整夜……好厲害的人。",
         "村人擺酒謝他，他喝得大醉，笑說這裡的魚好吃、酒也好喝，乾脆在此終老。從那以後，村子過了好多年太平日子。",
         "直到有一夜，後山的地裂開了，一條百足巨蟲破土而出。道人跟牠鬥到天快亮，終究……還是倒下了。",
-        "更怪的是，天還沒亮，一群穿黑衣的人趁亂闖進村子，抬走了道人的遺體，往東邊去了。從此再也沒有人見過他們。",
+        "更怪的是，天還沒亮，一群穿黑衣的人趁亂闖進村子，抬走了道人的遺體，往東邊去了。從此再也沒有人見過他們。", "@黑衣人……他們是什麼人？",
         "我們在山上蓋了祠堂供奉道人。他留下的四幅畫和一首詩，就收在祠堂裡；想知道得更清楚，就上去看看吧。",
     };
 
     /// <summary>玩家在村裡能做的事</summary>
     string[] ElderTodo() => new[]
     {
-        "你在村裡能做的事不少：主街上的行商收草藥，後山竹林石階兩旁長著草藥，靠近就能採，拿去跟他換藥水。",
+        "你在村裡能做的事不少：後山竹林石階兩旁長著草藥，靠近就能採，拿去給藥師煎成藥水。他的藥鋪在主街東邊第一排，門口擺著藥缽。",
         "沿著主街往北，穿過鳥居、爬上石階，就是山上的祠堂。守祠的師父會帶你進後山的習武場——用拉索盪過深溝，跟會動的木樁人偶過招。",
         "石階上那位僧侶，身手可不簡單。等你把習武場走完，他自然會來試試你。",
-        "還有我這宅院後面那扇老門，從我爺爺那一代就鎖著了，鑰匙在僧侶身上。聽說門的另一邊……就是那群黑衣人的道場。",
+        "還有我這宅院後面那扇老門，從我爺爺那一代就鎖著了，鑰匙在僧侶身上。聽說門的另一邊……就是那群黑衣人的道場。", "@我會去看看的。",
     };
 
     string[] ElderLines()
@@ -170,14 +179,14 @@ public class ShrineTrial : MonoBehaviour
         }
         // 之後：依進度告訴玩家下一步
         if (PortalOpened)
-            return new[] { "後院的門鎖已經開了。門很重，用力推開它。", "……替我們把道人帶回家吧。" };
+            return new[] { "後院的門鎖已經開了。門很重，用力推開它。", "……替我們把道人帶回家吧。", "@我答應你。" };
         if (AllDone)
             return new[] { "畫看完了、僧侶也認可你了？那就去習武場找他，請他打開我家後院的那扇門。" };
         if (!Accepted)
             return new[]
             {
                 "還沒上山的話，就沿著主街往北，穿過鳥居爬上石階，去祠堂找守祠的師父。",
-                "路上累了，就採點草藥去跟行商換藥水。",
+                "路上累了，就採點草藥去找藥師換藥水。",
             };
         if (!TrainingDone)
         {
@@ -214,7 +223,7 @@ public class ShrineTrial : MonoBehaviour
             return new[]
             {
                 "這座祠堂供奉的是玄清道人。地上散著他留下的四幅古畫和一首詩，混在村民寄放的書裡，你可以撿起來看看。",
-                "我身後的門通往後山的習武場，是道人當年親手開闢的：東邊有一道深溝，只能靠拉索抓著懸空的木條盪過去；西邊的木樁人偶，打一下就會活過來跟你過招。",
+                "我身後的門通往後山的習武場，是道人當年親手開闢的：東邊有一道深溝，只能靠拉索抓著懸空的木條盪過去；西邊的木樁人偶，打一下就會活過來跟你過招。", "@會動的木頭人？聽起來很有意思。",
             };
         }
         if (AllDone)
@@ -257,21 +266,21 @@ public class ShrineTrial : MonoBehaviour
         if (monkSpar != null && monkSpar.Appeared && !monkSpar.Done)
             return new[]
             {
-                "木人、橫木都難不倒你。不過木頭人不會還手——讓貧僧親自試試你的身手。",
+                "木人、橫木都難不倒你。不過木頭人不會還手——讓貧僧親自試試你的身手。", "@請大師手下留情。",
                 "看到我抬手就舉盾或翻滾，等我出完招露出空檔再還手。沒有空檔就打過來，我可是會擋的。",
                 "還有，小心我的點穴：被點中了，可是會有一陣子動彈不得。",
             };
         if (monkSpar != null && monkSpar.Done && !ReadingDone)
             return new[]
             {
-                "好身手。不過光有身手還不夠，你得知道自己要面對的是什麼。",
+                "好身手。不過光有身手還不夠，你得知道自己要面對的是什麼。", "@我要面對的是什麼？",
                 $"祠堂地上的古畫和詩還有 {readings.Length - ReadingsDone} 份沒看，看完再來找我。",
             };
         if (AllDone)
             return new[]
             {
                 "身手過了貧僧這關，畫和詩也都看過了。你知道道人最後怎麼了吧。",
-                "那群黑衣人把道人的遺骨帶進了他們的道場。村長家後院有一扇老門通往那裡，鑰匙一直在我身上。",
+                "那群黑衣人把道人的遺骨帶進了他們的道場。村長家後院有一扇老門通往那裡，鑰匙一直在我身上。", "@那就請大師把門打開吧。",
             };
         if (!Accepted && ReadingsDone == 0)
             return new[]
@@ -318,10 +327,24 @@ public class ShrineTrial : MonoBehaviour
         if (GameUI.OverlayOpen) return;
         if (!Accepted && ReadingsDone == 0) return;
 
+        // GUI 的文字顏色是全域的：別的腳本改了沒改回來（文字整個變黑）也不受影響，畫完再還原
+        Color prevContent = GUI.contentColor, prevBackground = GUI.backgroundColor;
+        GUI.contentColor = Color.white;
+        GUI.backgroundColor = Color.white;
+        DrawProgress();
+        GUI.contentColor = prevContent;
+        GUI.backgroundColor = prevBackground;
+        GUI.color = Color.white;
+    }
+
+    void DrawProgress()
+    {
         // 小小的一塊：標題、每項一行、最下面一行提示
         titleStyle ??= new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold, fontSize = 14 };
         lineStyle ??= new GUIStyle(GameUI.Small) { fontSize = 13 };
         hintStyle ??= new GUIStyle(GameUI.Small) { fontSize = 12, wordWrap = true };
+        // 字的顏色一律白色，實際顏色用 GUI.color 控制（樣式被改過也拉回來）
+        titleStyle.normal.textColor = lineStyle.normal.textColor = hintStyle.normal.textColor = Color.white;
 
         var box = new Rect(16f, 150f, 230f, PortalOpened ? 50f : 132f);
         GameUI.Panel(box);

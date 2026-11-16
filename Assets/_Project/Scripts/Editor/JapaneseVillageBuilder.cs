@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -54,6 +55,8 @@ public static class JapaneseVillageBuilder
     const float ChiefX0 = 100f, ChiefX1 = 156f, ChiefZ0 = -19.3f, ChiefZ1 = 31.3f;
     const float ChiefAxisZ = 6f, ChiefHouseX = 133f, ChiefHouseScale = 0.85f;
     const float ChiefGateHalf = 3.3f;
+    // 東牆的牆面中線比圍牆線（ChiefX1）往外 0.56 m（Fence_400_01 放下去的位置）：後院大門的門板、擋板對齊牆面，才不會凹進去
+    const float ChiefGateOutset = 0.56f;
     const int HouseDepth = 12;
     // 村長家：隊友道場場景（DojoArena）的主殿，外觀和最終決戰的道場一致
     const string DojoHousePrefab = "Assets/_Project/Prefabs/Environment/FinalDojoArena/PF_MainDojo_Complete.prefab";
@@ -103,7 +106,24 @@ public static class JapaneseVillageBuilder
     const string BlacksmithModel = "Assets/_Project/Models/JapaneseVillage/Blacksmith/Blacksmith.fbx";
     const float BlacksmithHeight = 1.7f;
     // 老漁夫（坐在棧橋末端釣魚）、砍竹人：Tripo 生成、Mixamo 骨架
-    const float FishermanHeight = 1.66f, WoodcutterHeight = 1.72f, MerchantHeight = 1.68f, MasterHeight = 1.66f, ChildGirlHeight = 1.6f;
+    // 竹林裡的雙尾虎（TigerBeast）：石階西側的竹林空地，打跑了往竹林深處逃
+    static readonly Vector2 TigerLair = new Vector2(-24f, 84f);
+    static readonly Vector2 TigerFlee = new Vector2(-75f, 126f);
+    const string TigerModel = "Assets/_Project/Models/JapaneseVillage/Tiger/Tiger.fbx";
+    const float TigerLength = 3.64f; // 原本 2.6 m 再大 1.4 倍
+    const float FishermanHeight = 1.66f, WoodcutterHeight = 1.72f, MerchantHeight = 1.68f, MasterHeight = 1.66f, ChildGirlHeight = 1.6f, GrannyHeight = 1.55f, ErrandBoyHeight = 1.62f;
+    // 巡邏的村丁（Tripo 的武士模型）、女書生（坐在石階下的長椅看書）
+    const float GuardHeight = 1.76f, ScholarHeight = 1.62f;
+    // 藥師（Tripo 模型）：第一排房子主街東側第一間是他的藥鋪，門口擺著磨藥的桌子和煎藥爐；用草藥換藥水找他
+    const float ApothecaryHeight = 1.68f;
+    // 女書生的長椅：鳥居西南邊、北街和石階之間的空地（面向東邊的石階）
+    static readonly Vector2 ScholarBench = new Vector2(-6.8f, 50.6f);
+    // 箭（Tripo 模型）：做成 JV_Arrow（射出去的、搭在弦上的箭）
+    const string ArrowModel = "Assets/_Project/Models/JapaneseVillage/Arrow/Arrow.fbx";
+    // 長椅（Tripo 模型，沒有椅背）：茶屋、村長家櫻花樹下、女書生的長椅都用這個；坐面高 BenchSeatHeight
+    const string BenchModel = "Assets/_Project/Models/JapaneseVillage/Bench/Bench.fbx";
+    const float BenchSeatHeight = 0.48f;
+    const float ArrowLength = 0.94f;
 
     static HumanModel TripoLook(string name, float height, string label) => new HumanModel
     {
@@ -121,7 +141,13 @@ public static class JapaneseVillageBuilder
     static float SmithyZ => HouseRows[1];
     static float SmithyFrontZ => SmithyZ - HouseDepth * 0.5f;   // 房子轉 180 度朝南，正面在 -Z
     static GameObject knifePrefab, spearPrefab, bowPrefab;
-    static Vector3 teaHouseDoor;   // 茶屋（第二排主街東側第一間）正門口的地面位置：老闆娘進屋用
+    // 暫居地（米格爾暫住的老房子）：最北那排、主街西邊的第一間，可以走進去；倒下後在這裡醒來，桌上有戰鬥紀錄簿
+    const int ResidenceWidth = 12;
+    static float ResidenceX => -(HouseStartX + ResidenceWidth * 0.5f);
+    static float ResidenceZ => HouseRows[2];
+    static float ResidenceFrontZ => ResidenceZ - HouseDepth * 0.5f;
+    static Vector3 teaHouseDoor;
+    static Vector3 apothecaryDoor; // 藥鋪（第一排主街東側第一間）正門口的地面位置   // 茶屋（第二排主街東側第一間）正門口的地面位置：老闆娘進屋用
 
     static HumanModel WomanLook(string label) => new HumanModel
     {
@@ -206,6 +232,7 @@ public static class JapaneseVillageBuilder
         var npcs = new GameObject("NPCs").transform;
         PlaceNpcs(npcs);
         PlaceHerbs();
+        BuildTiger();
         BuildBounds();
         PlacePlayer();
 
@@ -213,6 +240,7 @@ public static class JapaneseVillageBuilder
         AssetDatabase.SaveAssets();
         EditorSceneManager.SaveScene(scene, ScenePath);
         EnsureInBuildSettings(FinalBattleScenePath);
+        EnsureInBuildSettings(ScenePath); // 在道場倒下時要把玩家抬回村子（VillageReturn）
         AssetDatabase.Refresh();
         Debug.Log($"[JapaneseVillage] 已建立場景：{ScenePath}（{footprints.Count} 棟房屋）。打開場景按 Play 就能走動。");
     }
@@ -725,6 +753,11 @@ public static class JapaneseVillageBuilder
                     BuildSmithy(rowRoot);
                     cursor = HouseStartX + SmithyWidth + overhang * 2f + 1.2f;
                 }
+                if (row == 2 && side < 0)
+                {
+                    BuildResidence(rowRoot);
+                    cursor = HouseStartX + ResidenceWidth + overhang * 2f + 1.2f;
+                }
                 while (true)
                 {
                     var type = types[rng.Next(types.Length)];
@@ -739,9 +772,10 @@ public static class JapaneseVillageBuilder
                     if (cursor + w > HouseRowHalfSpan) break;
 
                     float x = side * (cursor + w * 0.5f);
-                    bool firstEast = row == 1 && side > 0 && cursor < HouseStartX + 1.01f;
+                    bool firstEast = side > 0 && cursor < HouseStartX + 1.01f;
                     var door = PlaceHouse(rowRoot, type, new Vector3(x, Ground(x, rowZ), rowZ), rng, noren, jar, pile);
-                    if (firstEast) teaHouseDoor = door;
+                    if (firstEast && row == 1) { teaHouseDoor = door; teaHouseEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door); }
+                    if (firstEast && row == 0) { apothecaryDoor = door; apothecaryEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door); }
                     cursor += w + overhang * 2f + 1.2f + (float)rng.NextDouble() * 2f;
                 }
             }
@@ -751,12 +785,17 @@ public static class JapaneseVillageBuilder
     // ---------------------------------------------------------------- 鐵匠鋪
 
     /// <summary>靜態模型（弓）的匯入設定：不要骨架、不要模型自帶的材質和動畫；法線、金屬度貼圖的設定同人物</summary>
-    static void EnsurePropImport(string modelPath, string normalPath, string metallicPath)
+    static void EnsurePropImport(string modelPath, string normalPath, string metallicPath, ModelImporterAnimationType animationType = ModelImporterAnimationType.None)
     {
         var mi = (ModelImporter)AssetImporter.GetAtPath(modelPath);
         if (mi == null) throw new System.IO.FileNotFoundException($"[JapaneseVillage] 找不到模型 {modelPath}");
         bool dirty = false;
-        if (mi.animationType != ModelImporterAnimationType.None) { mi.animationType = ModelImporterAnimationType.None; dirty = true; }
+        if (mi.animationType != animationType)
+        {
+            mi.animationType = animationType;
+            if (animationType == ModelImporterAnimationType.Generic) mi.avatarSetup = ModelImporterAvatarSetup.NoAvatar;
+            dirty = true;
+        }
         if (mi.materialImportMode != ModelImporterMaterialImportMode.None) { mi.materialImportMode = ModelImporterMaterialImportMode.None; dirty = true; }
         if (mi.importAnimation) { mi.importAnimation = false; dirty = true; }
         if (dirty) mi.SaveAndReimport();
@@ -809,6 +848,282 @@ public static class JapaneseVillageBuilder
         }
     }
 
+    // Tripo 的道具組（一個模型裡擺了好幾樣東西）：第幾塊是什麼（StripMeshParts.Islands 的順序，三角形數由多到少）
+    const string ApoKitModel = "Assets/_Project/Models/JapaneseVillage/ApoTable/ApoTable.fbx";
+    const int ApoHerbTray = 0, ApoTable = 1, ApoDryTray = 2, ApoStove = 3, ApoCloth = 4, ApoPackage = 5, ApoBundle = 6, ApoMortar = 7, ApoPot = 8, ApoStool = 9, ApoGourd = 10, ApoStick = 11;
+    const string BooksKitModel = "Assets/_Project/Models/JapaneseVillage/Books/Books.fbx";
+    const int BookOpen = 0, BookClosedA = 1, BookClosedB = 2, BookScroll = 3;
+    const string FanModel = "Assets/_Project/Models/JapaneseVillage/Fan/Fan.fbx";
+    // 日式道具組（JpProps）：一捆竹子、米草包、竹籬笆、酒樽、刀架、包鐵角的木箱、陶甕、小石燈籠、兵器架、立招牌、木板屏風
+    const string JpPropsModel = "Assets/_Project/Models/JapaneseVillage/JpProps/JpProps.fbx";
+    const int JpBamboo = 0, JpBale = 1, JpFence = 2, JpSakeBarrel = 3, JpKatanaStand = 4, JpChest = 5, JpJar = 6, JpLantern = 7, JpWeaponRack = 8, JpSignBoard = 9, JpScreen = 10;
+    const string ParasolModel = "Assets/_Project/Models/JapaneseVillage/Parasol/Parasol.fbx";
+
+    /// <summary>
+    /// 放道具組裡的一樣東西（island = 第幾塊；-1 = 整個模型）：縮放 scale 倍，那一塊的底部中心（centered = 中心）放在 position。
+    /// 編輯器裡看到的是整組（StripMeshParts 遊戲開始時才只留下那一塊）。回傳 root（size = 那一塊縮放後的大小）。
+    /// </summary>
+    static GameObject PlaceKitPiece(string name, string model, string texName, int island, Transform parent, Vector3 position, float yaw, float scale,
+                                    out Vector3 size, bool collider = false, bool centered = false, bool shadows = true, bool alignLong = false)
+    {
+        string dir = model.Substring(0, model.LastIndexOf('/'));
+        EnsurePropImport(model, $"{dir}/T_JV_{texName}_Normal.png", $"{dir}/T_JV_{texName}_MetallicSmooth.png");
+        var mi = (ModelImporter)AssetImporter.GetAtPath(model);
+        if (island >= 0 && !mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); }
+        var root = new GameObject(name);
+        root.transform.SetParent(parent, false);
+        root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+        var parentScale = parent != null ? parent.lossyScale.x : 1f;
+        root.transform.localScale = Vector3.one / Mathf.Max(0.0001f, parentScale);
+        var go = PlacePrefab(model, root.transform, Vector3.zero, Quaternion.identity);
+        go.name = "Model";
+        var mat = TripoMaterial(texName);
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+            if (!shadows) r.shadowCastingMode = ShadowCastingMode.Off;
+        }
+        var mf = go.GetComponentInChildren<MeshFilter>(true);
+        Bounds b;
+        if (island >= 0 && mf != null)
+        {
+            var mesh = mf.sharedMesh;
+            var pieces = StripMeshParts.Islands(mesh);
+            var verts = mesh.vertices;
+            var idx = pieces[Mathf.Min(island, pieces.Count - 1)];
+            if (alignLong)
+            {
+                // 模型裡斜放的：水平面上最長的方向（主軸）轉到 X
+                float cx = 0f, cz = 0f;
+                foreach (int vi in idx) { var q = mf.transform.TransformPoint(verts[vi]); cx += q.x; cz += q.z; }
+                cx /= idx.Length; cz /= idx.Length;
+                float xx = 0f, xz = 0f, zz = 0f;
+                foreach (int vi in idx) { var q = mf.transform.TransformPoint(verts[vi]); float dx = q.x - cx, dz = q.z - cz; xx += dx * dx; xz += dx * dz; zz += dz * dz; }
+                float angle = 0.5f * Mathf.Atan2(2f * xz, xx - zz);
+                var along = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+                go.transform.rotation = Quaternion.FromToRotation(along, Vector3.right) * go.transform.rotation;
+            }
+            b = new Bounds(root.transform.InverseTransformPoint(mf.transform.TransformPoint(verts[idx[0]])), Vector3.zero);
+            foreach (int vi in idx) b.Encapsulate(root.transform.InverseTransformPoint(mf.transform.TransformPoint(verts[vi])));
+            var strip = mf.gameObject.AddComponent<StripMeshParts>();
+            strip.vertexCount = mesh.vertexCount;
+            strip.keepIsland = island;
+        }
+        else
+        {
+            var wb = JVGarden.WorldBounds(go);
+            b = new Bounds(root.transform.InverseTransformPoint(wb.center), wb.size / Mathf.Max(0.0001f, root.transform.lossyScale.x));
+        }
+        go.transform.localScale *= scale;
+        go.transform.localPosition = -new Vector3(b.center.x, centered ? b.center.y : b.min.y, b.center.z) * scale;
+        size = b.size * scale;
+        root.transform.SetPositionAndRotation(position, Quaternion.Euler(0f, yaw, 0f));
+        if (collider)
+        {
+            var c = root.AddComponent<BoxCollider>();
+            c.center = new Vector3(0f, centered ? 0f : size.y * 0.5f, 0f);
+            c.size = size;
+        }
+        return root;
+    }
+
+    /// <summary>
+    /// 長椅（Tripo 模型）：長邊沿 root 的 X、中心在 position、腳踩在地上、坐面高 BenchSeatHeight，加一個貼合外框的碰撞。
+    /// </summary>
+    static GameObject PlaceBench(string name, Transform parent, Vector3 position, Quaternion rotation)
+    {
+        const string dir = "Assets/_Project/Models/JapaneseVillage/Bench";
+        EnsurePropImport(BenchModel, $"{dir}/T_JV_Bench_Normal.png", $"{dir}/T_JV_Bench_MetallicSmooth.png");
+        var root = new GameObject(name);
+        root.transform.SetParent(parent, false);
+        root.transform.SetPositionAndRotation(position, Quaternion.identity);
+        var model = PlacePrefab(BenchModel, root.transform, position, Quaternion.identity);
+        if (model == null) return root;
+        model.name = "Model";
+        var mat = TripoMaterial("Bench");
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+        }
+        var b = JVGarden.WorldBounds(model);
+        if (b.size.z > b.size.x) // 長邊轉到 X
+        {
+            model.transform.rotation = Quaternion.AngleAxis(90f, Vector3.up) * model.transform.rotation;
+            b = JVGarden.WorldBounds(model);
+        }
+        model.transform.localScale *= BenchSeatHeight / Mathf.Max(0.01f, b.size.y);
+        b = JVGarden.WorldBounds(model);
+        model.transform.position += new Vector3(position.x - b.center.x, position.y - b.min.y, position.z - b.center.z);
+        b = JVGarden.WorldBounds(model);
+        var col = root.AddComponent<BoxCollider>();
+        col.center = b.center - position;
+        col.size = b.size;
+        root.transform.rotation = rotation;
+        return root;
+    }
+
+    /// <summary>
+    /// 村丁模型（Tripo 武士）拿在手上的武器（右手的長棍）。武器和身體是同一塊網格，用網格自己的綁定姿勢（mesh 座標）找：
+    /// 跟著手的骨頭、離手腕很遠的頂點當種子，沿著種子的主軸（一根棍子）把附近的頂點也算進去，
+    /// 再加上綁在那隻手的手指上、卻離那節手指很遠的頂點（握在拳頭裡的那一截）；手指本身留著。回傳每個頂點要不要拿掉。
+    /// （腰上的刀和衣服長在一起，拿掉會在腰帶、衣服上挖洞，所以留著當服裝的一部分。）
+    /// </summary>
+    internal static bool[] WeaponMask(Mesh mesh, Transform[] bones, StringBuilder log = null)
+    {
+        var pos = mesh.vertices;
+        var bw = mesh.boneWeights;
+        var bind = mesh.bindposes;
+        float H = mesh.bounds.size.y;
+        Vector3 BonePos(int i) => bind[i].inverse.MultiplyPoint3x4(Vector3.zero);
+        var mask = new bool[pos.Length];
+
+        foreach (var side in new[] { "Right", "Left" })
+        {
+            int wristIndex = System.Array.FindIndex(bones, t => t != null && t.name.EndsWith(side + "Hand"));
+            if (wristIndex < 0) continue;
+            Vector3 w = BonePos(wristIndex);
+            var handBones = new HashSet<int>();
+            for (int i = 0; i < bones.Length; i++) if (bones[i] != null && bones[i].name.Contains(side + "Hand")) handBones.Add(i);
+            var seeds = new List<int>();
+            for (int i = 0; i < pos.Length; i++)
+                if (handBones.Contains(bw[i].boneIndex0) && (pos[i] - w).magnitude > 0.12f * H) seeds.Add(i);
+            if (seeds.Count < 20) { log?.AppendLine($"{side} hand: {seeds.Count} seeds, nothing held"); continue; }
+
+            // 種子的主軸（冪次法）
+            Vector3 c = Vector3.zero;
+            foreach (int i in seeds) c += pos[i];
+            c /= seeds.Count;
+            Vector3 axis = new Vector3(0.3f, 1f, 0.2f).normalized;
+            for (int it = 0; it < 24; it++)
+            {
+                Vector3 acc = Vector3.zero;
+                foreach (int i in seeds) { Vector3 d = pos[i] - c; acc += d * Vector3.Dot(d, axis); }
+                if (acc.sqrMagnitude < 1e-12f) break;
+                axis = acc.normalized;
+            }
+            float tMin = float.MaxValue, tMax = float.MinValue;
+            foreach (int i in seeds) { float t = Vector3.Dot(pos[i] - c, axis); tMin = Mathf.Min(tMin, t); tMax = Mathf.Max(tMax, t); }
+            float length = tMax - tMin;
+            if (length < 0.2f * H) { log?.AppendLine($"{side} hand: not long enough ({length / H:F2} H), nothing held"); continue; }
+            tMin -= 0.05f * H;
+            tMax += 0.05f * H;
+            int n = 0;
+            foreach (int i in seeds) if (!mask[i]) { mask[i] = true; n++; }
+            for (int i = 0; i < pos.Length; i++)
+            {
+                if (mask[i]) continue;
+                Vector3 d = pos[i] - c;
+                float t = Vector3.Dot(d, axis);
+                if (t < tMin || t > tMax || (d - axis * t).magnitude > 0.03f * H) continue;
+                if ((pos[i] - w).magnitude < 0.1f * H) continue; // 手指留著
+                mask[i] = true; n++;
+            }
+            // 握在拳頭裡的那一截：綁在這隻手的手指上、卻離那節手指很遠（手指本身離自己的骨頭不會超過一個指節）
+            for (int i = 0; i < pos.Length; i++)
+            {
+                if (mask[i]) continue;
+                int bi = bw[i].boneIndex0;
+                if (!handBones.Contains(bi)) continue;
+                bool palm = bi == wristIndex;
+                if ((pos[i] - BonePos(bi)).magnitude > (palm ? 0.085f : 0.04f) * H) { mask[i] = true; n++; }
+            }
+            log?.AppendLine($"{side} hand weapon: axis {axis}, length {length / H:F2} H, removed {n} vertices");
+        }
+        return mask;
+    }
+
+    /// <summary>
+    /// Tripo 的箭做成 JV_Arrow：最長的方向轉成 +Y、長 ArrowLength、中心在原點。
+    /// 哪一頭是箭頭：看兩端附近頂點的金屬度（箭頭是鐵的、箭羽不是），金屬度高的那頭朝 +Y。
+    /// </summary>
+    static void BuildTripoArrow()
+    {
+        const string dir = "Assets/_Project/Models/JapaneseVillage/Arrow";
+        var mi = (ModelImporter)AssetImporter.GetAtPath(ArrowModel);
+        if (!mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); } // 要讀頂點判斷箭頭
+        EnsurePropImport(ArrowModel, $"{dir}/T_JV_Arrow_Normal.png", $"{dir}/T_JV_Arrow_MetallicSmooth.png");
+        var root = new GameObject("JV_Arrow");
+        var model = PlacePrefab(ArrowModel, root.transform, Vector3.zero, Quaternion.identity);
+        model.name = "Model";
+        var mat = TripoMaterial("Arrow");
+        int tris = 0;
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+            r.shadowCastingMode = ShadowCastingMode.Off;
+        }
+        var b = JVGarden.WorldBounds(model);
+        Vector3 raw = b.size;
+        Vector3 longest = raw.x >= raw.y && raw.x >= raw.z ? Vector3.right : raw.y >= raw.z ? Vector3.up : Vector3.forward;
+
+        // 兩端的金屬度（MetallicSmooth 的 R）
+        var metal = new Texture2D(2, 2);
+        metal.LoadImage(System.IO.File.ReadAllBytes($"{dir}/T_JV_Arrow_MetallicSmooth.png"));
+        float lo = 0f, hi = 0f; int nLo = 0, nHi = 0;
+        float minA = Vector3.Dot(b.min, longest), maxA = Vector3.Dot(b.max, longest), len = maxA - minA;
+        foreach (var mf in model.GetComponentsInChildren<MeshFilter>(true))
+        {
+            var mesh = mf.sharedMesh;
+            if (mesh == null || !mesh.isReadable) continue;
+            tris += mesh.triangles.Length / 3;
+            var v = mesh.vertices;
+            var uv = mesh.uv;
+            if (uv == null || uv.Length != v.Length) continue;
+            for (int i = 0; i < v.Length; i += 3)
+            {
+                float a = (Vector3.Dot(mf.transform.TransformPoint(v[i]), longest) - minA) / Mathf.Max(1e-4f, len);
+                if (a > 0.15f && a < 0.85f) continue;
+                float m = metal.GetPixelBilinear(uv[i].x, uv[i].y).r;
+                if (a <= 0.15f) { lo += m; nLo++; } else { hi += m; nHi++; }
+            }
+        }
+        Object.DestroyImmediate(metal);
+        lo = nLo > 0 ? lo / nLo : 0f;
+        hi = nHi > 0 ? hi / nHi : 0f;
+        Vector3 tipDir = hi >= lo ? longest : -longest;
+        model.transform.rotation = Quaternion.FromToRotation(tipDir, Vector3.up) * model.transform.rotation;
+        b = JVGarden.WorldBounds(model);
+        model.transform.localScale *= ArrowLength / Mathf.Max(0.01f, b.size.y);
+        b = JVGarden.WorldBounds(model);
+        model.transform.position -= b.center;
+        b = JVGarden.WorldBounds(model);
+        var tip = new GameObject("Tip");
+        tip.transform.SetParent(root.transform, false);
+        tip.transform.localPosition = new Vector3(0f, ArrowLength * 0.5f, 0f);
+        PrefabUtility.SaveAsPrefabAsset(root, $"{WeaponResourceDir}/JV_Arrow.prefab");
+        Object.DestroyImmediate(root);
+        Debug.Log($"[JapaneseVillage] 箭：原始大小 {raw}，最長的方向 {longest}，兩端金屬度 {lo:F2} / {hi:F2} → 箭頭朝 {tipDir}，{tris} 個三角形，做成 {b.size}");
+    }
+
+    /// <summary>弓的兩端弓梢（世界座標 Y 最上 / 最下 4% 的頂點平均）和弓中段（中間 16%）的中心</summary>
+    static void BowFrame(GameObject bow, out Vector3 top, out Vector3 bottom, out Vector3 mid)
+    {
+        var vb = JVGarden.WorldBounds(bow);
+        top = bottom = mid = Vector3.zero;
+        int nTop = 0, nBottom = 0, nMid = 0;
+        foreach (var mf in bow.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+            foreach (var v in mf.sharedMesh.vertices)
+            {
+                Vector3 q = mf.transform.TransformPoint(v);
+                float a = (q.y - vb.min.y) / Mathf.Max(1e-4f, vb.size.y);
+                if (a > 0.96f) { top += q; nTop++; }
+                else if (a < 0.04f) { bottom += q; nBottom++; }
+                else if (Mathf.Abs(a - 0.5f) < 0.08f) { mid += q; nMid++; }
+            }
+        }
+        top = nTop > 0 ? top / nTop : vb.center + Vector3.up * vb.extents.y;
+        bottom = nBottom > 0 ? bottom / nBottom : vb.center - Vector3.up * vb.extents.y;
+        mid = nMid > 0 ? mid / nMid : vb.center;
+    }
+
     /// <summary>小刀、長槍（程式做的）和弓（Tripo 模型）的 Prefab</summary>
     static void BuildWeaponPrefabs()
     {
@@ -849,10 +1164,14 @@ public static class JapaneseVillageBuilder
         spear.Cylinder(JVMat.White, new Vector3(0f, 1.47f, 0f), new Vector3(0f, 1.83f, 0f), 0.034f, 0.002f, 4);
         spearPrefab = SaveWeaponPrefab("JV_Spear", spear, steel, 1.83f);
 
-        // 箭（射出去的、搭在弦上的）：沿 +Y、中心在原點，長 0.9 m：竹箭桿、四稜鋼箭頭、紅白三片箭羽
-        var arrow = new JVMeshKit();
-        ArrowKit(arrow, Vector3.zero, 1f);
-        SaveWeaponPrefab("JV_Arrow", arrow, steel, 0.47f);
+        // 箭（射出去的、搭在弦上的）：沿 +Y、中心在原點，長 ArrowLength、箭頭朝 +Y。有 Tripo 模型就用模型，沒有就用程式做的
+        if (AssetImporter.GetAtPath(ArrowModel) != null) BuildTripoArrow();
+        else
+        {
+            var arrow = new JVMeshKit();
+            ArrowKit(arrow, Vector3.zero, 1f);
+            SaveWeaponPrefab("JV_Arrow", arrow, steel, 0.47f);
+        }
 
         // 箭筒：掛在右後腰，開口朝上（+Y），露出幾支箭的箭羽（Arrows 子物件，箭用完了藏起來）
         var quiverRoot = new GameObject("JV_Quiver");
@@ -877,6 +1196,8 @@ public static class JapaneseVillageBuilder
 
         // 弓：Tripo 模型，最長的方向轉成 +Y、長 PlayerLoadout.BowPrefabLength、中心在原點
         EnsurePropImport(BowModel, "Assets/_Project/Models/JapaneseVillage/Bow/T_JV_Bow_Normal.png", "Assets/_Project/Models/JapaneseVillage/Bow/T_JV_Bow_MetallicSmooth.png");
+        var bowImporter = (ModelImporter)AssetImporter.GetAtPath(BowModel);
+        if (!bowImporter.isReadable) { bowImporter.isReadable = true; bowImporter.SaveAndReimport(); } // 要讀頂點找弓梢
         var bowRoot = new GameObject("JV_Bow");
         var bow = PlacePrefab(BowModel, bowRoot.transform, Vector3.zero, Quaternion.identity);
         bow.name = "Model";
@@ -891,12 +1212,77 @@ public static class JapaneseVillageBuilder
         Vector3 raw = bb.size;
         Vector3 longest = raw.x >= raw.y && raw.x >= raw.z ? Vector3.right : raw.y >= raw.z ? Vector3.up : Vector3.forward;
         bow.transform.rotation = Quaternion.FromToRotation(longest, Vector3.up) * bow.transform.rotation;
+        // 模型裡的弓是斜放的：用兩端弓梢的連線當弓身的方向轉成 +Y（轉兩次收斂），
+        // 再把弓背轉到 +Z（弓弦在 -Z，拉弓時朝著自己）：弓梢的中點 → 弓中段（握把那一截）的方向就是弓背
+        for (int pass = 0; pass < 3; pass++)
+        {
+            BowFrame(bow, out Vector3 tipTop, out Vector3 tipBottom, out Vector3 mid);
+            if (pass < 2)
+            {
+                Vector3 axis = tipTop - tipBottom;
+                if (axis.sqrMagnitude > 1e-6f) bow.transform.rotation = Quaternion.FromToRotation(axis, Vector3.up) * bow.transform.rotation;
+                continue;
+            }
+            Vector3 backDir = mid - (tipTop + tipBottom) * 0.5f;
+            backDir.y = 0f;
+            if (backDir.sqrMagnitude > 1e-6f)
+            {
+                float yaw = Vector3.SignedAngle(backDir, Vector3.forward, Vector3.up);
+                bow.transform.rotation = Quaternion.AngleAxis(yaw, Vector3.up) * bow.transform.rotation;
+                Debug.Log($"[JapaneseVillage] 弓：弓梢連線轉直，弓背方向 {backDir.normalized}，轉 {yaw:F0}° 讓弓背朝 +Z");
+            }
+        }
         bb = JVGarden.WorldBounds(bow);
         bow.transform.localScale *= PlayerLoadout.BowPrefabLength / Mathf.Max(0.01f, bb.size.y);
         bb = JVGarden.WorldBounds(bow);
         bow.transform.position -= bb.center;
         bb = JVGarden.WorldBounds(bow);
-        Debug.Log($"[JapaneseVillage] 弓：原始大小 {raw}，最長的方向 {longest}，做成 {bb.size}");
+        // 弓弦的兩端（弓梢）：最上面、最下面 3% 的頂點平均（PlayerLoadout 用來畫拉開的弓弦）
+        Vector3 top = Vector3.zero, bottom = Vector3.zero;
+        int nTop = 0, nBottom = 0;
+        foreach (var mf in bow.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (mf.sharedMesh == null || !mf.sharedMesh.isReadable) continue;
+            foreach (var v in mf.sharedMesh.vertices)
+            {
+                Vector3 q = bowRoot.transform.InverseTransformPoint(mf.transform.TransformPoint(v));
+                if (q.y > bb.max.y - bb.size.y * 0.03f) { top += q; nTop++; }
+                if (q.y < bb.min.y + bb.size.y * 0.03f) { bottom += q; nBottom++; }
+            }
+        }
+        if (nTop > 0 && nBottom > 0)
+        {
+            // 模型本身做了一條直的弓弦：拿掉（兩端弓梢連線附近、中間 80% 的三角形），改由 PlayerLoadout 畫一條會拉開的弓弦
+            Vector3 a = top / nTop, c = bottom / nBottom;
+            int removed = 0;
+            foreach (var mf in bow.GetComponentsInChildren<MeshFilter>(true))
+            {
+                var src = mf.sharedMesh;
+                if (src == null || !src.isReadable) continue;
+                var verts = src.vertices;
+                var near = new bool[verts.Length];
+                for (int i = 0; i < verts.Length; i++)
+                {
+                    Vector3 q = bowRoot.transform.InverseTransformPoint(mf.transform.TransformPoint(verts[i]));
+                    Vector3 onLine = c + Vector3.Project(q - c, a - c);
+                    near[i] = (q - onLine).magnitude < 0.025f && Mathf.Abs(q.y) < bb.extents.y * 0.8f;
+                }
+                // 遊戲開始時才刪（StripMeshParts），不另存一份網格
+                var strip = mf.gameObject.AddComponent<StripMeshParts>();
+                strip.vertexCount = verts.Length;
+                strip.removedVertices = StripMeshParts.Encode(near);
+                strip.minRemovedPerTriangle = 3;
+                foreach (bool b2 in near) if (b2) removed++;
+            }
+            Debug.Log($"[JapaneseVillage] 弓：拿掉原本的弓弦（{removed} 個頂點）");
+            foreach (var (n, at) in new[] { ("StringTop", top / nTop), ("StringBottom", bottom / nBottom) })
+            {
+                var marker = new GameObject(n).transform;
+                marker.SetParent(bowRoot.transform, false);
+                marker.localPosition = at;
+            }
+        }
+        Debug.Log($"[JapaneseVillage] 弓：原始大小 {raw}，最長的方向 {longest}，做成 {bb.size}，弓梢 {(nTop > 0 ? top / nTop : Vector3.zero)} / {(nBottom > 0 ? bottom / nBottom : Vector3.zero)}");
         bowPrefab = PrefabUtility.SaveAsPrefabAsset(bowRoot, $"{WeaponResourceDir}/JV_Bow.prefab");
         Object.DestroyImmediate(bowRoot);
     }
@@ -954,6 +1340,9 @@ public static class JapaneseVillageBuilder
         anvil.Cylinder(JVMat.WoodLight, new Vector3(-0.2f, 0.84f, 0.05f), new Vector3(0.12f, 0.84f, 0.2f), 0.018f, 0.018f, 6);
         anvil.Box(JVMat.Black, new Vector3(-0.22f, 0.86f, 0.04f), new Vector3(0.09f, 0.07f, 0.14f));
         var anvilGo = Instance("Anvil", t, anvil, Front(-2.4f, 2.9f), facing * Quaternion.Euler(0f, 20f, 0f));
+        // 日式道具組：門口西邊一座兵器架（長槍、刀），鐵砧旁地上一座刀架（兩把武士刀）
+        PlaceKitPiece("Smithy_WeaponRack", JpPropsModel, "JpProps", JpWeaponRack, t, Front(-6.6f, 1.1f), 180f, 8f, out _, collider: true, alignLong: true);
+        PlaceKitPiece("Smithy_KatanaStand", JpPropsModel, "JpProps", JpKatanaStand, t, Front(-3.6f, 2.3f), 180f, 3.3f, out _, collider: true, alignLong: true);
         anvilGo.AddComponent<BoxCollider>().size = new Vector3(0.7f, 1.6f, 0.7f);
 
         // 武器架
@@ -1036,6 +1425,114 @@ public static class JapaneseVillageBuilder
         Debug.Log($"[JapaneseVillage] 鐵匠鋪：x {SmithyX:F1}、門口 z {SmithyFrontZ:F1}；武器架 3 座");
     }
 
+    // ---------------------------------------------------------------- 暫居地
+
+    /// <summary>
+    /// 暫居地：12 × 12 m 可以走進去的房子（正門是開著的門洞，門前三階木階梯）。
+    /// 屋裡：靠後牆的被褥（休息、倒下後在旁邊醒來）、行燈、矮桌上的戰鬥紀錄簿、坐墊、刀架、木箱、陶甕。
+    /// 互動都在 Residence / CombatHistoryBook（執行時）。
+    /// </summary>
+    static void BuildResidence(Transform parent)
+    {
+        var spec = new GardenHouseSpec { width = ResidenceWidth, depth = HouseDepth, facade = "SWOWS", veranda = false, hollow = true, seed = 91 };
+        var go = JapaneseVillageHouses.Build("Residence", spec);
+        AddHollowHouseColliders(go, spec);
+        go.transform.SetParent(parent, false);
+        go.transform.SetPositionAndRotation(new Vector3(ResidenceX, Ground(ResidenceX, ResidenceZ), ResidenceZ), Quaternion.Euler(0f, 180f, 0f));
+        footprints.Add(new Rect(ResidenceX - ResidenceWidth * 0.5f - 1.5f, ResidenceFrontZ - 3f, ResidenceWidth + 3f, HouseDepth + 4.5f)); // 含門口的階梯
+        var t = go.transform;
+        float floor = JapaneseVillageHouses.Floor, top = JapaneseVillageHouses.WallTop;
+        float halfW = spec.width * 0.5f, halfD = spec.depth * 0.5f;
+        Vector3 L(float x, float z, float y = 0f) => t.TransformPoint(new Vector3(x, floor + y, z));
+
+        // 後牆中間：AddHollowHouseColliders 前後都留了門洞，這間後面是牆，補上
+        var back = go.AddComponent<BoxCollider>();
+        back.center = new Vector3(0f, (floor + top) * 0.5f, -halfD);
+        back.size = new Vector3(2f, top - floor, 0.3f);
+
+        // 門口：暖簾、屋簷下一盞燈籠、三階木階梯（地板高 0.81 m，一階 0.27 m）
+        var noren = new SharedModel("Noren_Residence", JapaneseVillageMeshes.Noren(JVMat.ClothBrown, 3.5f, 0.8f, 6));
+        noren.Place("Noren", t, t.TransformPoint(new Vector3(0f, floor + 2.12f, halfD + 0.12f)), t.rotation);
+        JVGarden.Place("Lantern_MediumHanging_01", t, new Vector3(2.6f, top - 0.1f, halfD + 1.05f), 0f);
+        for (int i = 0; i < 2; i++)
+        {
+            float stepTop = floor * (2 - i) / 3f, z0 = halfD + 0.1f + i * 0.45f;
+            var kit = new JVMeshKit();
+            kit.Box(JVMat.WoodDark, new Vector3(0f, stepTop * 0.5f, 0f), new Vector3(2.6f, stepTop, 0.45f));
+            kit.Box(JVMat.WoodLight, new Vector3(0f, stepTop - 0.02f, 0f), new Vector3(2.64f, 0.04f, 0.47f));
+            var step = Instance($"Residence_Step{i + 1}", t, kit, t.TransformPoint(new Vector3(0f, 0f, z0 + 0.225f)), t.rotation);
+            step.AddComponent<BoxCollider>();
+        }
+
+        // 被褥：靠後牆左邊，枕頭朝後牆
+        var futon = new JVMeshKit();
+        futon.Box(JVMat.White, new Vector3(0f, 0.05f, 0f), new Vector3(1.05f, 0.1f, 2.1f));
+        futon.Box(JVMat.ClothIndigo, new Vector3(0f, 0.13f, 0.3f), new Vector3(1.1f, 0.08f, 1.45f));
+        futon.Box(JVMat.ClothOchre, new Vector3(0f, 0.15f, -0.78f), new Vector3(0.52f, 0.11f, 0.26f));
+        var bedGo = Instance("Residence_Futon", t, futon, L(-4.4f, -3.1f), t.rotation);
+
+        // 行燈（紙燈）：被褥旁邊，暖色的光
+        var andon = new JVMeshKit();
+        foreach (float x in new[] { -0.17f, 0.17f })
+            foreach (float z in new[] { -0.17f, 0.17f })
+                andon.Box(JVMat.WoodDark, new Vector3(x, 0.4f, z), new Vector3(0.04f, 0.8f, 0.04f));
+        andon.Box(JVMat.LanternGlow, new Vector3(0f, 0.5f, 0f), new Vector3(0.32f, 0.5f, 0.32f));
+        andon.Box(JVMat.WoodDark, new Vector3(0f, 0.81f, 0f), new Vector3(0.4f, 0.03f, 0.4f));
+        var andonGo = Instance("Residence_Andon", t, andon, L(-5.3f, -5.1f), t.rotation);
+        andonGo.AddComponent<BoxCollider>();
+        void Lamp(string name, Vector3 pos, float range, float intensity)
+        {
+            var lamp = new GameObject(name).AddComponent<Light>();
+            lamp.transform.SetParent(t, true);
+            lamp.transform.position = pos;
+            lamp.type = LightType.Point;
+            lamp.color = new Color(1f, 0.74f, 0.45f);
+            lamp.range = range;
+            lamp.intensity = intensity;
+            lamp.shadows = LightShadows.None;
+        }
+        Lamp("AndonLight", L(-5.3f, -5.1f, 0.6f), 7f, 1.8f);
+        Lamp("RoomLight", L(0f, 0f, 2.6f), 10f, 0.9f);
+
+        // 矮桌（卓袱台）+ 坐墊 + 桌上的戰鬥紀錄簿
+        var table = new JVMeshKit();
+        table.Box(JVMat.WoodDark, new Vector3(0f, 0.33f, 0f), new Vector3(1.3f, 0.06f, 0.85f));
+        foreach (float x in new[] { -0.56f, 0.56f })
+            foreach (float z in new[] { -0.34f, 0.34f })
+                table.Box(JVMat.WoodDark, new Vector3(x, 0.15f, z), new Vector3(0.07f, 0.3f, 0.07f));
+        var tableGo = Instance("Residence_Table", t, table, L(3.9f, -1.2f), t.rotation);
+        tableGo.AddComponent<BoxCollider>();
+        var cushion = new JVMeshKit();
+        cushion.Box(JVMat.ClothBrown, new Vector3(0f, 0.03f, 0f), new Vector3(0.6f, 0.06f, 0.6f));
+        Instance("Residence_Cushion", t, cushion, L(3.9f, -0.15f), t.rotation);
+        float houseYaw = t.eulerAngles.y;
+        PlaceKitPiece("Residence_LogBook", BooksKitModel, "Books", BookOpen, t, L(3.9f, -1.25f, 0.36f), houseYaw + 180f, 0.7f, out _, shadows: false);
+        PlaceKitPiece("Residence_Books", BooksKitModel, "Books", BookClosedA, t, L(4.35f, -1.4f, 0.36f), houseYaw + 100f, 0.45f, out _, shadows: false);
+        var bookGo = new GameObject("CombatHistoryBook");
+        bookGo.transform.SetParent(t, false);
+        bookGo.transform.position = L(3.9f, -1.2f, 0.4f);
+        bookGo.AddComponent<CombatHistoryBook>();
+
+        // 擺設：刀架、木箱、陶甕
+        PlaceKitPiece("Residence_KatanaStand", JpPropsModel, "JpProps", JpKatanaStand, t, L(4.5f, -5.2f), houseYaw, 3.3f, out _, collider: true, alignLong: true);
+        PlaceKitPiece("Residence_Chest", JpPropsModel, "JpProps", JpChest, t, L(-5.0f, 4.2f), houseYaw + 90f, 3f, out _, collider: true, alignLong: true);
+        PlaceKitPiece("Residence_Jar", JpPropsModel, "JpProps", JpJar, t, L(5.1f, 4.6f), 0f, 3f, out _, collider: true);
+
+        // 互動：醒來的位置在被褥腳邊（面向門口）
+        var res = go.AddComponent<Residence>();
+        var bed = new GameObject("Bed").transform;
+        bed.SetParent(t, false);
+        bed.position = bedGo.transform.position;
+        var wake = new GameObject("WakePoint").transform;
+        wake.SetParent(t, false);
+        wake.localPosition = new Vector3(-4.4f, floor + 1.1f, -0.9f);
+        wake.localRotation = Quaternion.identity; // 本地 +Z = 門口
+        res.bed = bed;
+        res.wakePoint = wake;
+        res.interiorHalf = new Vector3(halfW - 0.3f, floor, halfD - 0.2f);
+        Debug.Log($"[JapaneseVillage] 暫居地：x {ResidenceX:F1}、門口 z {ResidenceFrontZ:F1}");
+    }
+
     /// <summary>把模型最長的方向轉到 axis、縮放成 length 長、中心移到 center（照世界座標的外框）</summary>
     static void FitAlong(GameObject go, Vector3 axis, float length, Vector3 center)
     {
@@ -1048,6 +1545,64 @@ public static class JapaneseVillageBuilder
         go.transform.localScale *= length / Mathf.Max(0.01f, now);
         b = JVGarden.WorldBounds(go);
         go.transform.position += center - b.center;
+    }
+
+    // PlaceHouse 剛放的那一棟（藥鋪、茶屋要接著做會開的門）
+    static GameObject lastHouse;
+    static GardenHouseSpec lastHouseSpec;
+    static float lastDoorX;
+    static HouseEntryDoor teaHouseEntry, apothecaryEntry;
+
+    /// <summary>
+    /// 村民會進出的房子（藥鋪、茶屋）：把正門那兩片關著的拉門做成會開會關的門（HouseEntryDoor）。
+    /// 門板是房子 Prefab 裡的一部分，要先把這棟拆成一般物件、門板取消 Static（不然不能動），
+    /// 另外放兩個點：門外的地上（outside）、門檻上（inside，地板的高度）。
+    /// </summary>
+    static HouseEntryDoor MakeEntryDoor(GameObject house, in GardenHouseSpec spec, float doorX, Vector3 doorWorld)
+    {
+        if (house == null) return null;
+        if (PrefabUtility.IsPartOfPrefabInstance(house))
+            PrefabUtility.UnpackPrefabInstance(house, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+        var t = house.transform;
+        var walls = t.Find("Walls");
+        float halfD = spec.depth * 0.5f;
+        // 關著的兩片門板（DoorBay）：Door_100x200_01 在門中心 +0.98、Flipped 在 -0.96，沒有轉 180 度的那兩片
+        Transform FindPanel(float x)
+        {
+            if (walls == null) return null;
+            foreach (Transform c in walls)
+                if (c.name.StartsWith("Door_100x200_01") && Mathf.Abs(c.localPosition.x - x) < 0.04f && Mathf.Abs(c.localPosition.z - halfD) < 0.25f
+                    && Mathf.Abs(Mathf.DeltaAngle(c.localEulerAngles.y, 0f)) < 5f)
+                    return c;
+            return null;
+        }
+        var a = FindPanel(doorX + 0.98f);
+        var b = FindPanel(doorX - 0.96f);
+        if (a == null || b == null)
+        {
+            Debug.LogWarning($"[JapaneseVillage] {house.name}：找不到正門的門板（門中心 x {doorX}），村民進屋時不會開門");
+            return null;
+        }
+        foreach (var p in new[] { a, b })
+            foreach (var tr in p.GetComponentsInChildren<Transform>(true))
+                GameObjectUtility.SetStaticEditorFlags(tr.gameObject, 0);
+
+        var doorGo = new GameObject("EntryDoor");
+        doorGo.transform.SetParent(t, false);
+        doorGo.transform.localPosition = new Vector3(doorX, JapaneseVillageHouses.Floor + 1f, halfD);
+        var door = doorGo.AddComponent<HouseEntryDoor>();
+        door.panels = new[] { a, b };
+        // 往兩邊滑開，疊在收起來的門板外面一點點（不會跟它閃爍）
+        door.openOffsets = new[] { new Vector3(0.94f, 0f, 0.04f), new Vector3(-0.95f, 0f, 0.04f) };
+        var outside = new GameObject("Outside").transform;
+        outside.SetParent(doorGo.transform, false);
+        outside.position = doorWorld;
+        var inside = new GameObject("Inside").transform;
+        inside.SetParent(doorGo.transform, false);
+        inside.position = t.TransformPoint(new Vector3(doorX, JapaneseVillageHouses.Floor, halfD - 0.15f));
+        door.outside = outside;
+        door.inside = inside;
+        return door;
     }
 
     /// <summary>放一棟房子，回傳正門口（門外 0.6 m）的地面位置</summary>
@@ -1064,6 +1619,9 @@ public static class JapaneseVillageBuilder
         var t = go.transform;
         float frontZ = spec.depth * 0.5f;
         float door = type.doorX[rng.Next(type.doorX.Count)];
+        lastHouse = go;
+        lastHouseSpec = spec;
+        lastDoorX = door;
 
         // 暖簾（大約一半的房子是店家）
         if (rng.NextDouble() < 0.55)
@@ -1172,10 +1730,15 @@ public static class JapaneseVillageBuilder
                 c.radius = prefabName == "Stone_03" ? 0.28f : 0.75f;
             }
         }
+        // 庭園的鳥叫：範圍 = 圍牆裡、主屋前面的院子
+        var birds = new GameObject("GardenBirds").AddComponent<BirdAmbience>();
+        birds.transform.SetParent(root, false);
+        birds.transform.position = new Vector3((ChiefX0 + porchFrontX) * 0.5f, y, ChiefAxisZ);
+        birds.size = new Vector2(Mathf.Max(8f, porchFrontX - ChiefX0), ChiefZ1 - ChiefZ0);
+        birds.volume = 0.45f;
         // 大櫻花旁的長椅：村長的日常會來這裡坐（NpcRoutine）
-        var elderBench = new SharedModel("ElderBench", JapaneseVillageMeshes.TeaBench(1.7f));
         elderBenchPos = new Vector3(109.5f, y, ChiefAxisZ - 10.5f);
-        elderBench.Place("ElderBench", root, elderBenchPos, Quaternion.identity).AddComponent<BoxCollider>(); // 自動貼合長椅的外框
+        PlaceBench("ElderBench", root, elderBenchPos, Quaternion.identity);
 
         foreach (float s in new[] { -1f, 1f })
             PlaceStoneLantern(root, ChiefX0 + 6f, ChiefAxisZ + s * 2.6f);
@@ -1226,14 +1789,15 @@ public static class JapaneseVillageBuilder
         float ez0 = (z0 + ChiefAxisZ - ChiefGateHalf) * 0.5f, ez1 = (z1 + ChiefAxisZ + ChiefGateHalf) * 0.5f;
         Box("Wall_East_S", new Vector3(x1, cy, ez0), new Vector3(0.5f, h, ChiefAxisZ - ChiefGateHalf - z0));
         Box("Wall_East_N", new Vector3(x1, cy, ez1), new Vector3(0.5f, h, z1 - ChiefAxisZ - ChiefGateHalf));
-        Box("BackGate_Blocker", new Vector3(x1, cy, ChiefAxisZ), new Vector3(0.5f, h, ChiefGateHalf * 2f)); // 門開了也是傳送門，不能走出去
+        Box("BackGate_Blocker", new Vector3(x1 + ChiefGateOutset, cy, ChiefAxisZ), new Vector3(0.5f, h, ChiefGateHalf * 2f)); // 門推開以前擋著；推開後關掉（DojoGate）
+        if (trialGate != null) trialGate.blocker = wall.Find("BackGate_Blocker").GetComponent<BoxCollider>();
         float wz0 = (z0 + ChiefAxisZ - ChiefGateHalf) * 0.5f, wz1 = (z1 + ChiefAxisZ + ChiefGateHalf) * 0.5f;
         Box("Wall_West_S", new Vector3(x0, cy, wz0), new Vector3(0.5f, h, ChiefAxisZ - ChiefGateHalf - z0));
         Box("Wall_West_N", new Vector3(x0, cy, wz1), new Vector3(0.5f, h, z1 - ChiefAxisZ - ChiefGateHalf));
     }
 
     /// <summary>
-    /// 後院大門（DojoGate）：僧侶開鎖之前推不開；開鎖後玩家把兩扇門推開，門洞裡亮起墨色漩渦，按 E 進入，
+    /// 後院大門（DojoGate）：僧侶開鎖之前推不開；開鎖後玩家把兩扇門推開，直接穿過門洞走出去就轉移，
     /// 換場景時輪播四幅古畫。
     /// </summary>
     static void BuildDojoGatePortal(Transform root, GameObject gate, float wallX, float groundY)
@@ -1244,65 +1808,54 @@ public static class JapaneseVillageBuilder
         doors.transform.SetParent(root, false);
         var hinges = new List<Transform>();
         var angles = new List<float>();
+        float doorX = wallX + ChiefGateOutset, leafWidth = 2f, doorHeight = 3f;
         foreach (var (side, yaw) in new[] { (-1f, -90f), (1f, 90f) })
         {
             var leaf = JVGarden.Place("GateDoor_400_01", doors.transform, Vector3.zero, yaw);
             var db = JVGarden.WorldBounds(leaf);
-            leaf.transform.position += new Vector3(wallX - db.center.x, groundY - db.min.y, ChiefAxisZ + side * db.size.z * 0.5f - db.center.z);
+            leafWidth = db.size.z;
+            doorHeight = db.size.y;
+            leaf.transform.position += new Vector3(doorX - db.center.x, groundY - db.min.y, ChiefAxisZ + side * db.size.z * 0.5f - db.center.z);
             var hinge = new GameObject(side < 0f ? "Hinge_South" : "Hinge_North").transform;
             hinge.SetParent(doors.transform, false);
-            hinge.position = new Vector3(wallX, groundY, ChiefAxisZ + side * db.size.z);
+            hinge.position = new Vector3(doorX, groundY, ChiefAxisZ + side * db.size.z);
             leaf.transform.SetParent(hinge, true);
             hinges.Add(hinge);
             angles.Add(side > 0f ? -95f : 95f);
         }
         JVGarden.ClearStatic(doors);
 
+        // 門扇兩側到圍牆盡頭的縫（門洞 2 × ChiefGateHalf 比兩扇門寬）：補上固定的木板牆，門開了也擋著
+        float gap = ChiefGateHalf - leafWidth;
+        if (gap > 0.05f)
+        {
+            var panelKit = new JVMeshKit();
+            panelKit.Box(JVMat.WoodDark, new Vector3(0f, doorHeight * 0.5f, 0f), new Vector3(0.14f, doorHeight, gap));
+            foreach (float y in new[] { doorHeight * 0.25f, doorHeight * 0.55f, doorHeight * 0.85f })
+                panelKit.Box(JVMat.WoodLight, new Vector3(0f, y, 0f), new Vector3(0.2f, 0.09f, gap));
+            panelKit.Box(JVMat.WoodLight, new Vector3(0f, doorHeight * 0.5f, 0f), new Vector3(0.2f, doorHeight, 0.1f));
+            foreach (float side in new[] { -1f, 1f })
+            {
+                var panel = Instance(side < 0f ? "BackGate_SidePanel_South" : "BackGate_SidePanel_North", root, panelKit,
+                    new Vector3(doorX, groundY, ChiefAxisZ + side * (leafWidth + gap * 0.5f)), Quaternion.identity);
+                var pc = panel.AddComponent<BoxCollider>();
+                pc.center = new Vector3(0f, doorHeight * 0.5f, 0f);
+                pc.size = new Vector3(0.4f, doorHeight, gap);
+            }
+        }
+
         var portalGo = new GameObject("Portal_Dojo");
         portalGo.transform.SetParent(root, false);
-        portalGo.transform.SetPositionAndRotation(new Vector3(wallX + 0.3f, groundY, ChiefAxisZ), Quaternion.Euler(0f, -90f, 0f)); // 在門板後面、面向宅院裡面：門推開才看得到
-        // 光面：墨色漩渦貼圖（generate_paintings.py 產生）＋半透明、雙面的 Unlit 材質
-        var vortex = JapaneseVillageAssets.ShaderMaterial("M_JV_DojoGateVortex", "Universal Render Pipeline/Unlit");
-        vortex.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{JapaneseVillageAssets.MatDir}/T_JV_DojoGateVortex.png"));
-        vortex.SetFloat("_Surface", 1f);
-        vortex.SetFloat("_Blend", 0f);
-        vortex.SetFloat("_Cull", 0f);
-        vortex.SetFloat("_ZWrite", 0f);
-        vortex.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
-        vortex.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
-        vortex.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        vortex.SetOverrideTag("RenderType", "Transparent");
-        vortex.renderQueue = (int)RenderQueue.Transparent;
-        EditorUtility.SetDirty(vortex);
-
-        var surface = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        surface.name = "Surface";
-        Object.DestroyImmediate(surface.GetComponent<Collider>());
-        surface.transform.SetParent(portalGo.transform, false);
-        surface.transform.localPosition = new Vector3(0f, 1.75f, 0f);
-        surface.transform.localScale = new Vector3(3.9f, 3.4f, 0.02f);
-        var surfaceRenderer = surface.GetComponent<MeshRenderer>();
-        surfaceRenderer.sharedMaterial = vortex;
-        surfaceRenderer.shadowCastingMode = ShadowCastingMode.Off;
-
-        var lightGo = new GameObject("Glow");
-        lightGo.transform.SetParent(portalGo.transform, false);
-        lightGo.transform.localPosition = new Vector3(0f, 2.2f, 1.2f);
-        var light = lightGo.AddComponent<Light>();
-        light.type = LightType.Point;
-        light.range = 9f;
-        light.intensity = 2.5f;
-        light.shadows = LightShadows.None;
-
+        // 門洞中央：門推開以後不放傳送門的光，直接穿過門洞走出去（門外 passDistance）就轉移
+        portalGo.transform.SetPositionAndRotation(new Vector3(doorX, groundY, ChiefAxisZ), Quaternion.Euler(0f, -90f, 0f));
         var dojoGate = portalGo.AddComponent<DojoGate>();
         dojoGate.sceneName = FinalBattleScene;
         dojoGate.destinationTitle = FinalBattleTitle;
         dojoGate.doorHinges = hinges.ToArray();
         dojoGate.openAngles = angles.ToArray();
         dojoGate.pushDirection = Vector3.right;
-        dojoGate.surface = surfaceRenderer;
-        dojoGate.glowLight = light;
-        dojoGate.lightIntensity = 2.5f;
+        dojoGate.passDistance = 1.2f;
+        dojoGate.gateHalfWidth = leafWidth * 0.9f;
         dojoGate.interactDistance = 4.5f;
         // 換場景時輪播四幅古畫
         dojoGate.slides = Paintings.Select(pt => AssetDatabase.LoadAssetAtPath<Texture2D>($"{PaintingDir}/{pt.file}.png")).ToArray();
@@ -1335,13 +1888,77 @@ public static class JapaneseVillageBuilder
             PlaceStoneLantern(details, PlazaX - 3.8f, z);
 
         // 茶屋（第二排主街東側）：長椅 + 大紅傘
-        var bench = new SharedModel("TeaBench", JapaneseVillageMeshes.TeaBench());
-        bench.Place("TeaBench_1", details, new Vector3(9.5f, Ground(9.5f, TeaZ), TeaZ), Quaternion.identity);
-        bench.Place("TeaBench_2", details, new Vector3(13.5f, Ground(13.5f, TeaZ + 0.2f), TeaZ + 0.2f), Quaternion.Euler(0f, 6f, 0f));
-        Instance("TeaParasol", details, JapaneseVillageMeshes.Parasol(), new Vector3(11.5f, Ground(11.5f, TeaZ + 0.1f), TeaZ + 0.1f), Quaternion.identity);
+        PlaceBench("TeaBench_1", details, new Vector3(9.5f, Ground(9.5f, TeaZ), TeaZ), Quaternion.identity);
+        PlaceBench("TeaBench_2", details, new Vector3(13.5f, Ground(13.5f, TeaZ + 0.2f), TeaZ + 0.2f), Quaternion.Euler(0f, 6f, 0f));
+        PlaceParasol(details, G(11.5f, TeaZ + 0.1f));
+        // 茶屋旁：兩個酒樽、街邊一塊立招牌
+        PlaceKitPiece("Tea_SakeBarrel_1", JpPropsModel, "JpProps", JpSakeBarrel, details, G(15.3f, TeaZ + 0.75f), 0f, 3f, out _, collider: true);
+        PlaceKitPiece("Tea_SakeBarrel_2", JpPropsModel, "JpProps", JpSakeBarrel, details, G(15.85f, TeaZ + 0.05f), 40f, 3f, out _, collider: true);
+        PlaceKitPiece("Tea_SignBoard", JpPropsModel, "JpProps", JpSignBoard, details, G(5.6f, TeaZ - 1.1f), 0f, 5f, out _, collider: true, alignLong: true);
+        // 行商的攤子旁：包鐵角的木箱、米草包
+        PlaceKitPiece("Merchant_Chest", JpPropsModel, "JpProps", JpChest, details, G(-12.5f, -32.3f), 8f, 3f, out _, collider: true, alignLong: true);
+        PlaceKitPiece("Merchant_Bale", JpPropsModel, "JpProps", JpBale, details, G(-12.75f, -33.7f), 95f, 3f, out _, collider: true, alignLong: true);
+        // 砍竹人旁：一捆竹子、一片竹籬笆
+        PlaceKitPiece("Woodcutter_Bamboo", JpPropsModel, "JpProps", JpBamboo, details, G(7.5f, 52.4f), 25f, 3.5f, out _, collider: true, alignLong: true);
+        PlaceKitPiece("Woodcutter_Fence", JpPropsModel, "JpProps", JpFence, details, G(8.9f, 53.3f), 35f, 9f, out _, collider: true, alignLong: true);
     }
 
     const float TeaZ = -4.4f;
+
+    /// <summary>
+    /// 茶屋的大紅傘（Tripo 和傘）：模型是斜拿著的，用傘面的法線（頂點分布最扁的方向）把傘柄轉成直的，
+    /// 放大到傘面直徑 3 m、傘頂約 3.1 m 高；傘柄不夠長就在底下補一根竹竿插到地上。
+    /// </summary>
+    static void PlaceParasol(Transform parent, Vector3 ground)
+    {
+        const string dir = "Assets/_Project/Models/JapaneseVillage/Parasol";
+        EnsurePropImport(ParasolModel, $"{dir}/T_JV_Parasol_Normal.png", $"{dir}/T_JV_Parasol_MetallicSmooth.png");
+        var mi = (ModelImporter)AssetImporter.GetAtPath(ParasolModel);
+        if (!mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); }
+        var root = new GameObject("TeaParasol");
+        root.transform.SetParent(parent, false);
+        var go = PlacePrefab(ParasolModel, root.transform, Vector3.zero, Quaternion.identity);
+        go.name = "Model";
+        var mat = TripoMaterial("Parasol");
+        foreach (var r in go.GetComponentsInChildren<Renderer>(true)) { var m = r.sharedMaterials; for (int i = 0; i < m.Length; i++) m[i] = mat; r.sharedMaterials = m; }
+        var mf = go.GetComponentInChildren<MeshFilter>();
+        var pts = new List<Vector3>();
+        foreach (var v in mf.sharedMesh.vertices) pts.Add(mf.transform.TransformPoint(v));
+        Vector3 c = Vector3.zero;
+        foreach (var q in pts) c += q;
+        c /= pts.Count;
+        float xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+        foreach (var q0 in pts) { var q = q0 - c; xx += q.x * q.x; xy += q.x * q.y; xz += q.x * q.z; yy += q.y * q.y; yz += q.y * q.z; zz += q.z * q.z; }
+        float tr = xx + yy + zz;
+        // 最小特徵值的方向 = (tr I - C) 最大特徵值的方向
+        Vector3 n = new Vector3(0.2f, 1f, 0.3f).normalized;
+        for (int it = 0; it < 48; it++)
+        {
+            n = new Vector3((tr - xx) * n.x - xy * n.y - xz * n.z, -xy * n.x + (tr - yy) * n.y - yz * n.z, -xz * n.x - yz * n.y + (tr - zz) * n.z).normalized;
+        }
+        // 傘柄那一頭（沿 n 離中心最遠的點）要朝下
+        float lo = float.MaxValue, hi = float.MinValue;
+        foreach (var q in pts) { float t = Vector3.Dot(q - c, n); lo = Mathf.Min(lo, t); hi = Mathf.Max(hi, t); }
+        Vector3 up = Mathf.Abs(hi) > Mathf.Abs(lo) ? -n : n;
+        go.transform.rotation = Quaternion.FromToRotation(up, Vector3.up) * go.transform.rotation;
+        var b = JVGarden.WorldBounds(go);
+        go.transform.localScale *= 3f / Mathf.Max(0.01f, Mathf.Max(b.size.x, b.size.z));
+        b = JVGarden.WorldBounds(go);
+        float lift = Mathf.Max(0f, 3.1f - b.size.y);
+        go.transform.position += new Vector3(-b.center.x, lift - b.min.y, -b.center.z);
+        b = JVGarden.WorldBounds(go);
+        if (lift > 0.05f)
+        {
+            // 傘柄底下補一根竹竿插到地上（傘柄的最低點）
+            Vector3 tipPoint = Vector3.zero; float minY = float.MaxValue;
+            foreach (var v in mf.sharedMesh.vertices) { var q = mf.transform.TransformPoint(v); if (q.y < minY) { minY = q.y; tipPoint = q; } }
+            var pole = new JVMeshKit();
+            pole.Cylinder(JVMat.WoodDark, new Vector3(tipPoint.x, -0.3f, tipPoint.z), new Vector3(tipPoint.x, minY + 0.25f, tipPoint.z), 0.032f, 0.028f, 8);
+            Instance("ParasolPole", root.transform, pole, Vector3.zero, Quaternion.identity);
+        }
+        root.transform.position = ground;
+        Debug.Log($"[JapaneseVillage] 茶屋紅傘：傘面法線 {n}，高 {b.size.y:F2} m（補竹竿 {lift:F2} m）");
+    }
 
     static void PlaceStoneLantern(Transform parent, float x, float z)
     {
@@ -1921,6 +2538,29 @@ public static class JapaneseVillageBuilder
         return controller;
     }
 
+    /// <summary>
+    /// 跑步動畫的「原地跑」版本：原本的 standing run forward 把往前的位移烤在姿勢裡（Bake Into Pose XZ），
+    /// 角色不用 Root Motion 的時候，身體會在一圈裡慢慢往前飄、下一圈又跳回來，看起來一直卡頓。
+    /// 複製一份把水平位移拿掉（不改隊友弓箭手用的原始動畫）。
+    /// </summary>
+    static AnimationClip InPlaceRunClip()
+    {
+        const string path = "Assets/_Project/Animations/JapaneseVillage/JV_Run_InPlace.anim";
+        var src = FirstClip("Assets/_Project/ThirdParty/Lite Longbow Pack/standing run forward.fbx");
+        AssetDatabase.DeleteAsset(path);
+        var copy = Object.Instantiate(src);
+        copy.name = "JV_Run_InPlace";
+        var st = AnimationUtility.GetAnimationClipSettings(copy);
+        st.loopTime = true;
+        st.loopBlendPositionXZ = false;      // 水平位移不烤進姿勢：交給 Root Motion（村民不用），身體就留在原地
+        st.keepOriginalPositionXZ = false;
+        st.loopBlendOrientation = true;
+        st.loopBlendPositionY = true;
+        AnimationUtility.SetAnimationClipSettings(copy, st);
+        AssetDatabase.CreateAsset(copy, path);
+        return copy;
+    }
+
     static AnimationClip FirstClip(string fbx)
     {
         foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(fbx))
@@ -1943,7 +2583,7 @@ public static class JapaneseVillageBuilder
         tree.useAutomaticThresholds = false;
         tree.AddChild(FirstClip("Assets/_Project/ThirdParty/Lite Longbow Pack/unarmed idle 01.fbx"), 0f);
         tree.AddChild(FirstClip("Assets/_Project/ThirdParty/StarterAssets Animations/Locomotion--Walk_N.anim.fbx"), 1f);
-        tree.AddChild(FirstClip("Assets/_Project/ThirdParty/Lite Longbow Pack/standing run forward.fbx"), 2f); // 小孩跑步用（NpcRoutine 速度超過 runFrom）
+        tree.AddChild(InPlaceRunClip(), 2f); // 小孩跑步用（速度超過 runFrom）
         AssetDatabase.SaveAssets();
         return controller;
     }
@@ -2376,6 +3016,28 @@ public static class JapaneseVillageBuilder
         {
             robe = JVMat.White, obi = JVMat.ClothRed, hair = JVMat.HairGrey, hat = JapaneseVillageMeshes.NpcHat.HairBun,
         }, "守祠的師父", false, true, new[] { "……" }, new[] { "……" }, model: TripoLook("Master", MasterHeight, "守祠的師父"));
+        // 師傅的日常：偶爾在祠堂裡走動，蹲下來整理散在地上的書（最近的三疊）
+        {
+            Vector3 home = master.transform.position;
+            var piles = new List<Vector3>();
+            foreach (var st in Object.FindObjectsByType<SteleInscription>(FindObjectsSortMode.None))
+                if (st.name.StartsWith("Book_")) piles.Add(st.transform.position);
+            piles.Sort((a, b) => (a - home).sqrMagnitude.CompareTo((b - home).sqrMagnitude));
+            var masterStops = new List<NpcRoutine.Stop> { At(home, trialMasterYaw, 10f, NpcRoutine.Act.Stand) };
+            for (int i = 0; i < Mathf.Min(3, piles.Count); i++)
+            {
+                Vector3 pile = piles[i];
+                Vector3 dir = home - pile;
+                dir.y = 0f;
+                Vector3 stand = pile + (dir.sqrMagnitude > 0.01f ? dir.normalized : Vector3.forward) * 0.75f;
+                stand.y = home.y;
+                Vector3 look = pile - stand;
+                look.y = 0f;
+                masterStops.Add(At(stand, Quaternion.LookRotation(look).eulerAngles.y, 5f, NpcRoutine.Act.Crouch));
+            }
+            var masterRoutine = AddRoutine(master, MasterHeight, masterStops.ToArray());
+            masterRoutine.walkSpeed = 0.8f; // 老人家走得慢
+        }
 
         var trial = new GameObject("ShrineTrial").AddComponent<ShrineTrial>();
         trial.master = master;
@@ -2517,6 +3179,7 @@ public static class JapaneseVillageBuilder
         {
             if (Mathf.Abs(x) < 6.5f && z > StairStartZ - 4f && z < StairEndZ + 6f) return true;
             if (new Vector2(x, z - ClearingZ).magnitude < 17f) return true;
+            if (new Vector2(x - TigerLair.x, z - TigerLair.y).magnitude < 16f) return true; // 雙尾虎的空地
             return TerraceDistance(x, z) < 2.5f; // 祠堂和習武場
         }
 
@@ -2641,21 +3304,41 @@ public static class JapaneseVillageBuilder
         EnsureHumanImport(VillagerModel, $"{VillagerDir}/T_JV_Villager_Normal.png");
         EnsureHumanImport(MonkModelPath, $"{MonkDir}/T_JV_Monk_Normal.png", $"{MonkDir}/T_JV_Monk_MetallicSmooth.png");
         EnsureHumanImport(ElderModelPath, $"{ElderDir}/T_JV_Elder_Normal.png", $"{ElderDir}/T_JV_Elder_MetallicSmooth.png");
-        foreach (var n in new[] { "VillagerWoman", "Blacksmith", "Fisherman", "Woodcutter", "Merchant", "Master", "ChildGirl" })
+        var guardImporter = (ModelImporter)AssetImporter.GetAtPath("Assets/_Project/Models/JapaneseVillage/Guard/Guard.fbx");
+        if (guardImporter != null && !guardImporter.isReadable) { guardImporter.isReadable = true; guardImporter.SaveAndReimport(); } // 武器的三角形在遊戲開始時刪
+        foreach (var n in new[] { "VillagerWoman", "Blacksmith", "Fisherman", "Woodcutter", "Merchant", "Master", "ChildGirl", "Granny", "ErrandBoy", "Guard", "Scholar", "Apothecary" })
             EnsureHumanImport($"Assets/_Project/Models/JapaneseVillage/{n}/{n}.fbx", $"Assets/_Project/Models/JapaneseVillage/{n}/T_JV_{n}_Normal.png", $"Assets/_Project/Models/JapaneseVillage/{n}/T_JV_{n}_MetallicSmooth.png");
         villagerController = VillagerController();
         monkController = MonkController();
         NpcAt(parent, "NPC_Merchant", new Vector3(-7.2f, 0f, -33.4f), 150f, new JapaneseVillageMeshes.NpcSpec
         {
             robe = JVMat.ClothOchre, obi = JVMat.ClothBrown, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.Kasa, backpack = true,
-        }, "行商", true, true,
+        }, "行商", false, true,
             new[]
             {
-                "喲，旅人！這漁村難得有外地人來，你運氣不錯，今天正好遇到我開張。",
-                "我用草藥跟人換貨。後山竹林的石階兩旁長著草藥，靠近按 E 就能採。",
-                "想補充體力的話就拿草藥來找我。別客氣，看看我的貨吧！",
+                "喲，旅人！這漁村難得有外地人來，你運氣不錯，今天正好遇到我開張。", "@開張？你的攤子上明明什麼都沒擺。",
+                "我走遍了沿海的村子，什麼樣的人都見過……不過像你這樣的，倒是頭一回。", "@……我也是頭一回來到這種地方。",
             },
-            new[] { "又見面了，旅人。草藥帶夠了嗎？" }, model: TripoLook("Merchant", MerchantHeight, "行商"));
+            new[] { "又見面了，旅人。", "@又見面了。生意還好嗎？" }, model: TripoLook("Merchant", MerchantHeight, "行商"));
+        // 行商問玩家從哪裡來（NpcQuestion），之後記得玩家的回答；用草藥換藥水改成去找藥師
+        {
+            const string herbTip = "對了，想用草藥換藥水的話，去找藥師。他的藥鋪就在我攤子東北邊那排房子，門口擺著藥缽、在煎藥的那間。";
+            var ask = GameObject.Find("NPC_Merchant").AddComponent<NpcQuestion>();
+            ask.question = "說說看，你是從哪裡來的？";
+            ask.options = new[] { "從海的那一邊漂過來的", "翻過北邊的山來的", "……我不記得了" };
+            ask.replies = new[]
+            {
+                "海的那一邊？最近外海不太平靜，你能平安上岸，命可真大。|村裡的人對海上來的客人都很好奇，有空就四處走走，聽聽他們怎麼說。|" + herbTip,
+                "翻山來的？那你一定穿過後山的竹林了——聽說竹林深處住著一頭雙尾的老虎，下次可別一個人亂闖。|山頂的祠堂供奉著玄清道人，上去拜一拜，說不定能保佑你一路平安。|" + herbTip,
+                "不記得了？……也罷，看你這身打扮就不是本地人。來處不重要，要往哪裡去才重要。|村長的宅院在東邊盡頭，他見多識廣，或許知道些什麼。|" + herbTip,
+            };
+            ask.repeatAfter = new[]
+            {
+                "海上來的旅人，又見面了。村裡逛得還習慣嗎？|草藥記得拿去給藥師，他的藥鋪在我攤子東北邊。",
+                "翻山來的旅人！竹林裡那頭老虎，你遇到了嗎？|草藥記得拿去給藥師，他的藥鋪在我攤子東北邊。",
+                "想起自己從哪裡來了嗎？……不急，慢慢來。|草藥記得拿去給藥師，他的藥鋪在我攤子東北邊。",
+            };
+        }
         var stall = Instance("MerchantStall", parent, JapaneseVillageMeshes.MerchantStall(), new Vector3(-10.5f, Ground(-10.5f, -33f), -33f), Quaternion.Euler(0f, 186f, 0f));
         var stallCollider = stall.AddComponent<BoxCollider>();
         stallCollider.center = new Vector3(0f, 0.5f, 0f);
@@ -2670,11 +3353,11 @@ public static class JapaneseVillageBuilder
         var fisherman = NpcAt(parent, "NPC_Fisherman", fisherSeat, 180f, fishermanSpec, "老漁夫", false, false,
             new[]
             {
-                "噓……小聲點，魚都被你嚇跑了。",
-                "我在這片海灣釣了四十年。太陽西斜的時候，鯛魚最容易上鉤。",
+                "噓……小聲點，魚都被你嚇跑了。", "@抱歉。……今天釣到什麼了嗎？",
+                "我在這片海灣釣了四十年。太陽西斜的時候，鯛魚最容易上鉤。", "@四十年……那你一定很熟悉這片海。",
                 "想看村子全貌的話，就沿著主街一路往北，穿過鳥居爬上石階。",
             },
-            new[] { "今天的魚不太咬鉤啊。" }, model: TripoLook("Fisherman", FishermanHeight, "老漁夫"));
+            new[] { "今天的魚不太咬鉤啊。", "@也許又是我把牠們嚇跑了。" }, model: TripoLook("Fisherman", FishermanHeight, "老漁夫"));
         var fishing = AddRoutine(fisherman, FishermanHeight, At(fisherSeat, 180f, 9999f, NpcRoutine.Act.Sit, PierDeckY));
         fishing.ignorePlayer = true;
         BuildFishingRod(parent, fisherman, fishing.animator);
@@ -2686,8 +3369,8 @@ public static class JapaneseVillageBuilder
         }, "年輕漁夫", false, true,
             new[]
             {
-                "昨天出海網子被礁石勾破了，得趁太陽好的時候趕快補起來。",
-                "沙灘盡頭的礁石區水很淺，可以走過去，但再往外就不行了——那邊可是真正的外海。",
+                "昨天出海網子被礁石勾破了，得趁太陽好的時候趕快補起來。", "@要幫忙嗎？",
+                "沙灘盡頭的礁石區水很淺，可以走過去，但再往外就不行了——那邊可是真正的外海。", "@知道了，我不會走太遠。",
             },
             new[] { "這破洞比我想的還大……" }, model: VillagerLook("Indigo"));
 
@@ -2697,8 +3380,8 @@ public static class JapaneseVillageBuilder
         }, "茶屋老闆娘", false, true,
             new[]
             {
-                "歡迎光臨！走累了就在紅傘下坐坐吧。",
-                "這條街往東西兩邊走，就是村裡的三排老屋。掛著暖簾的都是店家，紅燈籠的那家酒特別好喝。",
+                "歡迎光臨！走累了就在紅傘下坐坐吧。", "@謝謝。我想先在村裡四處看看。",
+                "這條街往東西兩邊走，就是村裡的三排老屋。掛著暖簾的都是店家，紅燈籠的那家酒特別好喝。", "@酒就先不了，我還有事要辦。",
             },
             new[] { "茶還熱著呢，慢慢來。" }, model: WomanLook("茶屋老闆娘"));
 
@@ -2731,10 +3414,10 @@ public static class JapaneseVillageBuilder
         }, "村裡的小孩", false, true,
             new[]
             {
-                "哇，你的劍好帥！你是從海的那邊來的嗎？",
-                "我知道竹林裡有祕密基地喔，不過阿爺說不可以爬太高……",
+                "哇，你的劍好帥！你是從海的那邊來的嗎？", "@算是吧。這把劍可不是玩具喔。",
+                "我知道竹林裡有祕密基地喔，不過阿爺說不可以爬太高……", "@聽阿爺的話準沒錯。",
             },
-            new[] { "下次再帶我去冒險！" }, 0.68f, model: TripoLook("ChildGirl", ChildGirlHeight, "村裡的小孩"));
+            new[] { "下次再帶我去冒險！", "@等你再長大一點吧。" }, 0.68f, model: TripoLook("ChildGirl", ChildGirlHeight, "村裡的小孩"));
         AddChildPlay(GameObject.Find("NPC_Child").GetComponent<MerchantNPC>(), parent);
 
         NpcAt(parent, "NPC_Woodcutter", new Vector3(6f, 0f, 51.5f), 215f, new JapaneseVillageMeshes.NpcSpec
@@ -2743,10 +3426,12 @@ public static class JapaneseVillageBuilder
         }, "砍竹人", false, true,
             new[]
             {
-                "要上後山嗎？穿過鳥居沿著石階走就不會迷路。",
-                "竹林密得很，一離開石階就看不到方向。不過底下長著不少草藥，有需要就順手採一些吧。",
+                "要上後山嗎？穿過鳥居沿著石階走就不會迷路。", "@後山上有什麼？",
+                "竹林密得很，一離開石階就看不到方向。不過底下長著不少草藥，有需要就順手採一些吧。", "@我會記得的，謝了。",
             },
             new[] { "今年的竹子長得真好。" }, model: TripoLook("Woodcutter", WoodcutterHeight, "砍竹人"));
+        PlaceScholar(parent);
+        PlaceApothecary(parent);
 
         PlaceWalkers(parent);
         BuildVillageLife(parent);
@@ -2759,43 +3444,308 @@ public static class JapaneseVillageBuilder
         villageWalkers.Clear(); // 每次 Build 重新收集（僧侶也在這裡建立）
         WalkerAt(parent, "Walker_WaterCarrier", new[] { new Vector2(-82f, -38.5f), new Vector2(-16f, -38.5f), new Vector2(40f, -38.5f), new Vector2(84f, -38.5f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothTeal, obi = JVMat.White, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.HairBun },
-            "挑水的婦人", new[] { "海風把衣服吹得真快乾。你是來買魚的嗎？", "從這條海岸路一直往東走，就能走到村長家門口。" }, new[] { "水缸快見底了，得再跑一趟。" }, 1.25f, model: WomanLook("挑水的婦人"));
+            "挑水的婦人", new[] { "海風把衣服吹得真快乾。你是來買魚的嗎？", "@不是，我在找路。", "從這條海岸路一直往東走，就能走到村長家門口。" }, new[] { "水缸快見底了，得再跑一趟。" }, 1.25f, model: WomanLook("挑水的婦人"));
 
         WalkerAt(parent, "Walker_FishSeller", new[] { new Vector2(-88f, -8.5f), new Vector2(-20f, -7.5f), new Vector2(30f, -8.5f), new Vector2(88f, -8f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothBrown, obi = JVMat.Rope, hair = JVMat.HairGrey, hat = JapaneseVillageMeshes.NpcHat.Kasa },
-            "賣魚的阿伯", new[] { "新鮮的鯛魚喔——今早才上岸的！", "我每天從街頭走到街尾，村裡誰家晚上吃什麼我都知道。" }, new[] { "今天的魚賣得差不多囉。" }, 1.1f, model: VillagerLook("Brown"));
+            "賣魚的阿伯", new[] { "新鮮的鯛魚喔——今早才上岸的！", "@聞起來真的很新鮮。", "我每天從街頭走到街尾，村裡誰家晚上吃什麼我都知道。" }, new[] { "今天的魚賣得差不多囉。" }, 1.1f, model: VillagerLook("Brown"));
 
         WalkerAt(parent, "Walker_Girl", new[] { new Vector2(86f, 20.5f), new Vector2(32f, 19.5f), new Vector2(-30f, 20.5f), new Vector2(-88f, 20f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothRed, obi = JVMat.ClothOchre, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.HairBun },
-            "賣花的姑娘", new[] { "這些是後山摘的野花，要不要買一枝？", "櫻花開的時候，山腳那排最好看喔。" }, new[] { "再多走兩條街就賣完了。" }, 1.35f, model: WomanLook("賣花的姑娘"));
+            "賣花的姑娘", new[] { "這些是後山摘的野花，要不要買一枝？", "@很漂亮，不過帶在身上會被壓壞的。", "櫻花開的時候，山腳那排最好看喔。" }, new[] { "再多走兩條街就賣完了。" }, 1.35f, model: WomanLook("賣花的姑娘"));
 
         WalkerAt(parent, "Walker_Watchman", new[] { new Vector2(2.4f, -36f), new Vector2(2.4f, 46f), new Vector2(-2.4f, 46f), new Vector2(-2.4f, -36f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothGrey, obi = JVMat.ClothIndigo, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.Headband },
-            "巡邏的村丁", new[] { "村長吩咐我每天巡一遍主街。最近海上不太平靜。", "有什麼可疑的事就去東邊盡頭的宅院找村長，那是全村最大的房子，不會認錯。" }, new[] { "今天也沒事，這樣最好。" }, 1.4f, loop: true, model: VillagerLook("Grey"));
+            "巡邏的村丁", new[] { "村長吩咐我每天巡一遍主街。最近海上不太平靜。", "@不太平靜？發生了什麼事？", "有什麼可疑的事就去東邊盡頭的宅院找村長，那是全村最大的房子，不會認錯。" }, new[] { "今天也沒事，這樣最好。" }, 1.4f, loop: true, model: TripoLook("Guard", GuardHeight, "巡邏的村丁"));
+        StripGuardWeapons(GameObject.Find("Walker_Watchman"));
 
         WalkerAt(parent, "Walker_Fisher", new[] { new Vector2(19f, -38.5f), new Vector2(19f, -50f), new Vector2(-30f, -53f), new Vector2(-44f, -55f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothIndigo, obi = JVMat.Rope, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.Headband },
-            "收網的漁夫", new[] { "今天風向好，漁獲不錯。", "我得在退潮前把網子收到曬網架上，失陪啦。" }, new[] { "這網子沉得很！" }, 1.2f, model: VillagerLook("Indigo"));
+            "收網的漁夫", new[] { "今天風向好，漁獲不錯。", "@恭喜。網子看起來很重。", "我得在退潮前把網子收到曬網架上，失陪啦。" }, new[] { "這網子沉得很！" }, 1.2f, model: VillagerLook("Indigo"));
 
         WalkerAt(parent, "Walker_Boy", new[] { new Vector2(50.5f, -36f), new Vector2(50.5f, 46f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothGreen, obi = JVMat.White, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.None },
-            "跑腿的男孩", new[] { "我要幫老闆送貨！小巷子是最快的捷徑！" }, new[] { "讓一讓讓一讓——" }, 2.4f, 0.72f);
+            "跑腿的男孩", new[] { "我要幫老闆送貨！小巷子是最快的捷徑！", "@跑慢點，別撞到人了！" }, new[] { "讓一讓讓一讓——" }, 2.4f, 0.72f, model: TripoLook("ErrandBoy", ErrandBoyHeight, "跑腿的男孩"));
 
         WalkerAt(parent, "Walker_Granny", new[] { new Vector2(94f, -36f), new Vector2(94f, 6f), new Vector2(94f, 46f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothPurple, obi = JVMat.ClothGrey, hair = JVMat.HairGrey, hat = JapaneseVillageMeshes.NpcHat.HairBun },
-            "散步的老奶奶", new[] { "我每天都到村長家門口走走，年輕時那棵大櫻花就已經在院子裡了。" }, new[] { "人老了，走慢點也好。" }, 0.75f, 0.94f);
+            "散步的老奶奶", new[] { "我每天都到村長家門口走走，年輕時那棵大櫻花就已經在院子裡了。", "@那棵櫻花一定很老了。" }, new[] { "人老了，走慢點也好。" }, 0.75f, 0.94f, model: TripoLook("Granny", GrannyHeight, "散步的老奶奶"));
 
         WalkerAt(parent, "Walker_Servant", new[] { new Vector2(102.5f, 0.5f), new Vector2(111f, -1f), new Vector2(112.5f, -6f), new Vector2(111f, -1f), new Vector2(102.5f, 2.2f), new Vector2(110.5f, 13f), new Vector2(102.5f, 10f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothOchre, obi = JVMat.ClothBrown, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.Headband },
-            "宅院的家僕", new[] { "這座院子每天都要掃一遍，落櫻再美也是工作啊。", "村長大人在主屋前面，有事可以直接跟他說。" }, new[] { "掃不完，真的掃不完。" }, 1f, model: VillagerLook("Olive"));
+            "宅院的家僕", new[] { "這座院子每天都要掃一遍，落櫻再美也是工作啊。", "@辛苦了。村長在家嗎？", "村長大人在主屋前面，有事可以直接跟他說。" }, new[] { "掃不完，真的掃不完。" }, 1f, model: VillagerLook("Olive"));
 
         trialMonk = WalkerAt(parent, "Walker_Monk", new[] { new Vector2(0f, StairStartZ - 3f), new Vector2(0f, StairEndZ), new Vector2(0f, ClearingZ - 2f) },
             new JapaneseVillageMeshes.NpcSpec { robe = JVMat.ClothGrey, obi = JVMat.ClothPurple, hair = JVMat.HairGrey, hat = JapaneseVillageMeshes.NpcHat.Bald },
-            "僧侶", new[] { "石階一共九十多階，每走一階，心就靜一分。", "山上的祠堂清幽，竹林的風聲很好聽。" }, new[] { "阿彌陀佛。" }, 0.95f, followColliders: true,
+            "僧侶", new[] { "石階一共九十多階，每走一階，心就靜一分。", "@我只覺得腿越來越酸。", "山上的祠堂清幽，竹林的風聲很好聽。" }, new[] { "阿彌陀佛。" }, 0.95f, followColliders: true,
             model: new HumanModel { path = MonkModelPath, material = TripoMaterial("Monk"), controller = monkController, height = MonkHeight, label = "僧侶" });
     }
 
     static readonly List<VillagerWalker> villageWalkers = new List<VillagerWalker>();
+
+    /// <summary>
+    /// 藥師：藥鋪（第一排主街東側第一間）門口擺一張磨藥的矮桌（藥缽、藥杵、幾籃草藥）和小板凳，旁邊一座煎藥的陶爐。
+    /// 日常：坐在桌前磨藥 → 進鋪子裡煎藥 → 出來蹲在陶爐前顧火 → 站在門口看看 → 回去磨藥。
+    /// 左手受傷垂著不能動（NpcRoutine.injuredLeftArm），什麼事都只用右手。
+    /// 用草藥換治癒藥水、精力藥水找他（MerchantNPC 的商店）。
+    /// </summary>
+    static void PlaceApothecary(Transform parent)
+    {
+        Vector3 door = apothecaryDoor != Vector3.zero ? apothecaryDoor : G(12f, -29.5f);
+        // 房子朝南（-Z）：門口往南是街上，往東（+X）擺桌子，往西擺陶爐
+        Vector3 tablePos = G(door.x + 2.2f, door.z - 1.9f);
+        Vector3 stoolPos = G(tablePos.x, tablePos.z - 0.75f); // 放好桌子以後照桌子的大小重算
+        Vector3 stovePos = G(door.x - 1.8f, door.z - 1.9f);
+        // 藥師的道具組（Tripo，ApoTable）：拆成一樣一樣擺。大部分放大 2.2 倍（矮桌約 1.1 m 寬、0.38 m 高，板凳 0.3 m 高）
+        const float S = 2.2f;
+        var tableGo = PlaceKitPiece("Apothecary_Table", ApoKitModel, "ApoTable", ApoTable, parent, tablePos, 0f, S, out var tableSize, collider: true);
+        float tableTop = tableSize.y;
+        stoolPos = G(tablePos.x, tablePos.z - tableSize.z * 0.5f - 0.3f);
+        PlaceKitPiece("Apothecary_Stool", ApoKitModel, "ApoTable", ApoStool, parent, stoolPos, 0f, S, out var stoolSize);
+        float stoolSeat = stoolSize.y;
+        // 桌上：石臼（靠板凳那一邊）、一小捆藥草、葫蘆藥瓶、綁好的一包藥
+        Vector3 OnTable(float x, float z) => tablePos + new Vector3(x, tableTop, z);
+        PlaceKitPiece("Apothecary_Mortar", ApoKitModel, "ApoTable", ApoMortar, parent, OnTable(0f, -0.1f), 0f, 1.3f, out _);
+        PlaceKitPiece("Apothecary_Bundle", ApoKitModel, "ApoTable", ApoBundle, parent, OnTable(-0.27f, -0.05f), 30f, 1.6f, out _);
+        PlaceKitPiece("Apothecary_Gourd", ApoKitModel, "ApoTable", ApoGourd, parent, OnTable(-0.42f, 0.12f), 0f, 1.6f, out _);
+        PlaceKitPiece("Apothecary_Package", ApoKitModel, "ApoTable", ApoPackage, parent, OnTable(0.36f, 0.08f), 15f, 1.6f, out _);
+        // 桌子兩邊地上：一大盤草藥、一盤曬乾的藥材
+        PlaceKitPiece("Apothecary_HerbTray", ApoKitModel, "ApoTable", ApoHerbTray, parent, G(tablePos.x + tableSize.x * 0.5f + 0.4f, tablePos.z + 0.1f), 0f, 1.8f, out _, collider: true);
+        PlaceKitPiece("Apothecary_DryTray", ApoKitModel, "ApoTable", ApoDryTray, parent, G(tablePos.x - tableSize.x * 0.5f - 0.35f, tablePos.z + 0.25f), 10f, 1.8f, out _);
+        // 煎藥的陶爐（上面放陶壺），旁邊一塊布、一根攪藥的棒子
+        var stoveGo = PlaceKitPiece("Apothecary_Stove", ApoKitModel, "ApoTable", ApoStove, parent, stovePos, 180f, S, out var stoveSize, collider: true);
+        PlaceKitPiece("Apothecary_Pot", ApoKitModel, "ApoTable", ApoPot, parent, stovePos + Vector3.up * (stoveSize.y - 0.02f), 0f, S, out _);
+        PlaceKitPiece("Apothecary_Cloth", ApoKitModel, "ApoTable", ApoCloth, parent, G(stovePos.x + 0.6f, stovePos.z + 0.35f), 20f, 1.6f, out _);
+        PlaceKitPiece("Apothecary_Stick", ApoKitModel, "ApoTable", ApoStick, parent, G(stovePos.x - 0.45f, stovePos.z + 0.25f), 60f, S, out _);
+
+        var glow = new GameObject("StoveGlow").AddComponent<Light>();
+        glow.transform.SetParent(stoveGo.transform, false);
+        glow.transform.localPosition = new Vector3(0f, 0.15f, 0f);
+        glow.type = LightType.Point;
+        glow.color = new Color(1f, 0.55f, 0.25f);
+        glow.intensity = 0.8f;
+        glow.range = 2.5f;
+        glow.shadows = LightShadows.None;
+
+        var apo = NpcAt(parent, "NPC_Apothecary", stoolPos, 0f, new JapaneseVillageMeshes.NpcSpec
+        {
+            robe = JVMat.ClothTeal, obi = JVMat.ClothBrown, hair = JVMat.HairGrey, hat = JapaneseVillageMeshes.NpcHat.None,
+        }, "藥師", true, true,
+            new[]
+            {
+                "哦？是新面孔。我是村裡的藥師，鋪子裡的藥都是我自己磨、自己煎的。", "@你的左手怎麼了？",
+                "這左手啊，前陣子上山採藥摔了一跤，到現在還抬不起來，只好用一隻手磨藥，慢是慢了點。", "@那採藥的事就交給我吧。",
+                "所以後山的草藥就得靠你了：竹林的石階兩旁長著草藥，靠近按 E 就能採。拿來給我，我幫你煎成藥。",
+                "治癒藥水要四株草藥，精力藥水三株。看看需要什麼吧。",
+            },
+            new[] { "草藥帶來了嗎？爐子上的藥可不能斷火。", "@帶來了，你看看。", "這隻手再過一陣子應該就能動了……醫者難自醫啊。" }, model: TripoLook("Apothecary", ApothecaryHeight, "藥師"));
+
+        // 陶爐旁：一個封口的陶甕、後面一片擋風的木板屏風（日式道具組）
+        PlaceKitPiece("Apothecary_Jar", JpPropsModel, "JpProps", JpJar, parent, G(stovePos.x - 0.85f, stovePos.z + 0.45f), 0f, 3f, out _, collider: true);
+        PlaceKitPiece("Apothecary_Screen", JpPropsModel, "JpProps", JpScreen, parent, G(stovePos.x - 0.1f, stovePos.z + 0.75f), 0f, 7.5f, out _, collider: true, alignLong: true);
+
+        var routine = AddRoutine(apo, ApothecaryHeight,
+            At(stoolPos, 0f, 14f, NpcRoutine.Act.Grind, stoolPos.y + stoolSeat), // 右手握著石臼裡的杵畫圈
+            Pass(G(stoolPos.x - 0.9f, stoolPos.z - 0.2f)),
+            Pass(new Vector3(door.x, door.y, door.z - 1.2f)),
+            WithDoor(At(door, 0f, 7f, NpcRoutine.Act.Inside), apothecaryEntry),
+            Pass(new Vector3(door.x, door.y, door.z - 1.2f)),
+            At(G(stovePos.x + 0.15f, stovePos.z - 0.7f), 0f, 6f, NpcRoutine.Act.Tend),
+            At(G(door.x + 0.6f, door.z - 1.4f), 180f, 4f, NpcRoutine.Act.Stand),
+            Pass(G(stoolPos.x - 0.9f, stoolPos.z - 0.2f)));
+
+        // 左手受傷：一直垂在身體旁邊不動，磨藥、顧火都只用右手
+        routine.injuredLeftArm = true;
+        // 模型右大腿那一塊褲子 / 衣襬綁了右手臂的骨頭：右手一動就把褲子勾走，改成不跟著右手臂（跟著腿和身體）
+        UnhookFromArm(apo.gameObject, "Right");
+        UnhookFromArm(apo.gameObject, "Left"); // 受傷的左手垂著不動：衣襬也不要跟著它
+        routine.walkSpeed = 0.95f;
+        Debug.Log($"[JapaneseVillage] 藥師：藥鋪門口 {door}，桌子 {tablePos}，陶爐 {stovePos}");
+    }
+
+    /// <summary>
+    /// 衣服被手臂勾著走：Tripo 自動綁骨把垂在大腿旁的手臂和褲子 / 衣襬黏在一起，手一抬就把衣服拉出去。
+    /// 綁了 side 手臂（上臂、前臂、手掌、手指）骨頭的頂點，如果離大腿 / 小腿 / 身體比離手臂還近（或是手掌的骨頭、卻離手腕很遠），
+    /// 就改成不跟著手臂動（StripMeshParts.Rebind：手臂的權重拿掉、剩下的重新分配；都沒有了就綁在骨盆 / 胸口）。
+    /// </summary>
+    internal static bool[] ArmUnhookMask(Mesh mesh, Transform[] bones, string side, out int[] armBones, out int hips, out int chest, out float waistY)
+    {
+        Vector3 P(string suffix)
+        {
+            int i = System.Array.FindIndex(bones, t => t != null && t.name.EndsWith(suffix));
+            return i >= 0 ? mesh.bindposes[i].inverse.MultiplyPoint3x4(Vector3.zero) : new Vector3(float.NaN, 0f, 0f);
+        }
+        int Find(string suffix) => System.Array.FindIndex(bones, t => t != null && t.name.EndsWith(suffix));
+        var arm = new List<int>();
+        for (int i = 0; i < bones.Length; i++)
+            if (bones[i] != null && (bones[i].name.EndsWith(side + "Arm") || bones[i].name.EndsWith(side + "ForeArm") || bones[i].name.Contains(side + "Hand"))) arm.Add(i);
+        armBones = arm.ToArray();
+        hips = Mathf.Max(0, Find("Hips"));
+        chest = Find("Spine2");
+        if (chest < 0) chest = Find("Spine1");
+        if (chest < 0) chest = hips;
+        Vector3 shoulder = P(side + "Arm"), elbow = P(side + "ForeArm"), wrist = P(side + "Hand"), tip = P(side + "HandMiddle3");
+        // 蒙皮裡沒有手腕的骨頭（有些 Tripo 模型）：照上臂的方向和長度估一個
+        if (float.IsNaN(wrist.x) && !float.IsNaN(elbow.x) && !float.IsNaN(shoulder.x)) wrist = elbow + (elbow - shoulder) * 0.85f;
+        if (float.IsNaN(tip.x)) tip = wrist + (wrist - elbow).normalized * 0.06f * mesh.bounds.size.y;
+        Vector3 hip = P(side + "UpLeg"), knee = P(side + "Leg"), ankle = P(side + "Foot");
+        Vector3 pelvis = P("Hips"), neck = P("Neck");
+        waistY = pelvis.y + 0.08f * mesh.bounds.size.y;
+        float H = mesh.bounds.size.y;
+        static float Seg(Vector3 p, Vector3 a, Vector3 b)
+        {
+            if (float.IsNaN(a.x) || float.IsNaN(b.x)) return float.MaxValue;
+            Vector3 ab = b - a;
+            float t = Mathf.Clamp01(Vector3.Dot(p - a, ab) / Mathf.Max(1e-8f, ab.sqrMagnitude));
+            return (a + ab * t - p).magnitude;
+        }
+        var v = mesh.vertices;
+        var bw = mesh.boneWeights;
+        var set = new HashSet<int>(arm);
+        var mask = new bool[v.Length];
+        for (int i = 0; i < v.Length; i++)
+        {
+            var b = bw[i];
+            bool touches = (set.Contains(b.boneIndex0) && b.weight0 > 0f) || (set.Contains(b.boneIndex1) && b.weight1 > 0f)
+                        || (set.Contains(b.boneIndex2) && b.weight2 > 0f) || (set.Contains(b.boneIndex3) && b.weight3 > 0f);
+            if (!touches) continue;
+            float dArm = Mathf.Min(Seg(v[i], shoulder, elbow), Mathf.Min(Seg(v[i], elbow, wrist), Seg(v[i], wrist, tip)));
+            float dBody = Mathf.Min(Mathf.Min(Seg(v[i], hip, knee), Seg(v[i], knee, ankle)), Seg(v[i], pelvis, neck));
+            bool handFar = bones[b.boneIndex0] != null && bones[b.boneIndex0].name.Contains(side + "Hand") && (v[i] - wrist).magnitude > 0.09f * H;
+            // 綁在手指骨頭上、卻離那節手指很遠（衣襬的邊黏在指尖上）
+            bool FingerFar(int bi, float w) => w > 0.05f && bones[bi] != null && bones[bi].name.Contains(side + "Hand") && !bones[bi].name.EndsWith(side + "Hand")
+                                               && (v[i] - mesh.bindposes[bi].inverse.MultiplyPoint3x4(Vector3.zero)).magnitude > 0.035f * H;
+            if (FingerFar(b.boneIndex0, b.weight0) || FingerFar(b.boneIndex1, b.weight1) || FingerFar(b.boneIndex2, b.weight2) || FingerFar(b.boneIndex3, b.weight3)) handFar = true;
+            // 手臂本身（袖子、手）離手臂的骨頭很近：留著；離身體 / 腿比較近：是衣服
+            if (handFar || (dBody < dArm && dArm > 0.03f * H)) mask[i] = true;
+        }
+        return mask;
+    }
+
+    static void UnhookFromArm(GameObject npc, string side)
+    {
+        var smr = npc.GetComponentInChildren<SkinnedMeshRenderer>(true);
+        if (smr == null) return;
+        var mi = (ModelImporter)AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(smr.sharedMesh));
+        if (mi != null && !mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); }
+        var mesh = smr.sharedMesh;
+        var mask = ArmUnhookMask(mesh, smr.bones, side, out var armBones, out int hips, out int chest, out float waistY);
+        int n = 0;
+        foreach (bool m in mask) if (m) n++;
+        var strip = smr.GetComponent<StripMeshParts>();
+        if (strip != null && !string.IsNullOrEmpty(strip.rebindVertices))
+        {
+            // 已經有另一隻手臂的設定：合併（兩隻手臂的頂點、骨頭都算進去）
+            var prev = System.Convert.FromBase64String(strip.rebindVertices);
+            for (int i = 0; i < mask.Length; i++) if ((prev[i >> 3] & (1 << (i & 7))) != 0) mask[i] = true;
+            var all = new List<int>(strip.detachBones);
+            foreach (int b in armBones) if (!all.Contains(b)) all.Add(b);
+            armBones = all.ToArray();
+        }
+        if (strip == null) strip = smr.gameObject.AddComponent<StripMeshParts>();
+        strip.vertexCount = mask.Length;
+        strip.rebindVertices = StripMeshParts.Encode(mask);
+        strip.detachBones = armBones;
+
+        // 手指 / 前臂和衣服本來是同一片網格（Tripo 把垂在大腿旁的手和衣襬黏在一起）：換骨頭之後，
+        // 腰以下一邊還跟著前臂 / 手、一邊已經不跟的三角形會被拉成一大片，直接拿掉（只在腰以下，不動袖子和肩膀的接縫）
+        {
+            var verts = mesh.vertices;
+            var weights = mesh.boneWeights;
+            var lowerArm = new HashSet<int>();
+            foreach (int bi in armBones) if (smr.bones[bi] != null && !smr.bones[bi].name.EndsWith(side + "Arm")) lowerArm.Add(bi);
+            float ArmW(int vi)
+            {
+                if (mask[vi]) return 0f; // 換過骨頭的已經不跟手臂了
+                var w = weights[vi];
+                return (lowerArm.Contains(w.boneIndex0) ? w.weight0 : 0f) + (lowerArm.Contains(w.boneIndex1) ? w.weight1 : 0f)
+                     + (lowerArm.Contains(w.boneIndex2) ? w.weight2 : 0f) + (lowerArm.Contains(w.boneIndex3) ? w.weight3 : 0f);
+            }
+            var cut = new List<int>(strip.removedTriangles ?? new int[0]);
+            int triIndex = 0, added = 0;
+            for (int sm = 0; sm < mesh.subMeshCount; sm++)
+            {
+                var tri = mesh.GetTriangles(sm);
+                for (int t = 0; t < tri.Length; t += 3, triIndex++)
+                {
+                    int a = tri[t], b = tri[t + 1], c = tri[t + 2];
+                    if (Mathf.Max(verts[a].y, Mathf.Max(verts[b].y, verts[c].y)) > waistY) continue;
+                    float wa = ArmW(a), wb = ArmW(b), wc = ArmW(c);
+                    float hi = Mathf.Max(wa, Mathf.Max(wb, wc)), lo = Mathf.Min(wa, Mathf.Min(wb, wc));
+                    if (hi > 0.5f && lo < 0.05f && !cut.Contains(triIndex)) { cut.Add(triIndex); added++; }
+                }
+            }
+            strip.removedTriangles = cut.ToArray();
+            strip.minRemovedPerTriangle = 3;
+            Debug.Log($"[JapaneseVillage] {npc.name}：{(side == "Right" ? "右" : "左")}手和衣服黏在一起的三角形拿掉 {added} 片");
+        }
+        strip.fallbackBone = hips;
+        strip.fallbackBoneHigh = chest;
+        strip.splitHeight = waistY;
+        Debug.Log($"[JapaneseVillage] {npc.name}：{n} 個頂點不再跟著{(side == "Right" ? "右" : "左")}手臂動");
+    }
+
+    /// <summary>村丁模型拿在右手的長棍拿掉：算好遮罩交給 StripMeshParts（遊戲開始時才刪三角形）</summary>
+    static void StripGuardWeapons(GameObject guard)
+    {
+        var smr = guard != null ? guard.GetComponentInChildren<SkinnedMeshRenderer>(true) : null;
+        if (smr == null) return;
+        var log = new StringBuilder();
+        var mask = WeaponMask(smr.sharedMesh, smr.bones, log);
+        var strip = smr.gameObject.AddComponent<StripMeshParts>();
+        strip.vertexCount = mask.Length;
+        strip.removedVertices = StripMeshParts.Encode(mask);
+        strip.minRemovedPerTriangle = 1;
+        Debug.Log($"[JapaneseVillage] 村丁的武器：{log.ToString().Replace("\n", "；")}");
+    }
+
+    /// <summary>
+    /// 女書生：從京城來抄錄傳說的書生。坐在石階下的長椅上看書 → 走到鳥居前站著翻書對照 → 回長椅。
+    /// 跟她說話會聊玄清道人的傳說、提示祠堂裡的古畫和詩。書（NpcRoutine.book）只有看書的時候才拿出來。
+    /// </summary>
+    static void PlaceScholar(Transform parent)
+    {
+        Vector3 benchPos = G(ScholarBench.x, ScholarBench.y);
+        PlaceBench("ScholarBench", parent, benchPos, Quaternion.Euler(0f, 90f, 0f));
+        float seatY = benchPos.y + BenchSeatHeight;
+
+        var scholar = NpcAt(parent, "NPC_Scholar", benchPos, 90f, new JapaneseVillageMeshes.NpcSpec
+        {
+            robe = JVMat.ClothIndigo, obi = JVMat.ClothOchre, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.HairBun,
+        }, "女書生", false, true,
+            new[]
+            {
+                "啊……抱歉，看得太入神了。我是從京城來的書生，到各地抄錄古老的傳說。", "@古老的傳說？這個村子也有嗎？",
+                "玄清道人在海上斬龍的故事，京城的說書人也講過。可是他後來怎麼了，書上一個字都沒寫。", "@他後來怎麼了？",
+                "聽說道人留下的四幅古畫和一首詩，就收在山頂的祠堂裡。你要上去的話，幫我留意詩裡寫了什麼。",
+                "那首詩的最後幾句我只聽人唸過：「誰開長者後園門」……村裡的長者，說的會不會就是村長？", "@我去問問看。",
+            },
+            new[] { "書上寫的，和村裡人說的，總有些不一樣。", "等我抄完這一卷，就要往下一個村子去了。" },
+            model: TripoLook("Scholar", ScholarHeight, "女書生"));
+
+        // 手上的書：Tripo 古書組裡攤開的那本（約 28 cm 寬），+Y 是書頁那面、+Z 是書的上緣
+        var book = PlaceKitPiece("Book", BooksKitModel, "Books", BookOpen, scholar.transform, scholar.transform.position, 0f, 0.5f, out _, centered: true, shadows: false);
+        book.SetActive(false);
+        // 長椅的兩頭：一本闔著的書、一卷卷軸（她抄書用的）
+        PlaceKitPiece("ScholarBench_Book", BooksKitModel, "Books", BookClosedA, parent, benchPos + new Vector3(0.02f, seatY - benchPos.y, 0.55f), 80f, 0.5f, out _);
+        PlaceKitPiece("ScholarBench_Scroll", BooksKitModel, "Books", BookScroll, parent, benchPos + new Vector3(0f, seatY - benchPos.y, -0.58f), 95f, 0.42f, out _);
+        PlaceKitPiece("ScholarBench_Lantern", JpPropsModel, "JpProps", JpLantern, parent, G(benchPos.x - 1.1f, benchPos.z + 1.45f), 20f, 3f, out _, collider: true);
+        // 沒在看書時拿在右手搧的摺扇（Tripo，約 38 cm 寬）：扇軸在原點
+        var fan = PlaceKitPiece("Fan", FanModel, "Fan", -1, scholar.transform, scholar.transform.position, 0f, 0.39f, out _, shadows: false);
+
+        Vector3 torii = G(-3.2f, StairStartZ - 1.8f);
+        var routine = AddRoutine(scholar, ScholarHeight,
+            At(benchPos, 90f, 16f, NpcRoutine.Act.Read, seatY),
+            Pass(G(ScholarBench.x + 1.2f, ScholarBench.y + 0.4f)),
+            At(torii, 15f, 8f, NpcRoutine.Act.Read),
+            At(torii, 0f, 4f, NpcRoutine.Act.Stand),
+            Pass(G(ScholarBench.x + 1.2f, ScholarBench.y - 0.2f)));
+        routine.walkSpeed = 0.9f;
+        routine.book = book.transform;
+        routine.fan = fan.transform;
+        scholar.gameObject.AddComponent<SecretGateOpener>(); // 第三次對話偷偷打開村長家後院的門（DojoGate 遊戲開始時自己找）
+        Debug.Log($"[JapaneseVillage] 女書生：長椅 {benchPos}（坐面 {seatY:F2}），鳥居前 {torii}");
+    }
 
     /// <summary>小孩：東張西望 → 跑去蹲下看地上的石頭 → 跑到另一邊蹦蹦跳跳 → 再跑去看另一顆石頭</summary>
     static void AddChildPlay(MerchantNPC child, Transform parent)
@@ -2913,7 +3863,11 @@ public static class JapaneseVillageBuilder
         walker.loop = loop;
         walker.followColliders = followColliders;
         walker.animator = animator;
-        if (model != null) walker.animationWalkSpeed = 1.72f * model.height / VillagerHeight; // 走路動畫的步幅跟身高成正比
+        if (model != null)
+        {
+            walker.animationWalkSpeed = 1.72f * model.height / VillagerHeight; // 走路動畫的步幅跟身高成正比
+            walker.animationRunSpeed = 3.4f * model.height / VillagerHeight;
+        }
         if (body != null)
         {
             walker.body = body.transform;
@@ -2993,6 +3947,9 @@ public static class JapaneseVillageBuilder
     static NpcRoutine.Stop At(Vector3 p, float yaw, float duration, NpcRoutine.Act act, float seatY = 0f) =>
         new NpcRoutine.Stop { position = p, yaw = yaw, duration = duration, act = act, seatY = seatY };
 
+    /// <summary>進屋那一站接上房子的正門（先開門、上台階才進去）</summary>
+    static NpcRoutine.Stop WithDoor(NpcRoutine.Stop stop, HouseEntryDoor door) { stop.door = door; return stop; }
+
     static NpcRoutine.Stop Pass(Vector3 p) => At(p, 0f, 0f, NpcRoutine.Act.Pass);
 
     /// <summary>地面（Terrain）上的點</summary>
@@ -3030,7 +3987,7 @@ public static class JapaneseVillageBuilder
         Physics.SyncTransforms();
 
         // 茶屋老闆娘
-        float seat1 = Ground(9.5f, TeaZ) + 0.495f; // TeaBench 的坐面高度
+        float seat1 = Ground(9.5f, TeaZ) + BenchSeatHeight; // 長椅的坐面高度
         Vector3 door = teaHouseDoor != Vector3.zero ? teaHouseDoor : G(10f, -0.6f);
         AddRoutine(tea, VillagerWomanHeight,
             At(G(7f, TeaZ), 215f, 7f, NpcRoutine.Act.Stand),
@@ -3041,7 +3998,7 @@ public static class JapaneseVillageBuilder
             At(G(9.5f, TeaZ), 180f, 9f, NpcRoutine.Act.Sit, seat1),
             Pass(G(9.5f, TeaZ + 1.2f)),
             Pass(new Vector3(door.x, door.y, door.z - 1.6f)),
-            At(door, 0f, 6f, NpcRoutine.Act.Inside),
+            WithDoor(At(door, 0f, 6f, NpcRoutine.Act.Inside), teaHouseEntry),
             Pass(new Vector3(door.x, door.y, door.z - 1.6f)),
             Pass(G(7.5f, TeaZ + 1f)));
         Debug.Log($"[JapaneseVillage] 茶屋老闆娘的日常：茶屋門口 {door}");
@@ -3091,7 +4048,7 @@ public static class JapaneseVillageBuilder
         {
             Vector3 b = elderBenchPos;
             elderStops.Add(Pass(new Vector3(b.x, b.y, b.z + 1.5f)));
-            elderStops.Add(At(b, 0f, 11f, NpcRoutine.Act.Sit, b.y + 0.495f));
+            elderStops.Add(At(b, 0f, 11f, NpcRoutine.Act.Sit, b.y + BenchSeatHeight));
             elderStops.Add(Pass(new Vector3(b.x, b.y, b.z + 1.5f)));
         }
         Debug.Log($"[JapaneseVillage] 村長的日常：台階 x {stepX:F1}（高 {stepTop - g0:F2} m）、主殿地板邊緣 x {edgeX:F1}（高 {hallFloor - g0:F2} m），長椅 {elderBenchPos}，共 {elderStops.Count} 站");
@@ -3109,7 +4066,82 @@ public static class JapaneseVillageBuilder
         return prefab;
     }
 
-    /// <summary>竹林石階旁的草藥（和 Planet 一樣按 E 採集，拿去跟行商換藥水）</summary>
+    /// <summary>
+    /// 雙尾虎：趴在竹林空地裡，玩家走近就怒吼衝過來決鬥（飛撲、揮爪），打中 8 下就逃往竹林深處，原地留下三株草藥。
+    /// 模型是 Tripo 的四足骨架（沒有動畫），動作都在 TigerBeast 用程式擺骨頭。
+    /// </summary>
+    static void BuildTiger()
+    {
+        // 四足骨架要保留蒙皮（Animation Type = None 會變成不會動的一般網格）：用 Generic、不匯入動畫
+        EnsurePropImport(TigerModel, "Assets/_Project/Models/JapaneseVillage/Tiger/T_JV_Tiger_Normal.png", "Assets/_Project/Models/JapaneseVillage/Tiger/T_JV_Tiger_MetallicSmooth.png", ModelImporterAnimationType.Generic);
+        var root = new GameObject("TwoTailedTiger");
+        root.transform.SetPositionAndRotation(G(TigerLair.x, TigerLair.y), Quaternion.Euler(0f, 110f, 0f)); // 頭朝著石階
+        var model = PlacePrefab(TigerModel, root.transform, root.transform.position, root.transform.rotation);
+        model.name = "Model";
+        var tigerAnimator = model.GetComponent<Animator>();
+        if (tigerAnimator != null) tigerAnimator.enabled = false; // 沒有動畫：骨頭全部由 TigerBeast 擺
+        var mat = TripoMaterial("Tiger");
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++) mats[i] = mat;
+            r.sharedMaterials = mats;
+            if (r is SkinnedMeshRenderer smr) smr.updateWhenOffscreen = true; // 骨頭是程式擺的，外框要跟著算
+        }
+
+        // 轉正：頭的方向 = root 的前方
+        Transform head = null, tailBone = null;
+        foreach (var t in model.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name.EndsWith("Head_0")) head = t;
+            if (t.name.EndsWith("Tail_0")) tailBone = t;
+        }
+        float turn = 0f;
+        if (head != null && tailBone != null)
+        {
+            Vector3 f = head.position - tailBone.position;
+            f.y = 0f;
+            turn = Vector3.SignedAngle(f, root.transform.forward, Vector3.up);
+            model.transform.rotation = Quaternion.AngleAxis(turn, Vector3.up) * model.transform.rotation;
+        }
+        // 縮放：身長 TigerLength，腳踩在地上
+        var b = JVGarden.WorldBounds(model);
+        Vector3 fwd = root.transform.forward;
+        float length = Mathf.Abs(Vector3.Dot(b.size, new Vector3(Mathf.Abs(fwd.x), 0f, Mathf.Abs(fwd.z))));
+        float raw = Mathf.Max(b.size.x, b.size.z);
+        model.transform.localScale *= TigerLength / Mathf.Max(0.01f, raw);
+        b = JVGarden.WorldBounds(model);
+        model.transform.position += Vector3.up * (root.transform.position.y - b.min.y);
+        b = JVGarden.WorldBounds(model);
+
+        var col = root.AddComponent<CapsuleCollider>();
+        col.direction = 2;
+        col.center = new Vector3(0f, b.size.y * 0.5f, 0f);
+        col.height = TigerLength;
+        col.radius = Mathf.Min(0.8f, b.size.y * 0.42f);
+        root.AddComponent<TetherInteractable>().mode = TetherInteractable.TetherMode.StaticAnchor; // 拉索不能把老虎拖走
+
+        // 逃走時留下的草藥（藏起來，逃的時候移到老虎旁邊）
+        var herbModel = new SharedModel("TigerHerb", JapaneseVillageMeshes.Herb());
+        var herbs = new GameObject[3];
+        for (int i = 0; i < herbs.Length; i++)
+        {
+            var go = herbModel.Place($"TigerHerb_{i + 1}", root.transform.parent, root.transform.position, Quaternion.Euler(0f, i * 97f, 0f), false);
+            var plant = go.AddComponent<HarvestablePlant>();
+            plant.snapToTerrain = true;
+            plant.interactRange = 2f;
+            herbs[i] = go;
+        }
+
+        var tiger = root.AddComponent<TigerBeast>();
+        tiger.model = model.transform;
+        tiger.bodyLength = TigerLength;
+        tiger.fleeTarget = G(TigerFlee.x, TigerFlee.y);
+        tiger.herbs = herbs;
+        Debug.Log($"[JapaneseVillage] 雙尾虎：位置 {root.transform.position}，模型原始長 {raw:F2}、轉正 {turn:F0}°、高 {b.size.y:F2} m");
+    }
+
+    /// <summary>竹林石階旁的草藥（和 Planet 一樣按 E 採集，拿去給藥師換藥水）</summary>
     static void PlaceHerbs()
     {
         var root = new GameObject("Herbs").transform;
