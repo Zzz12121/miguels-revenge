@@ -191,7 +191,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
     }
     IEnumerator Cast(int index,bool melee=false)
     {
-        if(index==2 && !Form.EncounterMeleeInRange){index=(rangedFallback++%2);melee=false;}
+        if(index==2 && melee && !Form.EncounterMeleeInRange){index=(rangedFallback++%2);melee=false;}
         if(!Alive)yield break;Phase=melee?"Brush melee":CalligraphyBossCombat.SkillNames[index];
         if(!Form.CastEncounterSkill(index,melee))yield break;
         CastHistory.Add(melee?-1:index);
@@ -201,7 +201,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
             Phase="Waiting for ink doubles to disappear";
             while(Alive&&Form.EncounterClonesRemaining>0)yield return null;
         }
-        if(Alive && index==2 && Form.EncounterMeleeLostRange)yield return Cast(rangedFallback++%2);
+        if(Alive && index==2 && melee && Form.EncounterMeleeLostRange)yield return Cast(rangedFallback++%2);
     }
     int rangedFallback;
     public int SelectTeleportFollowup()=>Random.value<.5f?2:1;

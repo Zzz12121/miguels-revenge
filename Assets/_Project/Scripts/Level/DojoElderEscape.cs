@@ -136,7 +136,7 @@ public sealed class DojoElderEscape : MonoBehaviour
         // Only remove the actor after the player camera has taken over and can no longer see it.
         yield return null;cloudRoot.SetActive(false);CloudHiddenAfterCameraReturn=true;
         Phase="Player remarks on escape";bool done=false;
-        StoryDialogue.Play(new[]{StoryDialogue.L("米格爾",player.transform,false,"這老頭竟然跑走了！",new Color(.65f,.85f,1))},()=>done=true);
+        StoryDialogue.Play(new[]{StoryDialogue.L("米格爾",player.transform,false,string.Empty,new Color(.65f,.85f,1))},()=>done=true);
         while(!done)yield return null;
         health.ShowBar=false;Completed=true;Phase="Escaped";
         Destroy(cloudRoot);ReleasePlayer();

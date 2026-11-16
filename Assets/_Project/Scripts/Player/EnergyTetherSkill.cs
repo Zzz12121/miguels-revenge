@@ -136,6 +136,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             orbitCamera.PanFromScreenEdge(PadInput.PointerPosition, Time.unscaledDeltaTime);
 
         hovered = FindAimPoint(PadInput.PointerPosition);
+        if (selectionLocked && CancelIfOutOfRange(locked)) return;
         if (selectionLocked && !ValidPoint(locked)) { selectionLocked=false; dragging=false; }
         UpdateReticle(selectionLocked ? locked : hovered, selectionLocked || ValidPoint(hovered));
 
@@ -154,6 +155,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         {
             if (!selectionLocked)
             {
+                if (CancelIfOutOfRange(hovered)) return;
                 if (!ValidPoint(hovered)) { Notify("請瞄準實際物件，不能鎖定空氣"); return; }
                 locked = hovered;
                 selectionLocked = true;
@@ -166,6 +168,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             }
             if (aimingThrowDestination)
             {
+                if (CancelIfOutOfRange(hovered)) return;
                 if (!ValidPoint(hovered)) return;
                 Vector3 destination = hovered.Point;
                 EndAiming(false);
@@ -278,7 +281,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     AimPoint FindAimPoint(Vector2 pointer)
     {
         Ray ray = aimCamera.ScreenPointToRay(pointer);
-        RaycastHit[] hits = Physics.RaycastAll(ray, maximumRange, aimMask, QueryTriggerInteraction.Collide);
+        // Inspect the first real surface even beyond casting range so a failed cast can
+        // report its distance and close aiming, rather than treating it as empty air.
+        RaycastHit[] hits = Physics.RaycastAll(ray, Mathf.Infinity, aimMask, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
         foreach (RaycastHit hit in hits)
         {
@@ -305,6 +310,14 @@ public sealed class EnergyTetherSkill : MonoBehaviour
 
     bool ValidPoint(AimPoint p) => p.hitSomething && p.collider != null && p.collider.enabled &&
         p.collider.gameObject.activeInHierarchy && Vector3.Distance(transform.position,p.Point)<=maximumRange;
+    bool CancelIfOutOfRange(AimPoint point)
+    {
+        if (!point.hitSomething || point.collider == null ||
+            Vector3.Distance(transform.position,point.Point)<=maximumRange) return false;
+        Notify("距離過遠");
+        CancelAiming();
+        return true;
+    }
     void Notify(string message) { feedback=message; feedbackUntil=Time.unscaledTime+2f; }
 
     IEnumerator ThrowTarget(AimPoint point, Vector3 velocity)

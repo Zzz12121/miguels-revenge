@@ -54,6 +54,10 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     Vector3 queuedCameraPosition;
     Quaternion queuedCameraRotation;
     float queuedCameraFov;
+    // 收招結束時從技能鏡頭混回玩家鏡頭：0 = 完全是技能鏡頭、1 = 完全是玩家鏡頭（Cinemachine 算出來的位置）
+    float cameraHandoffWeight;
+    Vector3 cameraHandoffPivot;
+    bool cameraHandedOff;
     bool hasQueuedCameraPose;
 
     Transform rightUpperArm;
@@ -128,6 +132,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     void Update()
     {
         UpdatePreviewInputAndTargeting();
+        UpdateChargeCameraRestore();
 
         flashAlpha = Mathf.MoveTowards(flashAlpha, 0f, Time.unscaledDeltaTime * 2.8f);
         posePulse = Mathf.MoveTowards(posePulse, 0f, Time.unscaledDeltaTime * 3.8f);
@@ -139,6 +144,8 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
         if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
+        else if (!playing) ApplyHandoffToAnimator();
+        if (charging) ApplyChargeAim();
         UpdateDrawDashAfterimages();
         UpdateLiftedVictims();
         if (skillCamera == null) return;
@@ -168,12 +175,14 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
             GUI.color = old;
         }
         if (showSkillHud) DrawTargetingUI();
+        DrawChargeUI(); // 蓄力的準心和蓄力條一定要顯示（瞄準要用）
     }
 
     void OnDisable()
     {
         StopAllCoroutines();
         if (IsTargeting) CancelTargeting();
+        if (charging) CancelCharge();
         if(playing) Time.fixedDeltaTime = fixedDeltaStart;
         RestorePose();
         RestoreCamera();
@@ -567,6 +576,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         shakeStrength = 0f;
         fovKick = 0f;
         hasQueuedCameraPose = false;
+        cameraHandoffWeight = 0f;
         if (cinematicCameraDriver != null) cinematicCameraDriver.Release(this);
     }
 
@@ -579,9 +589,23 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         ApplyQueuedCinematicCameraPose();
     }
 
-    internal void ApplyQueuedCinematicCameraPose()
+    /// <param name="afterCameraBrain">true = 從 VoidRendCinematicCameraDriver 的 LateUpdate 呼叫（Cinemachine 已經把玩家鏡頭算好、放在相機上了）</param>
+    internal void ApplyQueuedCinematicCameraPose(bool afterCameraBrain = false)
     {
         if (!hasQueuedCameraPose || skillCamera == null || (!cinematicCamera && !voidRendCinematicActive)) return;
+        if (cameraHandoffWeight > 0f)
+        {
+            // 交接中：只在 Cinemachine 算完之後混，這時相機上放的就是玩家鏡頭的位置
+            if (!afterCameraBrain) return;
+            Transform cam = skillCamera.transform;
+            float w = Mathf.Clamp01(cameraHandoffWeight);
+            // 繞著角色轉過去（不是直線移動，不會穿過角色身體）
+            Vector3 from = queuedCameraPosition - cameraHandoffPivot, to = cam.position - cameraHandoffPivot;
+            cam.SetPositionAndRotation(cameraHandoffPivot + Vector3.Slerp(from, to, w),
+                Quaternion.Slerp(queuedCameraRotation, cam.rotation, w));
+            skillCamera.fieldOfView = Mathf.Lerp(queuedCameraFov, skillCamera.fieldOfView, w);
+            return;
+        }
         skillCamera.transform.SetPositionAndRotation(queuedCameraPosition, queuedCameraRotation);
         skillCamera.fieldOfView = queuedCameraFov;
     }

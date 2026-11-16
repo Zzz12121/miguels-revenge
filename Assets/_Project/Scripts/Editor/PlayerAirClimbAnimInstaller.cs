@@ -7,7 +7,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 
 /// <summary>
-/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate）、翻滾（CW_Roll）、地面連段（CW_Slash1～3，有幾刀就裝幾刀），後面幾段是 Tripo 做的。
+/// 貓戰士的新動畫：跳起（CW_Jump）、下落循環（CW_Fall）、落地緩衝（CW_Land）、攀上平台（CW_Climb）、空中側閃（CW_AirDash）、推大門（CW_PushGate）、翻滾（CW_Roll）、技能 1 蓄力（CW_SwordAim / CW_SwordStepF·B·L·R）、地面連段（CW_Slash1～3，有幾刀就裝幾刀），後面幾段是 Tripo 做的。
 ///
 /// 動畫放在 Models/PlayerCharacter/PlayerCatWarrior_AirClimb.fbx（Art/PlayerCatWarrior/player_anim_generator.py 產生）。
 ///  1. 匯入設定是自動的（下面的 AssetPostprocessor）：Humanoid、跟原本的貓戰士用同一套骨架對應，
@@ -78,7 +78,8 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             // 站姿時髖部剛好在待機動畫（Tripo 動作庫，以重心對齊）在遊戲裡的位置，切換跳躍 / 落地 / 翻滾 / 揮刀時身體不會前後左右偏。
             // （不能用 Center of Mass：每段動畫以「自己第一格」的重心對齊，落地動畫第一格是蹲下的開頭，會整個往後偏約 5 公分，切回待機時腳往前滑）
             c.lockRootPositionXZ = true; c.keepOriginalPositionXZ = true;
-            c.loopTime = n == "CW_Fall";
+            // CW_SwordAim / CW_SwordStep*：技能 1 蓄力時的舉刀站姿和小碎步（循環）
+            c.loopTime = n == "CW_Fall" || n.StartsWith("CW_Sword");
             c.loopPose = false;
         }
         imp.clipAnimations = clips;
@@ -227,6 +228,43 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             Clear(st);
             if (idle != null) Add(st, idle, 0.24f, 0.99f);
             log.Add("AC_PlayerCatWarrior：加上 Slash" + i + "（第 " + i + " 刀）狀態");
+        }
+
+        // 技能 1（虛空裂斬）用的姿勢動畫：技能開始時 VoidRendSkillDemo 會把它們取樣存起來（技能期間 Animator 是關掉的），
+        // 所以這兩個狀態不需要轉換，只要存在就好。VR_Summon = 單手舉高讓刀飛上去（轉刀）、VR_Horse = 拔刀的低馬步（突進斬）
+        // VR_Iai = 居合低伏預備（砍完停在空中的收招姿勢）
+        foreach (var pair in new[] { ("CW_VRSummon", "VR_Summon"), ("CW_VRHorse", "VR_Horse"), ("CW_VRIai", "VR_Iai") })
+        {
+            if (!clips.TryGetValue(pair.Item1, out var vrClip)) continue;
+            var st = Find(pair.Item2) ?? sm.AddState(pair.Item2, new Vector3(900, 600 + (pair.Item2 == "VR_Horse" ? 60 : pair.Item2 == "VR_Iai" ? 120 : 0)));
+            st.motion = vrClip; st.speed = 1f; st.writeDefaultValues = true;
+            Clear(st);
+            if (idle != null) Add(st, idle, 0.2f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 " + pair.Item2 + "（技能 1 的姿勢）");
+        }
+
+        // 技能 1 蓄力：舉刀瞄準的站姿 + 前後左右的小碎步（Art/PlayerCatWarrior/charge_pose.py 手擺）。
+        // VoidRendSkillDemo 蓄力時直接切到這個狀態（不用轉換線），ChargeX / ChargeY = 角色自己座標的移動方向和快慢（-1～1）
+        if (clips.TryGetValue("CW_SwordAim", out var aimClip))
+        {
+            EnsureFloat(ctrl, "ChargeX", 0f); EnsureFloat(ctrl, "ChargeY", 0f);
+            var st = Find("SwordCharge") ?? sm.AddState("SwordCharge", new Vector3(900, 800));
+            if (st.motion is BlendTree old && AssetDatabase.GetAssetPath(old) == AssetDatabase.GetAssetPath(ctrl))
+                AssetDatabase.RemoveObjectFromAsset(old);
+            var tree = new BlendTree
+            {
+                name = "SwordCharge", blendType = BlendTreeType.FreeformDirectional2D,
+                blendParameter = "ChargeX", blendParameterY = "ChargeY", useAutomaticThresholds = false,
+                hideFlags = HideFlags.HideInHierarchy,
+            };
+            AssetDatabase.AddObjectToAsset(tree, ctrl);
+            tree.AddChild(aimClip, Vector2.zero);
+            foreach (var (clip, pos) in new[] { ("CW_SwordStepF", new Vector2(0, 1)), ("CW_SwordStepB", new Vector2(0, -1)),
+                                                 ("CW_SwordStepL", new Vector2(-1, 0)), ("CW_SwordStepR", new Vector2(1, 0)) })
+                if (clips.TryGetValue(clip, out var c)) tree.AddChild(c, pos);
+            st.motion = tree; st.speed = 1f; st.writeDefaultValues = true;
+            Clear(st);
+            log.Add("AC_PlayerCatWarrior：加上 SwordCharge（技能 1 蓄力：舉刀 + 前後左右小碎步）");
         }
 
         // 待機 / 走 / 跑 → 起跳 / 下落：轉換時間拉長一點；

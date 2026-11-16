@@ -19,6 +19,32 @@ using UnityEngine.InputSystem;
 [DefaultExecutionOrder(-50)] // 要比 CinemachineBrain（LateUpdate）先更新注視點
 public class ThirdPersonCamera : MonoBehaviour
 {
+    [Header("取景（原神 / 崩鐵風格）")]
+    [Tooltip("開著：鏡頭低一點、平一點（注視點在胸口附近），拉近時看得到上半身；往上看時鏡頭往角色靠近、不碰到地面，角色留在畫面裡。\n關掉 = 原本的取景（注視點固定在 Target Offset）")]
+    public bool lowAngleFraming = true;
+    [Tooltip("注視點離「腳底」的高度：拉到最近時 / 拉到最遠時（公尺）。注視點在畫面正中間：拉近時對準腰，看得到整個人")]
+    public float framingPivotNear = 1.1f, framingPivotFar = 1.4f;
+    [Tooltip("一開始的俯角（度）：越小越平、越像原神")]
+    [Range(-10f, 40f)] public float framingStartPitch = 5f;
+    [Tooltip("往上看到底（Min Pitch）時，鏡頭距離縮成原本的多少")]
+    [Range(.2f, 1f)] public float lookUpDistanceScale = .55f;
+    [Tooltip("鏡頭至少離角色腳底的地面多高（公尺）。要比 Collision Radius 大，不然鏡頭一碰到地面就會被推到角色身上")]
+    [Range(0f, 1.5f)] public float minCameraHeight = .5f;
+    [SerializeField, HideInInspector] int framingVersion;
+    const int FramingVersion = 3;
+
+    /// <summary>場景裡存的是舊版的取景數值時，換成這一版的預設值（只做一次）</summary>
+    void UpgradeFraming()
+    {
+        if (framingVersion >= FramingVersion) return;
+        framingVersion = FramingVersion;
+        lowAngleFraming = true;
+        framingPivotNear = 1.1f; framingPivotFar = 1.4f;
+        framingStartPitch = 5f; lookUpDistanceScale = .55f; minCameraHeight = .5f;
+    }
+
+    void OnValidate() => UpgradeFraming();
+
     [Header("跟隨目標")]
     public Transform target;
     [Tooltip("鏡頭注視點相對角色腳底的位置（大約肩膀 / 頭的高度）")]
@@ -169,7 +195,8 @@ public class ThirdPersonCamera : MonoBehaviour
             yaw = target.eulerAngles.y;
             smoothedPivot = target.position + targetOffset;
         }
-        pitch = startPitch;
+        UpgradeFraming();
+        pitch = lowAngleFraming ? framingStartPitch : startPitch;
         LockCursor(true);
         SnapToTarget();
     }
@@ -216,7 +243,7 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         if (follow == null) return;
         follow.Damping = Vector3.zero;         // 平滑交給注視點的 SmoothDamp，鏡頭本身不再延遲
-        follow.ShoulderOffset = Vector3.zero;  // 注視點已經在肩膀 / 頭的高度
+        follow.ShoulderOffset = Vector3.zero;  // 注視點已經在胸口 / 肩膀 / 頭的高度
         follow.VerticalArmLength = 0f;
         follow.CameraSide = 0.5f;
         follow.CameraDistance = distance;
@@ -236,7 +263,7 @@ public class ThirdPersonCamera : MonoBehaviour
         HandleInput();
 
         // 注視點（平滑跟隨）
-        Vector3 pivot = target.position + targetOffset + ClimbPivotShift();
+        Vector3 pivot = target.position + FramedOffset() + ClimbPivotShift();
         if (targetMotor == null && target != null) targetMotor = target.GetComponent<ThirdPersonController>();
         bool rolling = targetMotor != null && targetMotor.IsRolling;
         currentFollowSmooth = Mathf.MoveTowards(currentFollowSmooth <= 0f ? followSmoothTime : currentFollowSmooth,
@@ -251,6 +278,19 @@ public class ThirdPersonCamera : MonoBehaviour
         // 瞄準：注視點移到瞄準對象的肩膀、鏡頭拉近、畫面放大（平滑過渡）
         aimBlend = Mathf.MoveTowards(aimBlend, aiming && aimTarget != null ? 1f : 0f, aimBlendSpeed * Time.deltaTime);
         float dist = distance * Mathf.Lerp(1f, climbDistanceScale, Mathf.SmoothStep(0f, 1f, climbBlend));
+        if (lowAngleFraming)
+        {
+            // 往上看：鏡頭拉近（原神：仰角越大鏡頭越貼近角色，角色留在畫面下方、背景是天空）
+            float lookUp = Mathf.InverseLerp(0f, Mathf.Min(-1f, minPitch), pitch);
+            dist *= Mathf.Lerp(1f, lookUpDistanceScale, Mathf.SmoothStep(0f, 1f, lookUp));
+            // 鏡頭高度 = 注視點 - 往後拉的距離 × sin(仰角)：太低就再拉近，不讓鏡頭碰到地面（碰到的話防穿牆會把鏡頭推到角色身上）
+            if (pitch < 0f)
+            {
+                float drop = Mathf.Sin(-pitch * Mathf.Deg2Rad);
+                float room = lookPoint.y - (target.position.y + FeetOffset() + minCameraHeight);
+                if (drop > .01f) dist = Mathf.Min(dist, Mathf.Max(.6f, room / drop));
+            }
+        }
         if (aimBlend > 0f && aimTarget != null)
         {
             float k = Mathf.SmoothStep(0f, 1f, aimBlend);
@@ -282,6 +322,27 @@ public class ThirdPersonCamera : MonoBehaviour
                         dist=Mathf.Min(dist,Mathf.Max(.3f,hit.distance-.1f));
             follow.CameraDistance = dist;
         }
+    }
+
+    /// <summary>注視點相對腳底的位置：原神風格時高度跟著遠近變（拉近 = 胸口，拉遠 = 肩膀），否則就是 Target Offset</summary>
+    Vector3 FramedOffset()
+    {
+        if (!lowAngleFraming) return targetOffset;
+        float zoom = Mathf.InverseLerp(minDistance, maxDistance, distance);
+        return new Vector3(targetOffset.x, FeetOffset() + Mathf.Lerp(framingPivotNear, framingPivotFar, zoom), targetOffset.z);
+    }
+
+    /// <summary>腳底相對角色根物件的高度：玩家的根物件在 CharacterController 膠囊的中心（腳底上方 1 公尺），不是在腳底</summary>
+    float FeetOffset()
+    {
+        if (targetBodyOwner != target)
+        {
+            targetBodyOwner = target;
+            targetBody = target != null ? target.GetComponent<CharacterController>() : null;
+        }
+        if (targetBody == null) return 0f;
+        float scale = target.lossyScale.y;
+        return (targetBody.center.y - targetBody.height * .5f) * scale;
     }
 
     /// <summary>攀爬時注視點要額外移動多少：身體離「平常的位置」多遠，就跟著移多遠（再稍微壓低）</summary>

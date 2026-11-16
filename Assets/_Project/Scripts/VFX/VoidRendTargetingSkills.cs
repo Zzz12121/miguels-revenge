@@ -81,10 +81,18 @@ public sealed partial class VoidRendSkillDemo
         if(CalligraphyPaintingWorld.BlocksTether)
         {
             if(IsTargeting)CancelTargeting();
+            if(charging)CancelCharge();
             return;
         }
         if (Keyboard.current == null) return;
         if (Time.timeScale <= 0f) return;
+
+        // 技能 1：按住 1 蓄力（蓄力中會鎖住跳躍 / 翻滾，所以要在下面的 ActionsLocked 檢查之前處理）
+        if (charging)
+        {
+            UpdateCharge();
+            return;
+        }
 
         if (IsTargeting)
         {
@@ -97,8 +105,9 @@ public sealed partial class VoidRendSkillDemo
             // Dialogue/shop already owns movement input and the number keys.
             if (GameUI.OverlayOpen || (practiceController != null &&
                 (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
-            // 預設 1~4 / 手把十字鍵 ← ↑ → ↓，可以在暫停選單「設定」裡改
-            if (InputBindings.Pressed(GameAction.Skill1)) BeginTargeting(PreviewSkill.VoidRend);
+            // 技能 1：按住 1 蓄力（VoidRendCharge 用 1 鍵判斷放開，所以固定用鍵盤的 1）
+            // 技能 2~4：預設 2~4 / 手把十字鍵 ↑ → ↓，可以在暫停選單「設定」裡改
+            if (Keyboard.current.digit1Key.wasPressedThisFrame) { if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
             else if (InputBindings.Pressed(GameAction.Skill2)) BeginTargeting(PreviewSkill.CatPounce);
             else if (InputBindings.Pressed(GameAction.Skill3)) BeginTargeting(PreviewSkill.CrescentDash);
             else if (InputBindings.Pressed(GameAction.Skill4)) BeginTargeting(PreviewSkill.SkyfallCross);
@@ -214,10 +223,15 @@ public sealed partial class VoidRendSkillDemo
 
     TargetSelection FindTargetUnderPointer()
     {
+        return FindTargetAt(PadInput.PointerPosition, 72f); // 滑鼠位置，或手把右搖桿推動的準心
+    }
+
+    /// <summary>畫面上 pointer 這個點對到的目標（先用射線，沒打到就找畫面上 pixels 像素內最近的目標）</summary>
+    TargetSelection FindTargetAt(Vector2 pointer, float pixels)
+    {
         // Outside actors remain in the scene but are not part of the player's painting space.
         if (CalligraphyPaintingWorld.BlocksTether) return default;
         if (skillCamera == null) return default;
-        Vector2 pointer = PadInput.PointerPosition; // 滑鼠位置，或手把右搖桿推動的準心
         Ray ray = skillCamera.ScreenPointToRay(pointer);
         RaycastHit[] hits = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
@@ -247,15 +261,15 @@ public sealed partial class VoidRendSkillDemo
 
         // 小型或沒有完整碰撞器的互動物件，仍可用畫面上的最近標記選取。
         VoidRendTargetable best = null;
-        float bestPixels = 72f;
+        float bestPixels = pixels;
         foreach (VoidRendTargetable marker in FindObjectsByType<VoidRendTargetable>(FindObjectsInactive.Exclude))
         {
             IDamageable damageable = marker.GetComponentInParent<IDamageable>();
             if (damageable != null && damageable.IsDead) continue;
             Vector3 screen = skillCamera.WorldToScreenPoint(marker.AimPosition);
             if (screen.z <= 0f) continue;
-            float pixels = Vector2.Distance(pointer, new Vector2(screen.x, screen.y));
-            if (pixels < bestPixels) { bestPixels = pixels; best = marker; }
+            float dist = Vector2.Distance(pointer, new Vector2(screen.x, screen.y));
+            if (dist < bestPixels) { bestPixels = dist; best = marker; }
         }
         return new TargetSelection { marker = best };
     }
@@ -281,8 +295,11 @@ public sealed partial class VoidRendSkillDemo
     {
         if (targetingReticle == null) CreateTargetingReticle();
         if (targetingReticle == null) return;
-        targetingReticle.enabled = IsTargeting && selection.IsValid;
+        targetingReticle.enabled = (IsTargeting || charging) && selection.IsValid;
         if (!targetingReticle.enabled) return;
+        // 蓄力中：還沒蓄滿是淡橘色，蓄滿（可以出招）變紅
+        Color rc = charging && !chargeFull ? new Color(1f, .7f, .35f, .8f) : new Color(1f, .04f, .025f, .98f);
+        targetingReticle.startColor = rc; targetingReticle.endColor = rc;
 
         Vector3 normal = selection.WorldNormal;
         if (normal.sqrMagnitude < .001f) normal = skillCamera != null ? -skillCamera.transform.forward : Vector3.up;
@@ -353,6 +370,22 @@ public sealed partial class VoidRendSkillDemo
         if (practiceOrbitCamera != null) practiceOrbitCamera.enabled = false;
     }
 
+    /// <summary>收招結束前把玩家鏡頭打開（放在角色背後），讓技能鏡頭可以混過去。沒有玩家鏡頭就回傳 false</summary>
+    bool BeginCameraHandoff()
+    {
+        cameraHandedOff = false;
+        cameraHandoffWeight = 0f;
+        if (practiceOrbitCamera == null || caster == null) return false;
+        practiceOrbitCamera.target = caster;
+        practiceOrbitCamera.yaw = caster.eulerAngles.y;
+        practiceOrbitCamera.pitch = Mathf.Clamp(practiceOrbitCamera.pitch, 5f, 20f);
+        practiceOrbitCamera.enabled = true;
+        practiceOrbitCamera.SnapToTarget();
+        cameraHandoffPivot = caster.position + Vector3.up * .4f;
+        cameraHandedOff = true;
+        return true;
+    }
+
     void RestorePracticeControlsAfterSkill()
     {
         practiceControlsSuspended = false;
@@ -368,7 +401,9 @@ public sealed partial class VoidRendSkillDemo
         {
             practiceOrbitCamera.target = caster;
             practiceOrbitCamera.enabled = true;
-            practiceOrbitCamera.SnapToTarget();
+            // 收招時已經交接過（鏡頭已經在跟了）就不要再瞬間對準，不然會跳一下
+            if (!cameraHandedOff) practiceOrbitCamera.SnapToTarget();
+            cameraHandedOff = false;
         }
         Cursor.visible = false;
         Cursor.lockState = CursorLockMode.Locked;
@@ -616,7 +651,7 @@ public sealed partial class VoidRendSkillDemo
             + (RangeInputSettings.IsRange(owner) && !pad ? "　K：按鍵設定" : "　Esc / Start：暫停・設定");
         GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), moveLine, controls);
         GUI.Label(new Rect(31f, Screen.height - 56f, Screen.width-50f, 24f),
-            $"{N(GameAction.Skill1)}：虛空連斬　{N(GameAction.Skill2)}：貓躍雙斬　{N(GameAction.Skill3)}：月弧突進　{N(GameAction.Skill4)}：空中十字斬"
+            "1：虛空連斬（按住蓄力、左鍵出招）　" + $"{N(GameAction.Skill2)}：貓躍雙斬　{N(GameAction.Skill3)}：月弧突進　{N(GameAction.Skill4)}：空中十字斬"
             + (pad ? $"（右搖桿瞄準、{N(GameAction.Attack)} 確認、B 取消）" : "（技能需滑鼠選取）"), controls);
 
         if (!IsTargeting) return;

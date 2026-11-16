@@ -12,6 +12,9 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     public float entrySeconds=4,containedSeconds=20,exitSeconds=2.5f,radius=96;
     public float disturbanceRadius=5,disturbanceStrength=.8f;
     public bool Finished {get;private set;}
+    // Count the final dissolve as part of the world, and keep its last three seconds harmless.
+    public float RemainingSeconds=>Mathf.Max(0,entrySeconds+containedSeconds+exitSeconds-age);
+    public bool DragonsCanDamage=>!Finished && RemainingSeconds>3f;
     CalligraphyBossCombat boss;
     PlayerHealth player;
     CalligraphyInkField ink;
@@ -415,6 +418,8 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
         if(age>=entrySeconds && !dragonsReleased)
         {
             dragonsReleased=true;
+            StoryDialogue.Play(new[]{StoryDialogue.L("米格爾",player.transform,false,
+                "這……難道是領域嗎？",PlanetStory.PlayerColor)});
             int count=Mathf.Clamp(boss.paintingWorld.dragonCount,0,12);
             Vector3 target=CalligraphyGeometry.Ground(player.transform.position,player.transform);
             for(int i=0;i<count;i++)
@@ -422,7 +427,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
                 float a=i*Mathf.PI*2/count;
                 Vector3 from=target+new Vector3(Mathf.Cos(a)*34.5f,7.5f+i%3*3,Mathf.Sin(a)*34.5f)*sizeMultiplier;
                 var go=new GameObject("Painting dragon "+(i+1));go.transform.SetParent(transform,false);
-                var dragon=go.AddComponent<CalligraphyInkDragon>();dragon.Initialize(ink,player,from,target,boss.paintingDragonScale,1+i*2.5f,false,boss.paintingDragonDamage);dragons.Add(dragon);
+                var dragon=go.AddComponent<CalligraphyInkDragon>();dragon.Initialize(ink,player,from,target,boss.paintingDragonScale,1+i*2.5f,false,boss.paintingDragonDamage,paintingOwner:this);dragons.Add(dragon);
             }
         }
         // Wait for a fully opaque outside frame, then remove the painting without a final pop.

@@ -1,5 +1,25 @@
 # Codex project context
 
+## 2026-11-15 painting dragon legs, harmless ending and entry reaction
+
+- Only painting-owned dragons use3x line width on all four shoulder/elbow/palm limbs (.19→.57); leg length, claw-tip width, head/body proportions and the separate giant-dragon attack remain unchanged. Painting ownership is passed explicitly at spawn.
+- Final3s of the painting total entry+contained+exit duration, including the return dissolve, suppress both contact and impact damage through the dragon own damage gate. Visual movement continues. At the contained phase entry, a single player dialogue says「這……難道是領域嗎？」; this is an explicit exception to the earlier blank dialogue placeholders, alongside the brush reaction. Dialogue pauses the world timer and resumes through existing StoryDialogue cleanup.
+- Minimal focused Play check passed: four leg widths, unchanged body/claws/outside giant, entry dialogue, actual contact harmless at3s remaining and damaging before the boundary. Compile passed. User authorized direct push.
+
+## 2026-11-15 close entrance during elder cutaway and after skip
+
+- After the player courtyard stroll, opening cutscene releases its hand-driven door override and requests the gate own closing animation before elder shots. Finish also requests closing so skipped flows retain a closed gate with player at85%. New DojoCourtyardGate.TryClose works without player proximity, starts from the visible hinge angle and preserves sweep protection/reopening safety. Normal manual gate interaction is retained. User requested minimal checks and direct push.
+
+## 2026-11-15 teleport doubles must summon outside brush range
+
+- Separated basic brush melee range guards from the index2 chasing-double summon in the encounter scheduler and combat adapter. Summon windup now runs before checking the master own brush-strike distance, so leaving3.6m during teleport/reassembly no longer replaces the selected doubles with a projectile. Master swings still stop out of range, doubles retain their front/rear chase and own strike-distance checks. Wait for all doubles including dissolve before the next cast; a summon no longer adds a ranged fallback afterwards. Basic melee keeps its existing ranged fallback. Teleport selection remains50/50.
+- Focused Play check: actual teleport, move player12m away, summon both flanking clones, wait for dissolve, verify no ranged replacement and retain basic melee distance guard. Compile and check passed; user authorized direct push with minimal tests.
+
+## 2026-11-15 tether range cancellation and temporary dialogue
+
+- Tether targeting detects the actual hit surface beyond cast range. Clicking an out-of-range target, or losing range on a locked target, shows「距離過遠」and exits aiming through the existing cleanup, retaining feedback after cancellation. It does not keep the failed attempt armed for a second click.
+- Dojo opening uses placeholderDialogue=true: existing dialogue boxes and speaker portraits remain with blank body text; turn this off when new story text is authored. Half-health escape remark also has blank body text. Only the new player line「什麼，居然是用毛筆嗎？」plays after completed brush assembly. The cutscene keeps controls locked through that reaction, then hands control back. Other levels dialogue is unchanged. User requested minimal checks and direct push.
+
 ## 2026-11-15 regular skill cycle excludes ranged follow-ups
 
 - Dojo regular cycle now runs skill indices2 through8, excluding Flying Ink(0) and Four-stroke(1). Existing teleport follow-up remains50% ink melee /50% Four-stroke; existing distance fallback and leap-slam entrance are unchanged. Minimal compilation check and direct push requested.
