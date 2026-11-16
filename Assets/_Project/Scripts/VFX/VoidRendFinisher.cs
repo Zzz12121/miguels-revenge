@@ -19,6 +19,16 @@ public sealed partial class VoidRendSkillDemo
     public float launchHeight = 4.5f;
     [Min(1f)] public float landingDistanceBehind = 3.2f;
     [Min(8f)] public float recoveryCameraDistance = 11.5f;
+    [Header("Skill 1 / 轉刀鏡頭（以刀為中心、跟刀旋轉相反的方向環繞）")]
+    [Tooltip("鏡頭繞著刀轉的速度（度 / 秒）。刀是順時針轉（從上往下看），鏡頭逆時針")]
+    public float spinOrbitDegreesPerSecond = 75f;
+    [Tooltip("鏡頭離刀多遠（公尺）")]
+    [Range(1f, 8f)] public float spinOrbitRadius = 2.6f;
+    [Tooltip("鏡頭比刀低多少（負的 = 從下往上拍，看得到旋轉的刀面，角色在畫面下方）")]
+    public float spinOrbitHeight = -.7f;
+    [Range(25f, 75f)] public float spinOrbitFov = 50f;
+    [Tooltip("轉刀進行到幾成之後開始拉回原本的遠景（接下一段出拳的鏡頭）")]
+    [Range(.3f, 1f)] public float spinOrbitPullOutFrom = .75f;
     [Header("Skill 1 / 收招鏡頭（砍完 → 推近主角 → 後面爆炸 → 平順回到玩家鏡頭）")]
     [Tooltip("砍完之後停在離目標中心多遠（公尺）：遠一點比較看得清楚角色，鏡頭也不容易被怪物擋住")]
     [Min(1f)] public float finisherLandingDistance = 4.5f;
@@ -316,15 +326,17 @@ public sealed partial class VoidRendSkillDemo
             // 轉刀期間角色固定站穩，只有手臂與武器在頭頂旋轉。
             caster.position = arenaCenter;
             FaceCurrentTarget();
-            // 鏡頭 2：先停在臉和旋轉的刀的特寫，刀往上飄之後一邊環繞、一邊慢慢拉遠回到原本的遠景
-            float pull = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(spinCloseUpHold, 1f, u));
-            cameraYaw = spinYawStart - 155f * Mathf.SmoothStep(0, 1, u);
-            cameraRadius = Mathf.Lerp(spinCloseUpDistance, spinCameraEndRadius, pull);
-            cameraHeight = Mathf.Lerp(-.12f, 2.45f, pull);
-            // 特寫對準臉和刀的中間（有 Tripo 舉手姿勢、刀飛到前上方時）；沒有的話照原本的高度
-            Vector3 closeFocus = TryGetSummonFocus(out var summonFocus) ? summonFocus : caster.position + Vector3.up * spinCloseUpFocusHeight;
-            cameraFocus = Vector3.Lerp(closeFocus, caster.position + Vector3.up * 1.5f, pull);
-            cinematicFov = Mathf.Lerp(spinCloseUpFov, 52f, pull);
+            // 鏡頭 2：以刀（刀柄 = 旋轉中心）為中心，往跟刀旋轉相反的方向環繞；最後一段拉回原本的遠景接出拳
+            // 刀的角度是 AngleAxis(+spin, up)，跟鏡頭 yaw 同一個方向算法，所以 yaw 往下減 = 反方向
+            float orbitTravel = spinOrbitDegreesPerSecond * Mathf.Max(0f, t - .15f);     // 一開始 0.3 秒慢慢加速
+            if (t < .3f) orbitTravel = spinOrbitDegreesPerSecond * (t * t / .6f);           // 0.3 秒時兩段剛好接上（角度和速度都連續）
+            cameraYaw = spinYawStart - orbitTravel;
+            float pull = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(spinOrbitPullOutFrom, 1f, u));
+            Vector3 swordFocus = weapon != null ? weapon.position : caster.position + Vector3.up * spinCloseUpFocusHeight;
+            cameraFocus = Vector3.Lerp(swordFocus, caster.position + Vector3.up * 1.5f, pull);
+            cameraRadius = Mathf.Lerp(spinOrbitRadius, spinCameraEndRadius, pull);
+            cameraHeight = Mathf.Lerp(spinOrbitHeight, 2.45f, pull);
+            cinematicFov = Mathf.Lerp(spinOrbitFov, 52f, pull);
             if (t >= nextParticle)
             {
                 nextParticle += .12f;

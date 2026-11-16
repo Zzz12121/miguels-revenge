@@ -81,10 +81,18 @@ public sealed partial class VoidRendSkillDemo
         if(CalligraphyPaintingWorld.BlocksTether)
         {
             if(IsTargeting)CancelTargeting();
+            if(charging)CancelCharge();
             return;
         }
         if (Keyboard.current == null) return;
         if (Time.timeScale <= 0f) return;
+
+        // 技能 1：按住 1 蓄力（蓄力中會鎖住跳躍 / 翻滾，所以要在下面的 ActionsLocked 檢查之前處理）
+        if (charging)
+        {
+            UpdateCharge();
+            return;
+        }
 
         if (IsTargeting)
         {
@@ -97,7 +105,7 @@ public sealed partial class VoidRendSkillDemo
             // Dialogue/shop already owns movement input and the number keys.
             if (GameUI.OverlayOpen || (practiceController != null &&
                 (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
-            if (Keyboard.current.digit1Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.VoidRend);
+            if (Keyboard.current.digit1Key.wasPressedThisFrame) { if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
             else if (Keyboard.current.digit2Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CatPounce);
             else if (Keyboard.current.digit3Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.CrescentDash);
             else if (Keyboard.current.digit4Key.wasPressedThisFrame) BeginTargeting(PreviewSkill.SkyfallCross);
@@ -212,10 +220,16 @@ public sealed partial class VoidRendSkillDemo
 
     TargetSelection FindTargetUnderPointer()
     {
+        if (Mouse.current == null) return default;
+        return FindTargetAt(Mouse.current.position.ReadValue(), 72f);
+    }
+
+    /// <summary>畫面上 pointer 這個點對到的目標（先用射線，沒打到就找畫面上 pixels 像素內最近的目標）</summary>
+    TargetSelection FindTargetAt(Vector2 pointer, float pixels)
+    {
         // Outside actors remain in the scene but are not part of the player's painting space.
         if (CalligraphyPaintingWorld.BlocksTether) return default;
-        if (skillCamera == null || Mouse.current == null) return default;
-        Vector2 pointer = Mouse.current.position.ReadValue();
+        if (skillCamera == null) return default;
         Ray ray = skillCamera.ScreenPointToRay(pointer);
         RaycastHit[] hits = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
         System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
@@ -245,15 +259,15 @@ public sealed partial class VoidRendSkillDemo
 
         // 小型或沒有完整碰撞器的互動物件，仍可用畫面上的最近標記選取。
         VoidRendTargetable best = null;
-        float bestPixels = 72f;
+        float bestPixels = pixels;
         foreach (VoidRendTargetable marker in FindObjectsByType<VoidRendTargetable>(FindObjectsInactive.Exclude))
         {
             IDamageable damageable = marker.GetComponentInParent<IDamageable>();
             if (damageable != null && damageable.IsDead) continue;
             Vector3 screen = skillCamera.WorldToScreenPoint(marker.AimPosition);
             if (screen.z <= 0f) continue;
-            float pixels = Vector2.Distance(pointer, new Vector2(screen.x, screen.y));
-            if (pixels < bestPixels) { bestPixels = pixels; best = marker; }
+            float dist = Vector2.Distance(pointer, new Vector2(screen.x, screen.y));
+            if (dist < bestPixels) { bestPixels = dist; best = marker; }
         }
         return new TargetSelection { marker = best };
     }
@@ -279,8 +293,11 @@ public sealed partial class VoidRendSkillDemo
     {
         if (targetingReticle == null) CreateTargetingReticle();
         if (targetingReticle == null) return;
-        targetingReticle.enabled = IsTargeting && selection.IsValid;
+        targetingReticle.enabled = (IsTargeting || charging) && selection.IsValid;
         if (!targetingReticle.enabled) return;
+        // 蓄力中：還沒蓄滿是淡橘色，蓄滿（可以出招）變紅
+        Color rc = charging && !chargeFull ? new Color(1f, .7f, .35f, .8f) : new Color(1f, .04f, .025f, .98f);
+        targetingReticle.startColor = rc; targetingReticle.endColor = rc;
 
         Vector3 normal = selection.WorldNormal;
         if (normal.sqrMagnitude < .001f) normal = skillCamera != null ? -skillCamera.transform.forward : Vector3.up;
@@ -601,7 +618,7 @@ public sealed partial class VoidRendSkillDemo
         string jump=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Jump));
         string roll=RangeInputSettings.KeyName(RangeInputSettings.Binding(owner,RangeInputSettings.Action.Roll));
         GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), $"WASD 移動　{sprint}：衝刺　{jump}：跳躍　{roll}：翻滾"+(RangeInputSettings.IsRange(owner)?"　K：按鍵設定":""), controls);
-        GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
+        GUI.Label(new Rect(31f, Screen.height - 56f, 820f, 24f), "1：虛空連斬（按住蓄力、左鍵出招）　2：貓躍雙斬　3：月弧突進　4：空中十字斬（技能需滑鼠選取）", controls);
 
         if (!IsTargeting) return;
         GUIStyle title = new GUIStyle(GUI.skin.label)

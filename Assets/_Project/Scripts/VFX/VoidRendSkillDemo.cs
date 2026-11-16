@@ -132,6 +132,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
     void Update()
     {
         UpdatePreviewInputAndTargeting();
+        UpdateChargeCameraRestore();
 
         flashAlpha = Mathf.MoveTowards(flashAlpha, 0f, Time.unscaledDeltaTime * 2.8f);
         posePulse = Mathf.MoveTowards(posePulse, 0f, Time.unscaledDeltaTime * 3.8f);
@@ -144,6 +145,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
         else if (!playing) ApplyHandoffToAnimator();
+        if (charging) ApplyChargeAim();
         UpdateDrawDashAfterimages();
         UpdateLiftedVictims();
         if (skillCamera == null) return;
@@ -173,12 +175,14 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
             GUI.color = old;
         }
         if (showSkillHud) DrawTargetingUI();
+        DrawChargeUI(); // 蓄力的準心和蓄力條一定要顯示（瞄準要用）
     }
 
     void OnDisable()
     {
         StopAllCoroutines();
         if (IsTargeting) CancelTargeting();
+        if (charging) CancelCharge();
         if(playing) Time.fixedDeltaTime = fixedDeltaStart;
         RestorePose();
         RestoreCamera();

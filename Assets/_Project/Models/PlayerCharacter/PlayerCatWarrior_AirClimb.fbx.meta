@@ -18,7 +18,7 @@ ModelImporter:
     removeConstantScaleCurves: 0
     motionNodeName: 
     animationImportErrors: 
-    animationImportWarnings: "\nClip 'Armature|CW_Climb' has import animation warnings that might lower retargeting quality:\nNote: Activate translation DOF on avatar to improve retargeting quality.\n\t'Neck' has translation animation that will be discarded.\n\t'Left_Shoulder' has translation animation that will be discarded.\n\t'Left_LowerArm' has translation animation that will be discarded.\n\t'Left_ThumbProximal' has translation animation that will be discarded.\n\t'Left_ThumbIntermediate' has translation animation that will be discarded.\n\t'Left_IndexProximal' has translation animation that will be discarded.\n\t'Left_MiddleProximal' has translation animation that will be discarded.\n\t'Left_RingProximal' has translation animation that will be discarded.\n\t'Left_PinkyProximal' has translation animation that will be discarded.\n\t'Right_Shoulder' has translation animation that will be discarded.\n\t'Right_Hand' has translation animation that will be discarded.\n\t'Right_ThumbProximal' has translation animation that will be discarded.\n\t'Right_IndexProximal' has translation animation that will be discarded.\n\t'Right_MiddleProximal' has translation animation that will be discarded.\n\t'Right_RingProximal' has translation animation that will be discarded.\n\t'Right_PinkyProximal' has translation animation that will be discarded.\n\t'Left_Toes' has translation animation that will be discarded.\n\t'Right_Toes' has translation animation that will be discarded.\n"
+    animationImportWarnings: "\nClip 'Armature|CW_Climb' has import animation warnings that might lower retargeting quality:\nNote: Activate translation DOF on avatar to improve retargeting quality.\n\t'Neck' has translation animation that will be discarded.\n\t'Left_Shoulder' has translation animation that will be discarded.\n\t'Left_LowerArm' has translation animation that will be discarded.\n\t'Left_ThumbProximal' has translation animation that will be discarded.\n\t'Left_ThumbIntermediate' has translation animation that will be discarded.\n\t'Left_IndexProximal' has translation animation that will be discarded.\n\t'Left_MiddleProximal' has translation animation that will be discarded.\n\t'Left_RingProximal' has translation animation that will be discarded.\n\t'Left_PinkyProximal' has translation animation that will be discarded.\n\t'Right_Shoulder' has translation animation that will be discarded.\n\t'Right_Hand' has translation animation that will be discarded.\n\t'Right_ThumbProximal' has translation animation that will be discarded.\n\t'Right_IndexProximal' has translation animation that will be discarded.\n\t'Right_MiddleProximal' has translation animation that will be discarded.\n\t'Right_RingProximal' has translation animation that will be discarded.\n\t'Right_PinkyProximal' has translation animation that will be discarded.\n\t'Left_Toes' has translation animation that will be discarded.\n\t'Right_UpperLeg' has scale animation that will be discarded.\n\nClip 'Armature|CW_Roll' has import animation warnings that might lower retargeting quality:\nNote: Activate translation DOF on avatar to improve retargeting quality.\n\t'Spine' has scale animation that will be discarded.\n"
     animationRetargetingWarnings: 
     animationDoRetargetingWarnings: 0
     importAnimatedCustomProperties: 0
@@ -264,6 +264,151 @@ ModelImporter:
       maskSource: {instanceID: 0}
       additiveReferencePoseFrame: 0
     - serializedVersion: 16
+      name: CW_SwordAim
+      takeName: Armature|CW_SwordAim
+      internalID: 8244187300154666484
+      firstFrame: 0
+      lastFrame: 1
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 1
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: CW_SwordStepB
+      takeName: Armature|CW_SwordStepB
+      internalID: 1299042784734716616
+      firstFrame: 0
+      lastFrame: 48
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 1
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: CW_SwordStepF
+      takeName: Armature|CW_SwordStepF
+      internalID: 8787863650554730959
+      firstFrame: 0
+      lastFrame: 48
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 1
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: CW_SwordStepL
+      takeName: Armature|CW_SwordStepL
+      internalID: 1458387827613347507
+      firstFrame: 0
+      lastFrame: 48
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 1
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
+      name: CW_SwordStepR
+      takeName: Armature|CW_SwordStepR
+      internalID: 3786149415409904519
+      firstFrame: 0
+      lastFrame: 48
+      wrapMode: 0
+      orientationOffsetY: 0
+      level: 0
+      cycleOffset: 0
+      loop: 0
+      hasAdditiveReferencePose: 0
+      loopTime: 1
+      loopBlend: 0
+      loopBlendOrientation: 1
+      loopBlendPositionY: 1
+      loopBlendPositionXZ: 1
+      keepOriginalOrientation: 1
+      keepOriginalPositionY: 1
+      keepOriginalPositionXZ: 1
+      heightFromFeet: 0
+      mirror: 0
+      bodyMask: 01000000010000000100000001000000010000000100000001000000010000000100000001000000010000000100000001000000u
+      curves: []
+      events: []
+      transformMask: []
+      maskType: 3
+      maskSource: {instanceID: 0}
+      additiveReferencePoseFrame: 0
+    - serializedVersion: 16
       name: CW_VRHorse
       takeName: Armature|CW_VRHorse
       internalID: -6077019140363656218
@@ -326,7 +471,7 @@ ModelImporter:
       takeName: Armature|CW_VRSummon
       internalID: -7680865021099422452
       firstFrame: 0
-      lastFrame: 30
+      lastFrame: 32
       wrapMode: 0
       orientationOffsetY: 0
       level: 0

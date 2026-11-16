@@ -3,7 +3,7 @@ using UnityEngine;
 
 /// <summary>
 /// 技能 1（虛空裂斬）用 Tripo 做的姿勢動畫：
-///   VR_Summon（CW_VRSummon）：轉刀時單手舉高、手掌張開，刀從手上往上飛、在頭頂旋轉（站姿）
+///   VR_Summon（CW_VRSummon，Blender 手擺：右手從胸前往右前上方舉向刀、掌心張開對著刀）：轉刀時單手舉高、手掌張開，刀從手上往上飛、在頭頂旋轉（站姿）
 ///   VR_Horse（CW_VRHorse）：拔刀的低馬步，出拳 / 22 段突進斬期間整個人維持這個姿勢，刀照原本的袈裟斬揮
 ///   VR_Iai（CW_VRIai，手擺的）：居合低伏預備（右腳在前深蹲、左腳往後拉長、上身前傾低頭、雙手握在左腰），
 ///     砍完之後停在空中、爆炸、鏡頭拉回這段用；沒有這個狀態就用馬步
@@ -42,8 +42,8 @@ public sealed partial class VoidRendSkillDemo
     [Tooltip("轉刀時視線看著刀：脖子分擔多少、頭最多抬幾度（超過就只抬到這裡，不會往後折）")]
     [Range(0f, 1f)] public float lookAtSwordNeck = .15f;
     [Range(0f, 70f)] public float lookAtSwordMaxElevation = 40f;
-    [Tooltip("舉高的手轉向刀：0 = 照動畫（手直直朝天）、1 = 整隻手臂指向刀")]
-    [Range(0f, 1f)] public float summonArmTowardSword = .85f;
+    [Tooltip("舉高的手再額外轉向刀多少：0 = 照動畫（Blender 手擺的轉刀動畫已經往刀的方向舉、掌心對著刀）、1 = 整隻手臂直直指向刀")]
+    [Range(0f, 1f)] public float summonArmFollowSword = 0f;
     readonly Dictionary<Transform, Quaternion> lastAppliedRotations = new();
     readonly Dictionary<Transform, Quaternion> blendFromRotations = new();
     Vector3 lastAppliedHips, blendFromHips;
@@ -202,7 +202,7 @@ public sealed partial class VoidRendSkillDemo
         float spin = u * 360f * 2.75f;
         Vector3 home = SummonSwordHome();
         // 手臂：從動畫的「手直直朝天」轉向刀的方向（整隻手臂一起轉，手肘彎度照動畫）
-        float armWeight = summonArmTowardSword * Mathf.SmoothStep(0f, 1f, stageAge / .5f);
+        float armWeight = summonArmFollowSword * Mathf.SmoothStep(0f, 1f, stageAge / .5f);
         if (rightUpperArm != null && armWeight > 0f)
         {
             Vector3 armDir = rightHand.position - rightUpperArm.position, want = home - rightUpperArm.position;
