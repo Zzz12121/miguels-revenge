@@ -26,9 +26,10 @@ public sealed class AfterimageGhost : MonoBehaviour
         {
             if (source == null || !source.enabled || !source.gameObject.activeInHierarchy || source.sharedMesh == null) continue;
             var mesh = new Mesh { name = "Afterimage" };
-            source.BakeMesh(mesh, true); // 連縮放一起烘進去，物件本身不縮放
+            source.BakeMesh(mesh, true);
             var go = new GameObject("Afterimage");
             go.transform.SetPositionAndRotation(source.transform.position, source.transform.rotation);
+            go.transform.localScale = source.transform.lossyScale; // useScale: true 烘出來的頂點是除掉縮放的，這裡乘回去（不然殘影比本尊小）
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();
             var mats = new Material[Mathf.Max(1, mesh.subMeshCount)];

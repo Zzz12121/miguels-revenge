@@ -7,7 +7,11 @@ using UnityEngine;
 ///   1. 自動鎖定前方最近的敵人 E。本尊沿弧線衝到 E 的一側、分身（鏡像）同時衝到另一側，兩邊同時橫砍一刀。
 ///   2. 砍完之後分身留在原地當誘餌（PhantomDecoy），吸引附近小怪的仇恨，被打一下或時間到就消散。
 ///   3. 分身還在的時候再按左鍵 = 剪刀斬：本尊和分身同時朝敵人衝過去、交叉斬過，然後分身消散。
-/// 分身用鏡像畫出來，所以本尊的突進斬動畫就是分身的動畫（之後換成 Tripo 的動畫，分身也跟著換）。
+/// 分身用鏡像畫出來，所以本尊的動畫就是分身的動畫。
+/// 動畫（Art/PlayerCatWarrior/phantom_pose.py 在 Blender 手擺，Animator 的 PhantomDash / PhantomSlash / PhantomScissor）：
+///   衝過去 = 上身前壓、左膝往前頂的突進姿勢；橫砍 = 左腳踏出去煞車、轉腰由右往左砍、收招站起；剪刀斬 = 壓低從左腰拔刀砍過去、殘心。
+/// 節奏：短蓄勢 → 爆衝 → 衝到一半就開始揮刀、到位那一刻剛好砍中後急停（打中算重擊，頓幀比較久）。
+/// 本尊和分身衝刺時都會留下殘影（本尊：PlayerVisualAnimator；分身：PhantomDecoy）。
 /// PlayerCombat 會自動加上這個元件；冷卻之後做平衡時再加。
 /// </summary>
 [DisallowMultipleComponent]
@@ -27,6 +31,12 @@ public sealed class PhantomStrike : MonoBehaviour
     [Min(.3f)] public float strikeDistance = 1.3f;
     [Tooltip("突進的時間 (秒)")]
     [Min(.08f)] public float dashTime = .28f;
+    [Tooltip("衝出去之前的短蓄勢 (秒)：身體先壓成突進的姿勢再爆出去")]
+    [Range(0f, .2f)] public float dashWindup = .06f;
+    [Tooltip("到位之前多久 (秒) 就開始揮刀：到位那一刻剛好砍中（突進斬是抬手 0.06 秒 + 揮 0.21 秒，砍中在中間）")]
+    [Range(0f, .3f)] public float strikeLead = .165f;
+    [Tooltip("到位時還剩多少速度（0 = 慢慢停下來、1 = 全速衝到位然後急停）")]
+    [Range(0f, 1f)] public float arriveSpeed = .7f;
     [Tooltip("突進最遠多遠 (m)；敵人更遠就衝到一半")]
     [Min(1f)] public float maxDashDistance = 14f;
     [Tooltip("弧線往外鼓多少 (m)")]
@@ -37,14 +47,20 @@ public sealed class PhantomStrike : MonoBehaviour
     public float cloneDamageScale = .6f;
 
     [Header("分身（誘餌）")]
-    [Tooltip("分身留在原地多久 (秒)")]
+    [Tooltip("分身留在場上多久 (秒)")]
     [Min(.2f)] public float decoyLifetime = 3f;
+    [Tooltip("勾選：砍完之後分身繼續當本尊的鏡像（跟著走、跟著揮刀）；不勾：定格在原地")]
+    public bool decoyMirrorsPlayer = true;
+    [Tooltip("分身跟著本尊揮刀時的傷害倍率（× 第一段傷害）")]
+    public float mirrorAttackDamageScale = .6f;
     [Tooltip("分身吸引小怪仇恨的範圍 (m)；Boss 不吃這招")]
     [Min(1f)] public float decoyLureRadius = 12f;
     public Color ghostColor = new Color(.5f, .72f, 1f, .5f);
 
     [Header("剪刀斬（分身還在時再按左鍵）")]
     [Min(.08f)] public float scissorDashTime = .24f;
+    [Tooltip("衝幾秒到交叉點（= 砍中的那一刻；突進斬是抬手 0.06 秒 + 揮 0.21 秒，砍中在中間）。之後是滑行煞車")]
+    [Range(.08f, .3f)] public float scissorStrikeAt = .165f;
     [Tooltip("交叉之後再往前衝多遠 (m)")]
     [Min(0f)] public float scissorOvershoot = 1.8f;
     public float scissorDamageScale = 2f;
@@ -70,8 +86,21 @@ public sealed class PhantomStrike : MonoBehaviour
         capsule = GetComponent<CharacterController>();
     }
 
+    void OnEnable()
+    {
+        if (combat != null) combat.OnStrike += MirrorStrike;
+    }
+
+    /// <summary>分身當鏡像時：本尊每一刀判定傷害的那一刻，分身在鏡射過去的位置也砍一下</summary>
+    void MirrorStrike(Vector3 center, float radius)
+    {
+        if (Busy || decoy == null || !decoy.IsMirrorLure) return; // 突進 / 剪刀斬的那兩刀自己會算分身的傷害
+        combat.StrikeArea(decoy.MirrorPoint(center), radius, BaseDamage() * mirrorAttackDamageScale, new HashSet<object>());
+    }
+
     void OnDisable()
     {
+        if (combat != null) combat.OnStrike -= MirrorStrike;
         StopAllCoroutines();
         if (Busy && controller != null) controller.EndScriptedMove(Vector3.zero);
         Busy = false;
@@ -134,27 +163,45 @@ public sealed class PhantomStrike : MonoBehaviour
         GameAudio.Play("SFX/RPG/cloth3", transform.position, .8f, 1.7f, .05f, .3f);
         CombatVFX.Puff(transform.position, -approach, new Color(ghostColor.r, ghostColor.g, ghostColor.b, .7f), true);
 
-        // 沿弧線衝過去（一開始最快、到位前收住）
+        // 短蓄勢：原地先壓成突進的姿勢（PlayerVisualAnimator 看到 ScriptedMoveDirection 就會切過去）、面向敵人
+        Vector3 firstDir = Flat(control - start);
+        controller.ScriptedMoveDirection = firstDir.sqrMagnitude > .01f ? firstDir.normalized : approach;
+        for (float w = 0f; w < dashWindup; w += Time.deltaTime)
+        {
+            controller.FaceDirection(approach);
+            yield return null;
+        }
+
+        // 沿弧線爆衝過去：一開始最快、到位時還帶著速度（arriveSpeed），到位那一刻砍中、急停。
+        // 衝到剩 strikeLead 秒時就開始揮刀，不是到位之後才砍。
+        var cloneHits = new HashSet<object>();
+        float cloneDamage = BaseDamage() * cloneDamageScale;
+        bool slashed = false;
         float t = 0f;
         while (t < dashTime)
         {
             t += Time.deltaTime;
-            float u = 1f - (1f - Mathf.Clamp01(t / dashTime)) * (1f - Mathf.Clamp01(t / dashTime));
+            float x = Mathf.Clamp01(t / dashTime);
+            float u = Mathf.Lerp(1f - (1f - x) * (1f - x), x, arriveSpeed); // 混「一開始最快、最後停住」和「等速」→ 到位時還剩 arriveSpeed 的速度
             Vector3 want = Bezier(start, control, end, u);
             Vector3 delta = want - transform.position;
             controller.ScriptedMoveDirection = Flat(delta).normalized;
             controller.ScriptedMove(delta);
             Vector3 face = Flat(enemy - transform.position);
             if (face.sqrMagnitude > .01f) controller.FaceDirection(face);
+            if (!slashed && dashTime - t <= strikeLead)
+            {
+                slashed = true;
+                combat.BeginDashSlash(.3f, face, strikeDamageScale, 0);
+            }
+            if (slashed && decoy != null)
+                combat.StrikeArea(decoy.MirrorPoint(transform.position + transform.forward * .9f), combat.hitRadius, cloneDamage, cloneHits);
             yield return null;
         }
         controller.ScriptedMoveDirection = Vector3.zero;
 
-        // 兩邊同時橫砍
-        Vector3 faceEnemy = Flat(enemy - transform.position);
-        combat.BeginDashSlash(.3f, faceEnemy, strikeDamageScale);
-        var cloneHits = new HashSet<object>();
-        float cloneDamage = BaseDamage() * cloneDamageScale;
+        // 到位：把刀砍完（兩邊同時）、收招
+        if (!slashed) combat.BeginDashSlash(.3f, Flat(enemy - transform.position), strikeDamageScale, 0);
         while (combat.IsDashSlash)
         {
             if (decoy != null) combat.StrikeArea(decoy.MirrorPoint(transform.position + transform.forward * .9f), combat.hitRadius, cloneDamage, cloneHits);
@@ -162,7 +209,11 @@ public sealed class PhantomStrike : MonoBehaviour
         }
 
         controller.EndScriptedMove(Vector3.zero);
-        if (decoy != null) decoy.BecomeLure(decoyLifetime, decoyLureRadius);
+        if (decoy != null)
+        {
+            if (decoyMirrorsPlayer) decoy.BecomeMirrorLure(decoyLifetime, decoyLureRadius);
+            else decoy.BecomeLure(decoyLifetime, decoyLureRadius);
+        }
         Busy = false;
     }
 
@@ -193,27 +244,39 @@ public sealed class PhantomStrike : MonoBehaviour
         health?.GrantDodgeInvulnerability(scissorDashTime + .4f);
         GameAudio.Play("SFX/RPG/cloth3", transform.position, .9f, 1.5f, .05f, .3f);
 
-        combat.BeginDashSlash(scissorDashTime + .06f, dir, scissorDamageScale);
+        // 拔刀斬的節奏：全速衝到交叉點（剛好是砍中的那一刻），砍過去之後帶著速度滑行、慢慢煞住（殘心）
+        combat.BeginDashSlash(scissorDashTime + .06f, dir, scissorDamageScale, 1);
         var cloneHits = new HashSet<object>();
         float cloneDamage = BaseDamage() * scissorCloneDamageScale;
+        float reach = Mathf.Max(.05f, scissorStrikeAt);                    // 幾秒衝到交叉點
+        float toCross = Flat(cross - start).magnitude, after = Flat(end - cross).magnitude;
+        // 滑行的時間：讓滑行一開始的速度 = 衝過來的速度（速度連續，不會頓一下）
+        float skid = Mathf.Clamp(2f * after * reach / Mathf.Max(.1f, toCross), .12f, .32f);
+        Vector3 crossAt = new Vector3(cross.x, Mathf.Lerp(start.y, end.y, toCross / Mathf.Max(.01f, toCross + after)), cross.z);
+        bool shook = false;
         float t = 0f;
-        while (t < scissorDashTime)
+        while (t < reach + skid)
         {
             t += Time.deltaTime;
-            float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / scissorDashTime));
-            Vector3 want = Vector3.Lerp(start, end, u);
+            Vector3 want;
+            if (t < reach) want = Vector3.Lerp(start, crossAt, t / reach);
+            else
+            {
+                float v = Mathf.Clamp01((t - reach) / skid);
+                want = Vector3.Lerp(crossAt, end, 1f - (1f - v) * (1f - v));
+                if (!shook) { shook = true; ThirdPersonCamera.ShakeMain(.16f, .15f); }
+            }
             Vector3 delta = want - transform.position;
-            controller.ScriptedMoveDirection = Flat(delta).normalized;
+            controller.ScriptedMoveDirection = t < reach + skid * .6f ? dir : Vector3.zero;
             controller.ScriptedMove(delta);
             if (decoy != null) combat.StrikeArea(decoy.MirrorPoint(transform.position + dir * .6f), combat.hitRadius * 1.1f, cloneDamage, cloneHits);
             yield return null;
         }
         controller.ScriptedMoveDirection = Vector3.zero;
-        ThirdPersonCamera.ShakeMain(.16f, .15f);
         while (combat.IsDashSlash) yield return null;
 
         if (decoy != null) { decoy.Dissolve(); decoy = null; }
-        controller.EndScriptedMove(dir * 2f);
+        controller.EndScriptedMove(Vector3.zero); // 已經滑行煞住了，不再帶著速度衝出去
         Busy = false;
     }
 

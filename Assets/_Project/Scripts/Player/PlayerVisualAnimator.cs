@@ -140,6 +140,17 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         windBack = new Vector3(.1f, 0f, -.3f), windBlade = new Vector3(.6f, -.05f, -.8f),
         edgeFlat = .9f, prepareTime = .06f, cutTime = .21f, airborne = true,
     };
+    /// <summary>剪刀斬：壓低衝過去，右手從左腰拔刀、由左往右水平砍過去（左手留在左腰按著刀鞘的位置）</summary>
+    static readonly SlashPath ScissorSlash = new SlashPath
+    {
+        handFrom = new Vector3(-.3f, -.25f, .25f), handTo = new Vector3(.6f, .02f, .3f),
+        bladeFrom = new Vector3(-.9f, -.1f, .35f), bladeTo = new Vector3(.9f, .05f, .3f),
+        pole = new Vector3(.4f, -1f, -.2f),
+        twistFrom = -.75f, twistTo = 1f, pitchFrom = 8f, pitchTo = 6f, arc = .2f, crouch = 0f, lift = 0f,
+        offFrom = new Vector3(.05f, -.45f, .1f), offTo = new Vector3(-.08f, -.45f, -.15f), hold = .06f,
+        windBack = new Vector3(-.1f, 0f, -.2f), windBlade = new Vector3(-.35f, -.25f, -.9f),
+        edgeFlat = .9f, prepareTime = .06f, cutTime = .21f, airborne = true,
+    };
     // 側閃 / 突進：身體往衝的方向倒多少度、往前衝時前傾多少度、腿縮多少度、雙手往後甩多少；殘影每隔多久留一個 (秒)
     const float DashSideLean = 28f, DashForwardLean = 22f, DashLegTuck = 38f, DashArmsBack = .85f, DashGhostInterval = .045f;
     float dashLean, nextDashGhost;
@@ -166,11 +177,21 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         null,                                            // 第一刀：還沒有動畫
         null,                                            // 第二刀：還沒有動畫
         new[] { 4f / 40f, 14f / 40f, 25f / 40f, 29f / 40f, 36f / 40f }, // 第三刀 CW_Slash3（Tripo 原檔第 12～52 格）
+        new[] { 0f, 3f / 24f, 9f / 24f, 11f / 24f, 23f / 24f },         // 幻影突進的橫砍 CW_PhantomSlash（Blender 手擺，共 24 格；最後留一格，不要碰到 Animator 自己的結束轉換）
+        new[] { 0f, 3f / 24f, 9f / 24f, 11f / 24f, 23f / 24f },         // 剪刀斬 CW_PhantomScissor
     };
-    readonly bool?[] hasSlashClip = new bool?[3];
+    static readonly string[] SlashClipStates = { "Slash1", "Slash2", "Slash3", "PhantomSlash", "PhantomScissor" };
+    // 幻影突進的兩刀：SlashClipKeys 的第幾個；砍完停住之後再播多久的收招（動畫最後一段），然後才混回待機
+    const int PhantomSlashClip = 3;
+    const float PhantomSettle = .2f, PhantomRecoverBlend = .22f, PhantomLeanScale = .35f;
+    readonly bool?[] hasSlashClip = new bool?[SlashClipStates.Length];
     int slashClipIndex = -1;
     bool slashClipLeaving;
     bool playingAirDashState;
+    // 幻影分身突進衝過去時的姿勢（CW_PhantomDash，Blender 手擺）：Animator 有 PhantomDash 狀態就播它
+    static readonly int PhantomDashStateHash = Animator.StringToHash("PhantomDash");
+    bool? hasPhantomDashState;
+    int playingDashState; // 0 = 沒有、1 = AirDash（側閃）、2 = PhantomDash（分身突進）
 
     static readonly SlashPath[] SlashPaths =
     {
@@ -432,17 +453,20 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 空中輕砍：保留跳躍 / 下落動畫，只在上面疊揮刀
         bool dash = combat != null && combat.IsDashSlash;
         bool air = dash || (combat != null && combat.IsAirSlash);
-        int clipIndex = comboIndex % 3;
-        bool useClip = !air && (combat == null || !combat.IsPlunging) && HasSlashClip(clipIndex);
+        // 幻影突進的兩刀有自己的全身動畫（橫砍 / 剪刀斬）；其他空中的刀還是只疊揮刀
+        int dashStyle = dash ? Mathf.Clamp(combat.DashSlashStyle, 0, 1) : 0;
+        int clipIndex = dash ? PhantomSlashClip + dashStyle : comboIndex % 3;
+        bool useClip = dash ? HasSlashClip(clipIndex)
+                            : !air && (combat == null || !combat.IsPlunging) && HasSlashClip(clipIndex);
         slashClipIndex = useClip ? clipIndex : -1;
         slashClipLeaving = false;
         if (useClip)
         {
             animator.SetFloat(SlashTimeHash, SlashClipKeys[clipIndex][0]);
-            animator.CrossFadeInFixedTime("Slash" + (clipIndex + 1), 0.08f, 0, 0f);
+            animator.CrossFadeInFixedTime(SlashClipStates[clipIndex], dash ? 0.06f : 0.08f, 0, 0f);
         }
         else if (!air) animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
-        slashSide = dash ? -2 : air ? -1 : comboIndex;
+        slashSide = dash ? (dashStyle == 1 ? -3 : -2) : air ? -1 : comboIndex;
         slashStartedAt = Time.time;
         plungeSlash = false;
         plungeBlend = 0f;
@@ -519,17 +543,20 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         bool scripted = controller.IsScriptedMoving && controller.ScriptedMoveDirection.sqrMagnitude > .01f;
         bool dashing = controller.IsAirDashing || scripted;
         Vector3 dir = controller.IsAirDashing ? controller.AirDashDirection : controller.ScriptedMoveDirection;
-        UpdateAirDashState(controller.IsAirDashing);
+        UpdateAirDashState(controller.IsAirDashing, scripted);
         float target = dashing ? 1f : 0f;
         dashLean = Mathf.MoveTowards(dashLean, target, Time.deltaTime * (target > dashLean ? 14f : 5f));
         if (dashLean <= .001f) return;
         Transform actor = controller.transform;
         if (dashing) dashDirLocal = actor.InverseTransformDirection(dir);
         float k = Mathf.SmoothStep(0f, 1f, dashLean);
+        // 分身突進的姿勢 / 突進斬的動畫本身已經前壓了：程式的傾斜只留一點（往側面衝的時候身體稍微倒過去）
+        bool phantomClip = playingDashState == 2 || slashClipIndex >= PhantomSlashClip;
+        if (phantomClip) k *= PhantomLeanScale;
         Quaternion lean = Quaternion.AngleAxis(-DashSideLean * dashDirLocal.x * k, actor.forward)
                         * Quaternion.AngleAxis(DashForwardLean * Mathf.Max(0f, dashDirLocal.z) * k, actor.right);
         hips.rotation = lean * hips.rotation;
-        if (!playingAirDashState)
+        if (!playingAirDashState && !phantomClip)
         {
             // 大腿往前上抬、小腿往後收（縮腿）
             foreach (var thigh in new[] { leftUpperLeg, rightUpperLeg })
@@ -565,20 +592,23 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     }
 
     /// <summary>側閃開始時切到 AirDash 動畫狀態（有的話），結束時接回下落 / 待機</summary>
-    void UpdateAirDashState(bool airDashing)
+    void UpdateAirDashState(bool airDashing, bool scripted)
     {
         if (hasAirDashState == null) hasAirDashState = animator.HasState(0, AirDashStateHash);
-        if (!hasAirDashState.Value) return;
-        if (airDashing && !playingAirDashState)
+        if (hasPhantomDashState == null) hasPhantomDashState = animator.HasState(0, PhantomDashStateHash);
+        // 突進斬的動畫已經開始播（衝到一半就開始揮刀）時不要再切回突進姿勢
+        int want = airDashing ? (hasAirDashState.Value ? 1 : 0)
+                 : scripted && slashClipIndex < 0 && hasPhantomDashState.Value ? 2 : 0;
+        if (want == playingDashState) return;
+        if (want != 0)
         {
-            playingAirDashState = true;
-            animator.CrossFadeInFixedTime(AirDashStateHash, .06f, 0, 0f);
+            animator.CrossFadeInFixedTime(want == 1 ? AirDashStateHash : PhantomDashStateHash, .06f, 0, 0f);
+            if (want == 2 && weaponPresenter != null) weaponPresenter.DrawForSeconds(1.2f); // 衝過去的時候刀已經在手上（收在右後方）
         }
-        else if (!airDashing && playingAirDashState)
-        {
-            playingAirDashState = false;
+        else if (slashClipIndex < 0)
             animator.CrossFadeInFixedTime(controller.IsGrounded ? "Idle" : "Fall", .12f, 0, 0f);
-        }
+        playingDashState = want;
+        playingAirDashState = want == 1;
     }
 
     void CacheHumanoidBones()
@@ -673,7 +703,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         {
             bool param = false;
             foreach (var p in animator.parameters) if (p.nameHash == SlashTimeHash) param = true;
-            hasSlashClip[index] = param && animator.HasState(0, Animator.StringToHash("Slash" + (index + 1)));
+            hasSlashClip[index] = param && animator.HasState(0, Animator.StringToHash(SlashClipStates[index]));
         }
         return hasSlashClip[index].Value;
     }
@@ -686,18 +716,21 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         var path = CurrentSlash;
         float age = Time.time - slashStartedAt;
         float[] k = SlashClipKeys[slashClipIndex];
-        float t1 = path.Prepare, t2 = t1 + path.Cut, t3 = t2 + path.hold, t4 = path.Total;
+        // 幻影突進的兩刀：砍完停住之後先把收招（動畫最後一段）播完，再混回待機；地面連段是停住結束就開始混
+        bool phantom = slashClipIndex >= PhantomSlashClip;
+        float t1 = path.Prepare, t2 = t1 + path.Cut, t3 = t2 + path.hold, t4 = phantom ? t3 + PhantomSettle : path.Total;
         float time = age < t1 ? Mathf.Lerp(k[0], k[1], age / t1)
                    : age < t2 ? Mathf.Lerp(k[1], k[2], (age - t1) / path.Cut)
                    : age < t3 ? Mathf.Lerp(k[2], k[3], (age - t2) / Mathf.Max(.001f, path.hold))
                    : Mathf.Lerp(k[3], k[4], Mathf.Clamp01((age - t3) / Mathf.Max(.001f, t4 - t3)));
         animator.SetFloat(SlashTimeHash, time);
-        if (age >= t3 && !slashClipLeaving)
+        if (age >= (phantom ? t4 : t3) && !slashClipLeaving)
         {
             slashClipLeaving = true;
             float normalized = controller != null ? controller.CurrentSpeed / Mathf.Max(.01f, controller.sprintSpeed) : 0f;
             string next = normalized >= .68f ? "Run" : normalized > .05f ? "Walk" : "Idle";
-            animator.CrossFadeInFixedTime(animator.HasState(0, Animator.StringToHash(next)) ? next : "Idle", SlashRecover, 0, 0f);
+            if (phantom && controller != null && !controller.IsGrounded) next = "Fall";
+            animator.CrossFadeInFixedTime(animator.HasState(0, Animator.StringToHash(next)) ? next : "Idle", phantom ? PhantomRecoverBlend : SlashRecover, 0, 0f);
         }
         if (age > t4) slashClipIndex = -1;
     }
@@ -1021,7 +1054,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         lower.rotation = Quaternion.FromToRotation(end.position - lower.position, goal - lower.position) * lower.rotation;
     }
 
-    SlashPath CurrentSlash => slashSide == -2 ? AirDashSlash : slashSide < 0 ? AirSlash : SlashPaths[slashSide % SlashPaths.Length];
+    SlashPath CurrentSlash => slashSide == -3 ? ScissorSlash : slashSide == -2 ? AirDashSlash : slashSide < 0 ? AirSlash : SlashPaths[slashSide % SlashPaths.Length];
 
     // ---------------- 腳貼地 ----------------
     // 角色控制器的膠囊底部是圓的、還有 skin width，模型在平地上就浮了約 0.15 m，站在斜坡或沙丘上更明顯。

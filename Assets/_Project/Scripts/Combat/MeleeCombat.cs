@@ -83,6 +83,8 @@ public abstract class MeleeCombat : MonoBehaviour
     public bool IsAirSlash { get; private set; }
     /// <summary>這一刀是突進斬（幻影分身突進 / 剪刀斬；OnSwing 之前就設好，動畫用）</summary>
     public bool IsDashSlash { get; private set; }
+    /// <summary>突進斬的樣式：0 = 分身突進的橫砍（由右往左）、1 = 剪刀斬（從左腰拔刀、由左往右）。動畫用</summary>
+    public int DashSlashStyle { get; private set; }
     /// <summary>最後一刀蓄力時跳起來，正在一路劈到落地（動畫用：揮到一半停住，落地才砍完）</summary>
     public bool IsPlunging { get; private set; }
     /// <summary>跳劈落地的那一刻（位置）通知外面（特效 / 鏡頭用）</summary>
@@ -172,10 +174,11 @@ public abstract class MeleeCombat : MonoBehaviour
     /// 突進斬（幻影分身突進 / 剪刀斬用）：一刀由右往左的水平橫斬，duration 秒內揮完。
     /// face = 要面向的方向（零向量 = 照 GetAimDirection）；damageScale = 第一段傷害的倍率
     /// </summary>
-    public void BeginDashSlash(float duration, Vector3 face, float damageScale)
+    public void BeginDashSlash(float duration, Vector3 face, float damageScale, int style = 0)
     {
         if (!isActiveAndEnabled) return;
         CancelAttack();
+        DashSlashStyle = style;
         chain = StartCoroutine(DashSlashRoutine(duration, face, damageScale));
     }
 
