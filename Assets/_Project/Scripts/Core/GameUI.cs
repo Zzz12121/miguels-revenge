@@ -142,7 +142,8 @@ public class InteractPrompt : MonoBehaviour
 {
     /// <summary>第一關所有互動的按鍵</summary>
     public const Key InteractKey = Key.E;
-    public static string KeyName => InteractKey.ToString();
+    /// <summary>互動鍵在畫面上顯示的名稱（照設定裡的按鍵；用手把時顯示手把按鍵）</summary>
+    public static string KeyName => InputBindings.DisplayName(GameAction.Interact);
 
     static InteractPrompt host;
 
@@ -188,8 +189,7 @@ public class InteractPrompt : MonoBehaviour
     /// <summary>這一幀 owner 是不是被選中的互動對象，而且剛按下 E</summary>
     public static bool Pressed(object owner)
     {
-        var kb = Keyboard.current;
-        if (kb == null || !kb[InteractKey].wasPressedThisFrame || GameUI.OverlayOpen) return false;
+        if (!InputBindings.Pressed(GameAction.Interact) || GameUI.OverlayOpen) return false; // 預設 E / 手把 Y
         var h = Host;
         return h.focusedOwner == owner && h.focusedEnabled;
     }
@@ -208,7 +208,9 @@ public class InteractPrompt : MonoBehaviour
         if (focusedOwner == null || string.IsNullOrEmpty(focusedText) || GameUI.OverlayOpen) return;
         var style = new GUIStyle(GameUI.Center) { fontSize = 19, alignment = TextAnchor.MiddleLeft };
         var size = style.CalcSize(new GUIContent(focusedText));
-        float keyW = focusedEnabled ? 30f : 0f;
+        string keyName = KeyName;
+        float keyBoxW = Mathf.Max(26f, GameUI.Small.CalcSize(new GUIContent(keyName)).x + 12f);
+        float keyW = focusedEnabled ? keyBoxW + 4f : 0f;
         float w = size.x + keyW + 40f, h = 44f;
         var r = new Rect((Screen.width - w) * 0.5f, Screen.height * 0.72f, w, h);
 
@@ -216,7 +218,7 @@ public class InteractPrompt : MonoBehaviour
         float x = r.x + 16f;
         if (focusedEnabled)
         {
-            GameUI.Key(new Rect(x, r.y + 9f, 26f, 26f), KeyName);
+            GameUI.Key(new Rect(x, r.y + 9f, keyBoxW, 26f), keyName);
             x += keyW + 4f;
         }
         GUI.color = focusedEnabled ? GameUI.TextColor : GameUI.MutedColor;

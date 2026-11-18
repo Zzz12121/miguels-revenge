@@ -206,7 +206,7 @@ public class VikingBoat : MonoBehaviour
         {
             bool interactPressed = false;
             var kb = Keyboard.current;
-            if (kb != null) interactPressed = kb.eKey.wasPressedThisFrame;
+            interactPressed = InputBindings.Pressed(GameAction.Interact);
             if (!interactPressed)
             {
 #if ENABLE_LEGACY_INPUT_MANAGER
@@ -450,6 +450,10 @@ public class VikingBoat : MonoBehaviour
             if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) turnInput += 1f;
             if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) turnInput -= 1f;
         }
+        // 遊戲手把：左搖桿（方向和 WASD 一樣：上 = 前進、左 = 左轉）
+        Vector2 stick = PadInput.Move;
+        if (Mathf.Abs(stick.y) > Mathf.Abs(moveInput)) moveInput = -stick.y;
+        if (Mathf.Abs(stick.x) > Mathf.Abs(turnInput)) turnInput = -stick.x;
 #if ENABLE_LEGACY_INPUT_MANAGER
         if (Mathf.Abs(moveInput) < 0.01f) moveInput = Input.GetAxisRaw("Vertical");
         if (Mathf.Abs(turnInput) < 0.01f) turnInput = Input.GetAxisRaw("Horizontal");

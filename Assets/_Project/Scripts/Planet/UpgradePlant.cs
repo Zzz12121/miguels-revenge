@@ -116,9 +116,10 @@ public class UpgradePlant : MonoBehaviour
             return;
         }
 
-        if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) Choose(0);
-        else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) Choose(1);
-        else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) Choose(2);
+        int pad = PadInput.NumberPressed; // 手把十字鍵 ← ↑ → = 1 2 3
+        if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame || pad == 1) Choose(0);
+        else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame || pad == 2) Choose(1);
+        else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame || pad == 3) Choose(2);
     }
 
     /// <summary>進階植物要先選過第一株</summary>

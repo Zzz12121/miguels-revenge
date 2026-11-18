@@ -48,3 +48,7 @@ crashlytics-build.properties
 # Unity Performance Testing 打包時自動產生的檔案
 /Assets/Resources/PerformanceTestRun*
 /Assets/Resources.meta
+
+# Python 快取（Art/ 底下的貼圖產生腳本）
+__pycache__/
+*.pyc
