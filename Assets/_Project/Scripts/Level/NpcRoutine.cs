@@ -266,7 +266,9 @@ public class NpcRoutine : MonoBehaviour
     // 拉門的手：0 = 沒拉，1 = 手放在門板的引手上；doorHandDoor 是現在拉的那扇門
     float doorHandW;
     HouseEntryDoor doorHandDoor;
-    bool doorHandStarted;
+    bool doorHandStarted, doorHandSidesSet;
+    float doorSideSpeed; // 拉門前橫著挪步的速度（Animator 用）
+    readonly bool[] doorHandLeft = new bool[2];
 
     /// <summary>現在在門口開門、上下台階（測試用）</summary>
     public bool AtDoor => doorPhase != DoorPhase.None;
@@ -281,6 +283,7 @@ public class NpcRoutine : MonoBehaviour
         doorT = 0f;
         handT = 0f;
         doorHandStarted = false;
+        doorHandSidesSet = false;
         doorFrom = transform.position;
     }
 
@@ -313,9 +316,30 @@ public class NpcRoutine : MonoBehaviour
     bool PullDoor(HouseEntryDoor door, Vector3 toDoor, bool open, float dt)
     {
         doorHandDoor = door;
+        doorSideSpeed = 0f;
         Face(toDoor, 330f);
         Vector3 f = transform.forward;
         if (!doorHandStarted && Vector3.Angle(Flat(f), Flat(toDoor)) > 12f) { doorHandW = Mathf.MoveTowards(doorHandW, 0f, dt * 4f); return false; }
+        bool single = door.panels != null && door.panels.Length == 1;
+        if (single && !doorHandStarted && handT <= 0f)
+        {
+            // 只有一扇：先橫著挪到引手前面（引手在要用的那隻手前方約 0.2 m），手才搆得到、拉得動
+            Vector3 right = Vector3.Cross(Vector3.up, Flat(toDoor).normalized);
+            float s = transform.lossyScale.y;
+            Vector3 grip = door.Grip(0, transform.position.y + 1.02f * s, transform.position);
+            float lat = Vector3.Dot(grip - transform.position, right);
+            bool useLeft = lat < 0f && !injuredLeftArm;
+            doorHandLeft[0] = useLeft;
+            doorHandSidesSet = true;
+            float move = lat - (useLeft ? -0.2f : 0.2f) * s;
+            if (Mathf.Abs(move) > 0.03f)
+            {
+                float step = Mathf.Clamp(move, -0.9f * dt, 0.9f * dt);
+                transform.position += right * step;
+                doorSideSpeed = 0.9f;
+                return false;
+            }
+        }
         handT += dt;
         const float reach = 0.35f;
         if (!doorHandStarted)
@@ -334,7 +358,12 @@ public class NpcRoutine : MonoBehaviour
             doorHandW = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 0.95f, door.Progress));
             return door.IsOpen && doorHandW <= 0.001f;
         }
-        // 關門：門板滑回來碰到手、一起拉到關好；關好了手才放下
+        // 關門：門板滑回來碰到手、一起拉到關好；關好了手才放下（只有一扇的門板要滑很遠，拉過一半手就放開）
+        if (single)
+        {
+            doorHandW = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.5f, 0.1f, door.Progress));
+            return door.IsClosed && doorHandW <= 0.001f;
+        }
         if (!door.IsClosed) { doorHandW = 1f; return false; }
         doorHandW = Mathf.MoveTowards(doorHandW, 0f, dt * 4f);
         return doorHandW <= 0.001f;
@@ -367,7 +396,7 @@ public class NpcRoutine : MonoBehaviour
             }
             case DoorPhase.OpenIn:
                 if (PullDoor(door, inward, true, dt)) BeginDoor(DoorPhase.StepIn);
-                return 0f;
+                return doorSideSpeed;
             case DoorPhase.StepIn:
             {
                 Vector3 inner = Inner(inP, outP);
@@ -384,10 +413,10 @@ public class NpcRoutine : MonoBehaviour
                     insideT = stop.duration;
                     doorPhase = DoorPhase.None;
                 }
-                return 0f;
+                return doorSideSpeed;
             case DoorPhase.OpenOut:
                 if (PullDoor(door, -inward, true, dt)) BeginDoor(DoorPhase.StepOut);
-                return 0f;
+                return doorSideSpeed;
             case DoorPhase.StepOut:
             {
                 doorT += stepSpeed * dt / Mathf.Max(0.3f, Flat(porch - doorFrom).magnitude);
@@ -398,7 +427,7 @@ public class NpcRoutine : MonoBehaviour
             }
             case DoorPhase.CloseOut:
                 if (PullDoor(door, inward, false, dt)) BeginDoor(DoorPhase.DownOut);
-                return 0f;
+                return doorSideSpeed;
             case DoorPhase.DownOut:
             {
                 doorHandW = 0f;
@@ -430,8 +459,19 @@ public class NpcRoutine : MonoBehaviour
         for (int i = 0; i < door.panels.Length && i < 2; i++)
         {
             Vector3 grip = door.Grip(i, handY, transform.position);
-            bool left = Vector3.Dot(grip - transform.position, side) < 0f;
-            if (left && injuredLeftArm) continue; // 左手受傷：只用右手拉
+            // 用哪隻手：開始拉的時候決定，之後不換（只開一扇的門板會從身體一邊滑到另一邊）
+            if (!doorHandSidesSet)
+            {
+                for (int k = 0; k < door.panels.Length && k < 2; k++)
+                    doorHandLeft[k] = Vector3.Dot(door.Grip(k, handY, transform.position) - transform.position, side) < 0f;
+                doorHandSidesSet = true;
+            }
+            bool left = doorHandLeft[i];
+            if (left && injuredLeftArm)
+            {
+                if (door.panels.Length > 1) continue; // 左手受傷：兩扇的門只用右手拉右邊那扇
+                left = false;                          // 只有一扇：右手伸過去拉
+            }
             Transform a = left ? lArm : rArm, b = left ? lFore : rFore, c = left ? lHand : rHand;
             if (a == null || b == null || c == null) continue;
             Vector3 pole = a.position - up * 0.45f * s + side * (left ? -0.4f : 0.4f) * s - fwd * 0.15f * s;

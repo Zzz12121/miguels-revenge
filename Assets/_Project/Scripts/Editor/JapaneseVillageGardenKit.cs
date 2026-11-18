@@ -443,11 +443,13 @@ public static class JapaneseVillageHouses
     static void BuildFacade(in WallRun run, string facade, int width, bool veranda, System.Random rng)
     {
         float s = 0f;
+        var doorSpans = new List<(float, float)>(); // 門（4 m 拉門）的範圍：中間不放柱子
         foreach (char c in facade)
         {
             switch (c)
             {
                 case 'D':
+                    doorSpans.Add((s, s + 4f));
                     DoorBay(run, s);
                     s += 4f;
                     break;
@@ -473,7 +475,14 @@ public static class JapaneseVillageHouses
 
         float skirtOut = veranda ? VerandaDepth - 0.05f : 0f;
         for (float x = 0f; x < width - 0.1f; x += 2f) Skirt(run, x, skirtOut);
-        for (float x = 0f; x < width + 0.1f; x += 4f) Post(run, x);
+        for (float x = 0f; x < width + 0.1f; x += 4f)
+        {
+            // 門從 2 m 的地方開始的話，每 4 m 一根的柱子會剛好立在兩片拉門中間：只留地板下的橫木，不放柱子
+            bool inDoor = false;
+            foreach (var (a, b) in doorSpans) if (x > a + 0.1f && x < b - 0.1f) inDoor = true;
+            if (inDoor) run.Put("BeamWooden_20x100_01", x, Floor - 1.1f);
+            else Post(run, x);
+        }
         for (float x = 0f; x < width - 0.1f; x += 4f) run.Put(UpperPiece(rng), x, UpperY);
     }
 

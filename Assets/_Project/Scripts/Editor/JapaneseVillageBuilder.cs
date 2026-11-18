@@ -774,8 +774,8 @@ public static class JapaneseVillageBuilder
                     float x = side * (cursor + w * 0.5f);
                     bool firstEast = side > 0 && cursor < HouseStartX + 1.01f;
                     var door = PlaceHouse(rowRoot, type, new Vector3(x, Ground(x, rowZ), rowZ), rng, noren, jar, pile);
-                    if (firstEast && row == 1) { teaHouseDoor = door; teaHouseEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door); }
-                    if (firstEast && row == 0) { apothecaryDoor = door; apothecaryEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door); }
+                    if (firstEast && row == 1) { teaHouseDoor = door; teaHouseEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door, false, EntryRoom.TeaHouse); }
+                    if (firstEast && row == 0) { apothecaryDoor = door; apothecaryEntry = MakeEntryDoor(lastHouse, lastHouseSpec, lastDoorX, door, true, EntryRoom.Apothecary); } // 只開一扇
                     cursor += w + overhang * 2f + 1.2f + (float)rng.NextDouble() * 2f;
                 }
             }
@@ -1557,8 +1557,10 @@ public static class JapaneseVillageBuilder
     /// 村民會進出的房子（藥鋪、茶屋）：把正門那兩片關著的拉門做成會開會關的門（HouseEntryDoor）。
     /// 門板是房子 Prefab 裡的一部分，要先把這棟拆成一般物件、門板取消 Static（不然不能動），
     /// 另外放兩個點：門外的地上（outside）、門檻上（inside，地板的高度）。
+    /// singleLeaf：只開一扇（從外面看右邊那片，左手受傷的藥師用右手拉），進出的路線走那一半的中間。
+    /// 門後面在實心內芯裡挖一間看得到的房間（BuildEntryRoom），門打開不是黑的。
     /// </summary>
-    static HouseEntryDoor MakeEntryDoor(GameObject house, in GardenHouseSpec spec, float doorX, Vector3 doorWorld)
+    static HouseEntryDoor MakeEntryDoor(GameObject house, in GardenHouseSpec spec, float doorX, Vector3 doorWorld, bool singleLeaf, EntryRoom room)
     {
         if (house == null) return null;
         if (PrefabUtility.IsPartOfPrefabInstance(house))
@@ -1583,7 +1585,8 @@ public static class JapaneseVillageBuilder
             Debug.LogWarning($"[JapaneseVillage] {house.name}：找不到正門的門板（門中心 x {doorX}），村民進屋時不會開門");
             return null;
         }
-        foreach (var p in new[] { a, b })
+        var moving = singleLeaf ? new[] { b } : new[] { a, b };
+        foreach (var p in moving)
             foreach (var tr in p.GetComponentsInChildren<Transform>(true))
                 GameObjectUtility.SetStaticEditorFlags(tr.gameObject, 0);
 
@@ -1591,18 +1594,331 @@ public static class JapaneseVillageBuilder
         doorGo.transform.SetParent(t, false);
         doorGo.transform.localPosition = new Vector3(doorX, JapaneseVillageHouses.Floor + 1f, halfD);
         var door = doorGo.AddComponent<HouseEntryDoor>();
-        door.panels = new[] { a, b };
+        door.panels = moving;
         // 往兩邊滑開，疊在收起來的門板外面一點點（不會跟它閃爍）
         door.openOffsets = new[] { new Vector3(0.94f, 0f, 0.04f), new Vector3(-0.95f, 0f, 0.04f) };
+        // 進出的路線：兩扇都開走門中間
+        float pathX = doorX;
+        if (singleLeaf)
+        {
+            // 只開一扇：兩片門板在門中間有重疊，b 只滑 0.95 m 的話縫只有一半寬。照兩片門板實際的範圍算 b 要滑多遠，
+            // 讓 a 的邊到 b 滑開後的邊之間空出 0.9 m，路線走這個縫的中間
+            Bounds la = LocalBounds(t, a.gameObject), lb = LocalBounds(t, b.gameObject);
+            const float gap = 0.9f;
+            float travel = Mathf.Max(0.95f, gap - la.min.x + lb.max.x);
+            door.openOffsets = new[] { new Vector3(-travel, 0f, 0.04f) };
+            door.openTime = 0.85f * travel / 0.95f; // 滑得比較遠，速度跟兩扇的一樣
+            pathX = (lb.max.x - travel + la.min.x) * 0.5f;
+            Debug.Log($"[JapaneseVillage] {house.name}：只開一扇門，門板 a x {la.min.x:F2}~{la.max.x:F2}、b x {lb.min.x:F2}~{lb.max.x:F2}，b 滑 {travel:F2} m，路線 x {pathX:F2}");
+        }
+        Vector3 shift = t.TransformVector(new Vector3(pathX - doorX, 0f, 0f));
         var outside = new GameObject("Outside").transform;
         outside.SetParent(doorGo.transform, false);
-        outside.position = doorWorld;
+        Vector3 o = doorWorld + shift;
+        outside.position = new Vector3(o.x, Ground(o.x, o.z), o.z);
         var inside = new GameObject("Inside").transform;
         inside.SetParent(doorGo.transform, false);
-        inside.position = t.TransformPoint(new Vector3(doorX, JapaneseVillageHouses.Floor, halfD - 0.15f));
+        inside.position = t.TransformPoint(new Vector3(pathX, JapaneseVillageHouses.Floor, halfD - 0.15f));
         door.outside = outside;
         door.inside = inside;
+        BuildEntryRoom(house, doorX, room);
         return door;
+    }
+
+    /// <summary>物件（含子物件的 Renderer）在 t 局部座標的外框（t 只有轉 Y 軸的倍數 90 度時是準的）</summary>
+    static Bounds LocalBounds(Transform t, GameObject go)
+    {
+        var w = JVGarden.WorldBounds(go);
+        var b = new Bounds(t.InverseTransformPoint(w.center), Vector3.zero);
+        foreach (float x in new[] { -1f, 1f })
+            foreach (float y in new[] { -1f, 1f })
+                foreach (float z in new[] { -1f, 1f })
+                    b.Encapsulate(t.InverseTransformPoint(w.center + Vector3.Scale(w.extents, new Vector3(x, y, z))));
+        return b;
+    }
+
+    enum EntryRoom { TeaHouse, Apothecary }
+
+    /// <summary>
+    /// 門後面的房間：非可走入的房子裡面是一整塊黑色的實心內芯（Core），門打開只看得到黑的。
+    /// 把內芯在門後面挖空一間（約 5.2 m 寬、3.6 m 深，天花板在上牆窗的上緣），換成幾塊圍在旁邊的內芯，
+    /// 再鋪地板、牆（下半木板、上半白牆、柱子和長押）、天花板（木板 + 樑），擺家具、點暖色的燈；
+    /// 後牆一側的拉門開著一道縫，後面還有一小段亮著燈的走廊，看進去有深度。
+    /// </summary>
+    static void BuildEntryRoom(GameObject house, float doorX, EntryRoom kind)
+    {
+        var t = house.transform;
+        var core = t.Find("Core");
+        if (core == null) return;
+        var coreMat = core.GetComponent<MeshRenderer>().sharedMaterial;
+        Vector3 cs = core.localScale, cp = core.localPosition;
+        float cx0 = cp.x - cs.x * 0.5f, cx1 = cp.x + cs.x * 0.5f, cy0 = cp.y - cs.y * 0.5f, cy1 = cp.y + cs.y * 0.5f;
+        float cz0 = cp.z - cs.z * 0.5f, cz1 = cp.z + cs.z * 0.5f;
+        Object.DestroyImmediate(core.gameObject);
+
+        const float halfRoom = 2.6f, depth = 3.6f;
+        const float alcoveW = 0.9f, alcoveH = 1.95f, alcoveD = 1.3f;
+        float floor = JapaneseVillageHouses.Floor, ceil = JapaneseVillageHouses.UpperY + 0.5f;
+        float rx0 = Mathf.Max(cx0 + 0.3f, doorX - halfRoom), rx1 = Mathf.Min(cx1 - 0.3f, doorX + halfRoom);
+        float rz1 = cz1, rz0 = cz1 - depth;
+        // 後牆拉門縫的位置（房子局部座標）：茶屋在 +X 那邊，藥鋪在 -X 那邊
+        float ax0 = rx1 - 0.55f - alcoveW, ax1 = rx1 - 0.55f;
+        if (kind == EntryRoom.Apothecary) { ax0 = rx0 + 0.55f; ax1 = ax0 + alcoveW; }
+
+        void CoreBox(string name, float x0, float x1, float y0, float y1, float z0, float z1)
+        {
+            if (x1 - x0 < 0.01f || y1 - y0 < 0.01f || z1 - z0 < 0.01f) return;
+            var go = new GameObject(name);
+            go.transform.SetParent(t, false);
+            go.transform.localPosition = new Vector3((x0 + x1) * 0.5f, (y0 + y1) * 0.5f, (z0 + z1) * 0.5f);
+            go.transform.localScale = new Vector3(x1 - x0, y1 - y0, z1 - z0);
+            go.AddComponent<MeshFilter>().sharedMesh = Resources.GetBuiltinResource<Mesh>("Cube.fbx");
+            go.AddComponent<MeshRenderer>().sharedMaterial = coreMat;
+            go.isStatic = true;
+        }
+        CoreBox("Core_W", cx0, rx0, cy0, cy1, cz0, cz1);
+        CoreBox("Core_E", rx1, cx1, cy0, cy1, cz0, cz1);
+        CoreBox("Core_Back", rx0, rx1, cy0, cy1, cz0, rz0 - alcoveD);
+        CoreBox("Core_BackL", rx0, ax0, cy0, cy1, rz0 - alcoveD, rz0);
+        CoreBox("Core_BackR", ax1, rx1, cy0, cy1, rz0 - alcoveD, rz0);
+        CoreBox("Core_BackTop", ax0, ax1, floor + alcoveH, cy1, rz0 - alcoveD, rz0);
+        CoreBox("Core_Under", rx0, rx1, cy0, floor, rz0 - alcoveD, rz1);
+        CoreBox("Core_Over", rx0, rx1, ceil, cy1, rz0, rz1);
+
+        // ---- 內裝：房間的局部座標，原點在門中心的地面（內芯前緣）、軸跟房子一樣（+Z 朝門外），房間在 z = -depth ~ 0
+        float x0r = rx0 - doorX, x1r = rx1 - doorX, w = x1r - x0r, mid = (x0r + x1r) * 0.5f;
+        float a0 = ax0 - doorX, a1 = ax1 - doorX;
+        float zb = -depth, top = ceil;
+        var kit = new JVMeshKit();
+        // 地板
+        kit.Box(JVMat.WoodLight, new Vector3(mid, floor - 0.01f, zb * 0.5f), new Vector3(w, 0.04f, depth)); // 比內芯的頂面高 1 cm，不會閃
+        // 牆：下半木板（腰板）、上半白牆；後牆在拉門縫的地方留空
+        void Wall(float xa, float xb, float za, float zz, bool alongX)
+        {
+            float len = alongX ? xb - xa : zz - za;
+            if (len < 0.01f) return;
+            Vector3 c = alongX ? new Vector3((xa + xb) * 0.5f, 0f, za) : new Vector3(xa, 0f, (za + zz) * 0.5f);
+            Vector3 Size(float h) => alongX ? new Vector3(len, h, 0.04f) : new Vector3(0.04f, h, len);
+            kit.Box(JVMat.WoodDark, c + Vector3.up * (floor + 0.45f), Size(0.9f));
+            kit.Box(JVMat.White, c + Vector3.up * (floor + 0.9f + (top - floor - 0.9f) * 0.5f), Size(top - floor - 0.9f));
+        }
+        Wall(x0r, a0, zb, zb, true);
+        Wall(a1, x1r, zb, zb, true);
+        kit.Box(JVMat.White, new Vector3((a0 + a1) * 0.5f, floor + alcoveH + (top - floor - alcoveH) * 0.5f, zb), new Vector3(a1 - a0, top - floor - alcoveH, 0.04f)); // 拉門縫上面的小牆
+        Wall(x0r, x0r, zb, 0f, false);
+        Wall(x1r, x1r, zb, 0f, false);
+        // 柱子（四個角、後牆中間）和長押（門楣高度的橫木），天花板（木板 + 三根樑）
+        foreach (var (px, pz) in new[] { (x0r + 0.06f, zb + 0.06f), (x1r - 0.06f, zb + 0.06f), (mid, zb + 0.06f), (x0r + 0.06f, -0.08f), (x1r - 0.06f, -0.08f) })
+            kit.Box(JVMat.WoodDark, new Vector3(px, (floor + top) * 0.5f, pz), new Vector3(0.12f, top - floor, 0.12f));
+        kit.Box(JVMat.WoodDark, new Vector3(mid, floor + 2.13f, zb + 0.05f), new Vector3(w, 0.1f, 0.06f));
+        kit.Box(JVMat.WoodDark, new Vector3(x0r + 0.05f, floor + 2.13f, zb * 0.5f), new Vector3(0.06f, 0.1f, depth));
+        kit.Box(JVMat.WoodDark, new Vector3(x1r - 0.05f, floor + 2.13f, zb * 0.5f), new Vector3(0.06f, 0.1f, depth));
+        kit.Box(JVMat.WoodLight, new Vector3(mid, top + 0.02f, zb * 0.5f), new Vector3(w, 0.04f, depth));
+        foreach (float bz in new[] { -0.9f, -1.8f, -2.7f })
+            kit.Box(JVMat.WoodDark, new Vector3(mid, top - 0.07f, bz), new Vector3(w, 0.12f, 0.12f));
+        // 後牆的拉門（襖）：縫旁邊一片關著，拉開的那片疊在它前面（白紙 + 深色框）
+        void Fusuma(float cx, float z)
+        {
+            kit.Box(JVMat.White, new Vector3(cx, floor + alcoveH * 0.5f, z), new Vector3(0.88f, alcoveH - 0.06f, 0.03f));
+            foreach (float fx in new[] { -0.43f, 0.43f })
+                kit.Box(JVMat.WoodDark, new Vector3(cx + fx, floor + alcoveH * 0.5f, z + 0.005f), new Vector3(0.035f, alcoveH, 0.04f));
+            foreach (float fy in new[] { 0.02f, alcoveH - 0.02f })
+                kit.Box(JVMat.WoodDark, new Vector3(cx, floor + fy, z + 0.005f), new Vector3(0.9f, 0.035f, 0.04f));
+        }
+        bool slitOnPlusX = kind == EntryRoom.TeaHouse;
+        float fx0 = slitOnPlusX ? a0 - 0.45f : a1 + 0.45f;
+        Fusuma(fx0, zb + 0.04f);
+        Fusuma(fx0 + (slitOnPlusX ? 0.06f : -0.06f), zb + 0.09f);
+        // 縫後面的小走廊：木地板、白牆，盡頭一盞行燈
+        float ac = (a0 + a1) * 0.5f;
+        kit.Box(JVMat.WoodLight, new Vector3(ac, floor - 0.01f, zb - alcoveD * 0.5f), new Vector3(a1 - a0, 0.04f, alcoveD));
+        kit.Box(JVMat.White, new Vector3(a0 + 0.02f, floor + alcoveH * 0.5f, zb - alcoveD * 0.5f), new Vector3(0.04f, alcoveH, alcoveD));
+        kit.Box(JVMat.White, new Vector3(a1 - 0.02f, floor + alcoveH * 0.5f, zb - alcoveD * 0.5f), new Vector3(0.04f, alcoveH, alcoveD));
+        kit.Box(JVMat.White, new Vector3(ac, floor + alcoveH * 0.5f, zb - alcoveD + 0.02f), new Vector3(a1 - a0, alcoveH, 0.04f));
+        kit.Box(JVMat.WoodLight, new Vector3(ac, floor + alcoveH - 0.02f, zb - alcoveD * 0.5f), new Vector3(a1 - a0, 0.04f, alcoveD));
+        Andon(kit, new Vector3(ac, floor, zb - alcoveD + 0.35f));
+
+        // 擺設
+        if (kind == EntryRoom.TeaHouse) TeaRoomProps(kit, floor, x0r, x1r, zb, mid);
+        else ApothecaryRoomProps(kit, floor, x0r, x1r, zb, top, mid);
+
+        Vector3 origin = new Vector3(doorX, 0f, rz1);
+        var room = Instance(kind == EntryRoom.TeaHouse ? "TeaHouse_Room" : "Apothecary_Room", t, kit, t.TransformPoint(origin), t.rotation);
+        room.GetComponent<MeshRenderer>().shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+        void Lamp(string name, Vector3 local, float range, float intensity)
+        {
+            var lamp = new GameObject(name).AddComponent<Light>();
+            lamp.transform.SetParent(t, false);
+            lamp.transform.position = t.TransformPoint(origin + local);
+            lamp.type = LightType.Point;
+            lamp.color = new Color(1f, 0.76f, 0.5f);
+            lamp.range = range;
+            lamp.intensity = intensity;
+            lamp.shadows = LightShadows.None;
+        }
+        Lamp("RoomLight", new Vector3(mid, top - 0.45f, zb * 0.55f), 6.5f, 2.2f);
+        Lamp("AlcoveLight", new Vector3(ac, floor + 0.7f, zb - alcoveD + 0.45f), 2.4f, 1.6f);
+        if (kind == EntryRoom.TeaHouse) Lamp("AndonLight", new Vector3(x0r + 0.45f, floor + 0.9f, zb + 0.45f), 3f, 1.4f);
+        else Lamp("AndonLight", new Vector3(x1r - 0.5f, floor + 0.6f, zb + 1.95f), 3f, 1.4f);
+    }
+
+    /// <summary>行燈：四根細腳、中間發光的紙罩、上面一片木板（at = 腳底）</summary>
+    static void Andon(JVMeshKit kit, Vector3 at)
+    {
+        foreach (float x in new[] { -0.15f, 0.15f })
+            foreach (float z in new[] { -0.15f, 0.15f })
+                kit.Box(JVMat.WoodDark, at + new Vector3(x, 0.36f, z), new Vector3(0.035f, 0.72f, 0.035f));
+        kit.Box(JVMat.LanternGlow, at + new Vector3(0f, 0.45f, 0f), new Vector3(0.28f, 0.44f, 0.28f));
+        kit.Box(JVMat.WoodDark, at + new Vector3(0f, 0.73f, 0f), new Vector3(0.36f, 0.03f, 0.36f));
+    }
+
+    /// <summary>陶器（茶壺、茶罐、藥罐）：轉一圈的輪廓，at = 底部中心</summary>
+    static void Pot(JVMeshKit kit, JVMat m, Vector3 at, float r, float h)
+    {
+        kit.Lathe(m, at, new[]
+        {
+            new Vector2(0f, 0f), new Vector2(r * 0.7f, 0f), new Vector2(r, h * 0.35f), new Vector2(r * 0.95f, h * 0.7f),
+            new Vector2(r * 0.6f, h * 0.92f), new Vector2(r * 0.62f, h), new Vector2(0f, h),
+        }, 10);
+    }
+
+    /// <summary>
+    /// 茶屋的店內：後面是架高的榻榻米座敷（矮桌、坐墊、茶具），後牆掛軸和插花，
+    /// 左後角行燈、右邊靠牆的茶具架（茶罐、茶碗、漆盒），前面的木地板放一張給客人坐的長凳。
+    /// </summary>
+    static void TeaRoomProps(JVMeshKit kit, float floor, float x0, float x1, float zb, float mid)
+    {
+        float w = x1 - x0;
+        // 座敷：後面 2 m 架高 0.3 m，前緣一根深色框木，上面鋪榻榻米（草色 + 黑色布邊）
+        float dz0 = zb, dz1 = zb + 2f, rise = 0.3f;
+        kit.Box(JVMat.WoodDark, new Vector3(mid, floor + rise * 0.5f, (dz0 + dz1) * 0.5f), new Vector3(w - 0.1f, rise, dz1 - dz0));
+        kit.Box(JVMat.WoodDark, new Vector3(mid, floor + rise - 0.04f, dz1 - 0.05f), new Vector3(w - 0.1f, 0.1f, 0.12f));
+        float tx = x0 + 0.1f;
+        while (tx < x1 - 0.15f)
+        {
+            float tw = Mathf.Min(1f, x1 - 0.1f - tx);
+            kit.Box(JVMat.Straw, new Vector3(tx + tw * 0.5f, floor + rise + 0.01f, (dz0 + dz1) * 0.5f - 0.05f), new Vector3(tw - 0.02f, 0.03f, dz1 - dz0 - 0.12f));
+            kit.Box(JVMat.Black, new Vector3(tx + 0.02f, floor + rise + 0.015f, (dz0 + dz1) * 0.5f - 0.05f), new Vector3(0.04f, 0.03f, dz1 - dz0 - 0.12f));
+            tx += tw;
+        }
+        float seat = floor + rise + 0.025f;
+        // 矮桌 + 茶壺、兩個茶杯 + 兩個坐墊
+        Vector3 table = new Vector3(mid - 0.3f, seat, zb + 1.05f);
+        kit.Box(JVMat.WoodDark, table + new Vector3(0f, 0.3f, 0f), new Vector3(1.1f, 0.05f, 0.7f));
+        foreach (float x in new[] { -0.48f, 0.48f })
+            foreach (float z in new[] { -0.28f, 0.28f })
+                kit.Box(JVMat.WoodDark, table + new Vector3(x, 0.14f, z), new Vector3(0.06f, 0.28f, 0.06f));
+        Pot(kit, JVMat.Ceramic, table + new Vector3(-0.15f, 0.325f, 0f), 0.09f, 0.13f);
+        kit.Cylinder(JVMat.Ceramic, table + new Vector3(-0.07f, 0.38f, 0f), table + new Vector3(0.0f, 0.43f, 0f), 0.014f, 0.01f, 6); // 壺嘴
+        foreach (float x in new[] { 0.15f, 0.32f })
+            kit.Cylinder(JVMat.White, table + new Vector3(x, 0.325f, 0.1f), table + new Vector3(x, 0.39f, 0.1f), 0.032f, 0.04f, 10, true, false);
+        foreach (float z in new[] { -0.62f, 0.62f })
+            kit.Box(JVMat.ClothRed, table + new Vector3(0f, 0.035f, z), new Vector3(0.55f, 0.07f, 0.55f));
+        // 床之間：後牆偏左掛一幅掛軸（黃褐布邊 + 白紙 + 墨），下面一個花瓶插著枝葉
+        Vector3 scroll = new Vector3(mid - 0.9f, floor + 1.55f, zb + 0.05f);
+        kit.Box(JVMat.ClothOchre, scroll, new Vector3(0.52f, 1.2f, 0.015f));
+        kit.Box(JVMat.White, scroll + new Vector3(0f, -0.02f, 0.01f), new Vector3(0.4f, 0.9f, 0.01f));
+        foreach (float y in new[] { 0.25f, 0.08f, -0.1f, -0.22f })
+            kit.Box(JVMat.Black, scroll + new Vector3(0.03f * Mathf.Sign(y), y, 0.017f), new Vector3(0.05f, 0.12f, 0.004f), Quaternion.Euler(0f, 0f, 15f * Mathf.Sign(y)));
+        kit.Cylinder(JVMat.WoodDark, scroll + new Vector3(-0.3f, 0.62f, 0.02f), scroll + new Vector3(0.3f, 0.62f, 0.02f), 0.015f, 0.015f, 6);
+        Vector3 vase = new Vector3(mid - 0.9f, seat, zb + 0.3f);
+        Pot(kit, JVMat.Ceramic, vase, 0.08f, 0.26f);
+        foreach (var (dx, dy) in new[] { (-0.12f, 0.45f), (0.1f, 0.52f), (0.02f, 0.62f) })
+        {
+            kit.Cylinder(JVMat.WoodDark, vase + new Vector3(0f, 0.24f, 0f), vase + new Vector3(dx, dy, 0.02f), 0.008f, 0.006f, 5);
+            kit.Ellipsoid(JVMat.HerbLeaf, vase + new Vector3(dx, dy, 0.02f), new Vector3(0.07f, 0.05f, 0.05f));
+        }
+        // 靠 +X 那面牆的茶具架：三層架子、茶罐、茶碗、漆盒
+        Vector3 shelf = new Vector3(x1 - 0.3f, floor, zb + 2.5f);
+        foreach (float y in new[] { 0.05f, 0.55f, 1.05f, 1.5f })
+            kit.Box(JVMat.WoodDark, shelf + new Vector3(0f, y, 0f), new Vector3(0.4f, 0.04f, 0.9f));
+        foreach (float z in new[] { -0.43f, 0.43f })
+            kit.Box(JVMat.WoodDark, shelf + new Vector3(0f, 0.78f, z), new Vector3(0.4f, 1.56f, 0.04f));
+        for (int i = 0; i < 3; i++)
+        {
+            float z = -0.28f + i * 0.28f;
+            Pot(kit, JVMat.Ceramic, shelf + new Vector3(0f, 0.57f, z), 0.08f, 0.2f);
+            kit.Cylinder(JVMat.White, shelf + new Vector3(0f, 1.07f, z), shelf + new Vector3(0f, 1.14f, z), 0.045f, 0.06f, 10, true, false);
+            kit.Box(JVMat.Lacquer, shelf + new Vector3(0f, 0.12f, z), new Vector3(0.28f, 0.1f, 0.22f));
+        }
+        Andon(kit, new Vector3(x0 + 0.45f, seat, zb + 0.45f));
+        // 前面的木地板：客人坐的長凳（鋪紅毯）
+        Vector3 bench = new Vector3(mid + 0.6f, floor, zb + 2.75f);
+        kit.Box(JVMat.WoodDark, bench + new Vector3(0f, 0.4f, 0f), new Vector3(1.5f, 0.05f, 0.45f));
+        kit.Box(JVMat.ClothRed, bench + new Vector3(0f, 0.435f, 0f), new Vector3(1.4f, 0.02f, 0.42f));
+        foreach (float x in new[] { -0.65f, 0.65f })
+            kit.Box(JVMat.WoodDark, bench + new Vector3(x, 0.2f, 0f), new Vector3(0.07f, 0.4f, 0.38f));
+    }
+
+    /// <summary>
+    /// 藥鋪的店內：後牆一整排藥櫃（百味箪笥，很多小抽屜，有幾個拉出來一半）、側牆一層層擺著藥罐和紙包的架子，
+    /// 天花板的樑上吊著一束束曬乾的草藥，中間一張帳場矮桌（藥碾、秤、小碟、帳本）和坐墊、行燈。
+    /// </summary>
+    static void ApothecaryRoomProps(JVMeshKit kit, float floor, float x0, float x1, float zb, float top, float mid)
+    {
+        // 百味箪笥：後牆 +X 那半邊（拉門縫在 -X 那邊），2.4 m 寬、1.8 m 高、7 × 9 個抽屜
+        Vector3 cab = new Vector3(x1 - 1.45f, floor, zb + 0.27f);
+        const float cw = 2.4f, ch = 1.8f;
+        const int cols = 9, rows = 7;
+        kit.Box(JVMat.WoodDark, cab + new Vector3(0f, ch * 0.5f, 0f), new Vector3(cw, ch, 0.45f));
+        float dw = cw / cols - 0.03f, dh = (ch - 0.16f) / rows - 0.03f;
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                Vector3 d = cab + new Vector3(-cw * 0.5f + (c + 0.5f) * cw / cols, 0.12f + (r + 0.5f) * (ch - 0.16f) / rows, 0.23f);
+                bool open = (r * 7 + c * 3) % 11 == 0;
+                if (open) d.z += 0.09f; // 拉出來一半的抽屜
+                kit.Box(JVMat.WoodLight, d - new Vector3(0f, 0f, open ? 0.08f : 0f), new Vector3(dw, dh, open ? 0.18f : 0.02f));
+                kit.Box(JVMat.Black, d + new Vector3(0f, 0f, 0.015f), new Vector3(0.035f, 0.025f, 0.02f));
+            }
+        kit.Box(JVMat.WoodDark, cab + new Vector3(0f, ch + 0.02f, 0.02f), new Vector3(cw + 0.06f, 0.04f, 0.5f));
+        for (int i = 0; i < 4; i++) Pot(kit, JVMat.Ceramic, cab + new Vector3(-0.9f + i * 0.6f, ch + 0.04f, 0f), 0.11f, 0.24f);
+        // -X 那面牆的架子：五層板子，藥罐、小紙包
+        Vector3 shelf = new Vector3(x0 + 0.28f, floor, zb + 2.1f);
+        foreach (float y in new[] { 0.05f, 0.5f, 0.95f, 1.4f, 1.85f })
+            kit.Box(JVMat.WoodDark, shelf + new Vector3(0f, y, 0f), new Vector3(0.38f, 0.04f, 1.3f));
+        foreach (float z in new[] { -0.63f, 0.63f })
+            kit.Box(JVMat.WoodDark, shelf + new Vector3(0f, 0.95f, z), new Vector3(0.38f, 1.9f, 0.04f));
+        for (int lvl = 0; lvl < 4; lvl++)
+            for (int i = 0; i < 4; i++)
+            {
+                Vector3 at = shelf + new Vector3(0f, 0.07f + lvl * 0.45f, -0.45f + i * 0.3f);
+                if ((lvl + i) % 3 == 2) kit.Box(JVMat.White, at + new Vector3(0f, 0.05f, 0f), new Vector3(0.16f, 0.1f, 0.12f)); // 紙包
+                else Pot(kit, (lvl + i) % 2 == 0 ? JVMat.Ceramic : JVMat.White, at, 0.07f, 0.18f + 0.04f * (i % 2));
+            }
+        // 樑上吊的草藥：每根樑四束（繩子 + 綁繩 + 一團葉子）
+        foreach (float bz in new[] { -0.9f, -1.8f, -2.7f })
+            for (int i = 0; i < 4; i++)
+            {
+                float hx = x0 + 0.7f + i * (x1 - x0 - 1.4f) / 3f + (bz < -1.5f && bz > -2.5f ? 0.25f : 0f);
+                float hang = 0.28f + 0.08f * ((i + Mathf.RoundToInt(-bz * 10f)) % 3);
+                Vector3 tie = new Vector3(hx, top - 0.13f - hang, bz);
+                kit.Cylinder(JVMat.Rope, new Vector3(hx, top - 0.13f, bz), tie, 0.006f, 0.006f, 4);
+                kit.Box(JVMat.Rope, tie, new Vector3(0.045f, 0.03f, 0.045f));
+                // 倒吊著曬乾的一束：綁繩下面散開的莖（草色）和幾片乾掉的葉子（綠、黃褐）
+                for (int k = 0; k < 7; k++)
+                {
+                    float ang = k * 2.4f + i, spread = 0.03f + 0.012f * (k % 3);
+                    Vector3 tip = tie + new Vector3(Mathf.Cos(ang) * spread, -0.2f - 0.03f * (k % 3), Mathf.Sin(ang) * spread);
+                    kit.Cylinder(JVMat.Straw, tie, tip, 0.005f, 0.004f, 4, false, false);
+                    kit.Ellipsoid(k % 3 == 0 ? JVMat.ClothOchre : JVMat.HerbLeaf, Vector3.Lerp(tie, tip, 0.75f), new Vector3(0.018f, 0.05f, 0.012f), 3, 5);
+                }
+            }
+        // 帳場：中間一張矮桌，藥碾（石槽 + 碾輪）、小秤、兩個小碟、帳本；後面一個坐墊
+        Vector3 desk = new Vector3(mid + 0.55f, floor, zb + 1.7f);
+        kit.Box(JVMat.WoodDark, desk + new Vector3(0f, 0.36f, 0f), new Vector3(1.2f, 0.06f, 0.6f));
+        foreach (float x in new[] { -0.53f, 0.53f })
+            kit.Box(JVMat.WoodDark, desk + new Vector3(x, 0.17f, 0f), new Vector3(0.08f, 0.34f, 0.5f));
+        kit.Box(JVMat.Stone, desk + new Vector3(-0.25f, 0.43f, 0f), new Vector3(0.42f, 0.08f, 0.14f));
+        kit.Cylinder(JVMat.Stone, desk + new Vector3(-0.25f, 0.5f, -0.1f), desk + new Vector3(-0.25f, 0.5f, 0.1f), 0.06f, 0.06f, 10);
+        kit.Cylinder(JVMat.WoodDark, desk + new Vector3(0.2f, 0.39f, 0f), desk + new Vector3(0.2f, 0.62f, 0f), 0.012f, 0.012f, 6);
+        kit.Box(JVMat.WoodDark, desk + new Vector3(0.2f, 0.62f, 0f), new Vector3(0.3f, 0.015f, 0.015f));
+        foreach (float x in new[] { 0.06f, 0.34f })
+            kit.Cylinder(JVMat.Ceramic, desk + new Vector3(x, 0.5f, 0f), desk + new Vector3(x, 0.52f, 0f), 0.05f, 0.05f, 8);
+        kit.Box(JVMat.White, desk + new Vector3(0.42f, 0.4f, 0.12f), new Vector3(0.18f, 0.03f, 0.24f));
+        kit.Box(JVMat.ClothIndigo, desk + new Vector3(0f, 0.035f, -0.6f), new Vector3(0.55f, 0.07f, 0.55f));
+        Andon(kit, new Vector3(x1 - 0.5f, floor, zb + 1.95f));
     }
 
     /// <summary>放一棟房子，回傳正門口（門外 0.6 m）的地面位置</summary>
@@ -3544,12 +3860,14 @@ public static class JapaneseVillageBuilder
         PlaceKitPiece("Apothecary_Jar", JpPropsModel, "JpProps", JpJar, parent, G(stovePos.x - 0.85f, stovePos.z + 0.45f), 0f, 3f, out _, collider: true);
         PlaceKitPiece("Apothecary_Screen", JpPropsModel, "JpProps", JpScreen, parent, G(stovePos.x - 0.1f, stovePos.z + 0.75f), 0f, 7.5f, out _, collider: true, alignLong: true);
 
+        // 進鋪子：只開一扇門，走那一扇的中間（門口往旁邊偏一點）
+        Vector3 entry = apothecaryEntry != null && apothecaryEntry.outside != null ? apothecaryEntry.outside.position : door;
         var routine = AddRoutine(apo, ApothecaryHeight,
             At(stoolPos, 0f, 14f, NpcRoutine.Act.Grind, stoolPos.y + stoolSeat), // 右手握著石臼裡的杵畫圈
             Pass(G(stoolPos.x - 0.9f, stoolPos.z - 0.2f)),
-            Pass(new Vector3(door.x, door.y, door.z - 1.2f)),
-            WithDoor(At(door, 0f, 7f, NpcRoutine.Act.Inside), apothecaryEntry),
-            Pass(new Vector3(door.x, door.y, door.z - 1.2f)),
+            Pass(new Vector3(entry.x, entry.y, entry.z - 1.2f)),
+            WithDoor(At(entry, 0f, 7f, NpcRoutine.Act.Inside), apothecaryEntry),
+            Pass(new Vector3(entry.x, entry.y, entry.z - 1.2f)),
             At(G(stovePos.x + 0.15f, stovePos.z - 0.7f), 0f, 6f, NpcRoutine.Act.Tend),
             At(G(door.x + 0.6f, door.z - 1.4f), 180f, 4f, NpcRoutine.Act.Stand),
             Pass(G(stoolPos.x - 0.9f, stoolPos.z - 0.2f)));
