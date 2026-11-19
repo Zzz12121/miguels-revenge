@@ -3,7 +3,8 @@ using UnityEngine;
 /// <summary>
 /// 拉弓瞄準時走路的腳步：瞄準時全身播的是停在「拉滿弓」那一格的 BowDraw（PlayerShieldBowAnimator），腿是不動的，
 /// 角色一移動整個人就在地上滑。這裡在腿上用程式踏步：
-///   - 一隻腳踩住地面不動（世界座標固定），另一隻腳抬起來往前（往移動的方向）跨一步，落地後換另一隻
+///   - 一隻腳踩住地面不動（世界座標固定），另一隻腳抬起來往前（往移動的方向）跨一步，落地後換另一隻；
+///     跨出去的前腳落得比站姿前面一點、落地後兩腳一起踩住一下（minPlantTime），前腳定得比較久
 ///   - 站著不動時兩腳都踩住；轉身轉太多、腳離原本站的位置太遠時才挪一步
 ///   - 腳的位置、角度、膝蓋往哪邊彎都照動畫本來的站姿，只是把腳釘在地上、輪流跨步；腿伸不到時骨盆稍微往下沉
 ///   - 開始 / 停止瞄準時慢慢混進 / 混出，不會跳一下
@@ -18,7 +19,11 @@ public sealed class BowAimFootwork : MonoBehaviour
     [Tooltip("腳抬多高 (m)")]
     public float stepHeight = 0.1f;
     [Tooltip("踩住的腳離站姿的位置超過多遠就跨下一步 (m)")]
-    public float strideTrigger = 0.2f;
+    public float strideTrigger = 0.27f;
+    [Tooltip("一隻腳剛落地後，兩腳都踩住至少多久才跨下一步（秒）：前腳落地後先定住，身體跟上來再換腳")]
+    public float minPlantTime = 0.16f;
+    [Tooltip("跨出去的腳落在站姿前面多遠（× 速度 × 跨步時間）：越大，落地的前腳越往前、定住越久")]
+    public float leadFactor = 0.85f;
     [Tooltip("站著不動時：腳離站姿多遠才挪一步 (m)")]
     public float idleTrigger = 0.16f;
 
@@ -42,6 +47,7 @@ public sealed class BowAimFootwork : MonoBehaviour
     float weight;
     bool ready;
     int lastStepped = 1;
+    float lastLanded = float.NegativeInfinity;
     static readonly RaycastHit[] hits = new RaycastHit[8];
 
     void Awake()
@@ -89,8 +95,8 @@ public sealed class BowAimFootwork : MonoBehaviour
         float speed = vel.magnitude;
         bool moving = speed > 0.15f;
         float duration = Mathf.Clamp(stepTime - speed * 0.03f, 0.2f, stepTime);
-        // 跨出去的腳落在「站姿的位置 + 往前預估半步」：落地之後身體繼續往前，腳剛好慢慢落到身體後面
-        Vector3 lead = vel * duration * 0.55f;
+        // 跨出去的腳落在「站姿的位置 + 往前預估一段」：落地之後定住，身體繼續往前走過它，腳才慢慢落到身體後面
+        Vector3 lead = vel * duration * leadFactor;
 
         // 跨步中的腳：從原本踩的地方弧線移到目標，目標跟著身體一起走
         foreach (var l in legs)
@@ -98,18 +104,22 @@ public sealed class BowAimFootwork : MonoBehaviour
             if (!l.Stepping) continue;
             l.to = Flat(l.animPos) + lead;
             l.t += dt / duration;
-            if (l.t >= 1f) { l.planted = l.to; l.t = -1f; }
+            if (l.t >= 1f) { l.planted = l.to; l.t = -1f; lastLanded = Time.time; }
         }
 
         // 沒有腳在跨步：離站姿最遠的那隻腳（超過門檻）跨下一步；走路時兩腳輪流
-        if (!legs[0].Stepping && !legs[1].Stepping)
+        if (!legs[0].Stepping && !legs[1].Stepping && Time.time - lastLanded >= minPlantTime)
         {
             float trigger = moving ? strideTrigger : idleTrigger;
             int pick = -1;
             float best = trigger;
             for (int i = 0; i < 2; i++)
             {
-                float d = Vector3.Distance(Flat(legs[i].planted), Flat(legs[i].animPos) + (moving ? lead * 0.5f : Vector3.zero));
+                // 走路時只算「落在身體後面多遠」（加上一點左右偏移）：剛落地在前面的那隻腳要等身體走過它、落到後面夠遠才換
+                Vector3 off = Flat(legs[i].animPos) + lead * 0.15f - Flat(legs[i].planted);
+                float d = moving
+                    ? Mathf.Max(0f, Vector3.Dot(off, vel / speed)) + Vector3.ProjectOnPlane(off, vel / speed).magnitude * 0.5f
+                    : Vector3.Distance(Flat(legs[i].planted), Flat(legs[i].animPos));
                 if (moving && i == lastStepped) d *= 0.8f; // 偏好換另一隻腳
                 if (d > best) { best = d; pick = i; }
             }

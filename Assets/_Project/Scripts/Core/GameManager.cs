@@ -204,6 +204,8 @@ public class GameManager : MonoBehaviour
 
     /// <summary>命補滿（不換場景）。漁村 → 道場這條主線倒下時用，不會 Game Over（VillageReturn）</summary>
     public void RestoreLives() => Lives = maxLives;
+    /// <summary>直接設定剩幾條命（VillageReturn：最後一條命用完時先設成上限 + 1，扣完剛好補滿、不會 Game Over）</summary>
+    public void SetLives(int n) => Lives = Mathf.Clamp(n, 0, maxLives + 1);
 
     public void GoToMainMenu()
     {

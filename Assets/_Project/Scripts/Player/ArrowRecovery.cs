@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// 射出去的箭可以撿回來（PlayerLoadout 射箭時掛在每支箭上）：
 ///   - 插在地上、牆上、樹上的箭：留在原地，走過去就撿回來（插得太高搆不到的，掉到正下方的地上）
-///   - 射中敵人的箭：掉在敵人腳邊的地上（有 breakChance 的機率斷掉，撿不回來）
+///   - 射中敵人的箭：照飛來的方向（再往下彎一點）插進敵人後面 / 腳邊的地上（有 breakChance 的機率斷掉，撿不回來）
 ///   - 掉進水裡、飛出去太遠沒打到東西的箭：沒了
 /// 只是加在 PlayerArrow 旁邊看它最後停在哪裡，不改箭本身的飛行和傷害。
 /// </summary>
@@ -82,7 +82,7 @@ public sealed class ArrowRecover : MonoBehaviour
         // 射中了目標（PlayerArrow 打中就刪掉自己）
         CombatLog.RegisterArrowHit(lastPos + lastRot * Vector3.forward * 0.4f);
         if (Random.value < breakChance) return;
-        ArrowPickup.SpawnDropped(lastPos);
+        ArrowPickup.SpawnFallen(lastPos, lastRot * Vector3.forward);
     }
 }
 
@@ -109,9 +109,45 @@ public sealed class ArrowPickup : MonoBehaviour
     /// <summary>插在東西上的箭：搆得到就留在原地，太高就掉到正下方</summary>
     public static void SpawnStuck(Vector3 pos, Quaternion rot, Transform surface)
     {
-        if (GroundBelow(pos, out var ground) && pos.y - ground.y > Reach) { SpawnDropped(pos); return; }
+        if (GroundBelow(pos, out var ground) && pos.y - ground.y > Reach) { SpawnFallen(pos, rot * Vector3.forward); return; }
         var p = Create(pos, rot);
         if (surface != null && surface.gameObject.scene.isLoaded) p.transform.SetParent(surface, true);
+    }
+
+    /// <summary>
+    /// 打中東西（或插得太高）掉下來的箭：照飛來的方向 dir、再往下彎一點，插進前面的地上（箭頭插進去、箭尾露在外面，
+    /// 跟直接射到地上的箭一樣：箭的中心在插點往回 0.3 m）。前面找不到地面就插在正下方。
+    /// </summary>
+    public static void SpawnFallen(Vector3 from, Vector3 dir)
+    {
+        if (dir.sqrMagnitude < 1e-6f) dir = Vector3.down;
+        dir.Normalize();
+        Vector3 flat = new Vector3(dir.x, 0f, dir.z);
+        // 往下彎：本來就很陡的照原本的方向，平平飛來的變成大約往下 55 度
+        Vector3 d = dir.y < -0.75f || flat.sqrMagnitude < 1e-4f ? dir : (flat.normalized * 0.7f + Vector3.down).normalized;
+        d = Quaternion.AngleAxis(Random.Range(-8f, 8f), Vector3.up) * d;
+        Vector3 hit;
+        if (!GroundAlong(from, d, out hit))
+        {
+            if (!GroundBelow(from, out hit)) return;
+            d = (flat.sqrMagnitude > 1e-4f ? flat.normalized * 0.35f : Vector3.zero) + Vector3.down;
+            d.Normalize();
+        }
+        Create(hit - d * 0.3f, Quaternion.LookRotation(d));
+    }
+
+    static bool GroundAlong(Vector3 from, Vector3 dir, out Vector3 ground)
+    {
+        ground = from;
+        int n = Physics.RaycastNonAlloc(from - dir * 0.2f, dir, hits, 30f, ~0, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            var c = hits[i].collider;
+            if (c is CharacterController || c.GetComponentInParent<IDamageable>() != null || c.attachedRigidbody != null) continue;
+            if (hits[i].distance < best) { best = hits[i].distance; ground = hits[i].point; }
+        }
+        return best < float.MaxValue;
     }
 
     /// <summary>掉在地上的箭：平躺在 pos 正下方的地面，方向隨機</summary>

@@ -231,6 +231,7 @@ public static class JapaneseVillageBuilder
 
         var npcs = new GameObject("NPCs").transform;
         PlaceNpcs(npcs);
+        UnhookAllNpcArms(npcs); // 所有村民：手和衣服黏在一起的地方拆開，抬手不會拉動衣服
         PlaceHerbs();
         BuildTiger();
         BuildBounds();
@@ -3821,9 +3822,22 @@ public static class JapaneseVillageBuilder
         float stoolSeat = stoolSize.y;
         // 桌上：石臼（靠板凳那一邊）、一小捆藥草、葫蘆藥瓶、綁好的一包藥
         Vector3 OnTable(float x, float z) => tablePos + new Vector3(x, tableTop, z);
-        PlaceKitPiece("Apothecary_Mortar", ApoKitModel, "ApoTable", ApoMortar, parent, OnTable(0f, -0.1f), 0f, 1.3f, out _);
+        var mortarGo = PlaceKitPiece("Apothecary_Mortar", ApoKitModel, "ApoTable", ApoMortar, parent, OnTable(0f, -0.1f), 0f, 0.95f, out var mortarSize); // 小一點：單手拿得起來
+        // 葫蘆形的小藥瓶（陶、軟木塞、腰上綁一圈繩子）：藥師把磨好的藥倒進去、拿給玩家喝（ApothecaryPotionGift）
+        var bottleKit = new JVMeshKit();
+        bottleKit.Lathe(JVMat.Ceramic, Vector3.zero, new[]
+        {
+            new Vector2(0f, 0f), new Vector2(0.04f, 0f), new Vector2(0.058f, 0.035f), new Vector2(0.06f, 0.07f), new Vector2(0.046f, 0.1f),
+            new Vector2(0.03f, 0.118f), new Vector2(0.04f, 0.14f), new Vector2(0.042f, 0.165f), new Vector2(0.03f, 0.192f),
+            new Vector2(0.016f, 0.205f), new Vector2(0.016f, 0.222f), new Vector2(0f, 0.222f),
+        }, 14);
+        bottleKit.Cylinder(JVMat.WoodLight, new Vector3(0f, 0.215f, 0f), new Vector3(0f, 0.24f, 0f), 0.018f, 0.016f, 10);
+        bottleKit.Cylinder(JVMat.Rope, new Vector3(0f, 0.112f, 0f), new Vector3(0f, 0.126f, 0f), 0.034f, 0.034f, 12, false, false);
+        const float BottleScale = 1.45f; // 放大一點，遞給玩家、喝的時候看得清楚（高約 0.35 m）
+        var bottleGo = Instance("Apothecary_PotionBottle", parent, bottleKit, OnTable(-0.27f, -0.24f), Quaternion.identity, false);
+        bottleGo.transform.localScale = Vector3.one * BottleScale;
         PlaceKitPiece("Apothecary_Bundle", ApoKitModel, "ApoTable", ApoBundle, parent, OnTable(-0.27f, -0.05f), 30f, 1.6f, out _);
-        PlaceKitPiece("Apothecary_Gourd", ApoKitModel, "ApoTable", ApoGourd, parent, OnTable(-0.42f, 0.12f), 0f, 1.6f, out _);
+        var gourdGo = PlaceKitPiece("Apothecary_Gourd", ApoKitModel, "ApoTable", ApoGourd, parent, OnTable(-0.42f, 0.12f), 0f, 1.6f, out _);
         PlaceKitPiece("Apothecary_Package", ApoKitModel, "ApoTable", ApoPackage, parent, OnTable(0.36f, 0.08f), 15f, 1.6f, out _);
         // 桌子兩邊地上：一大盤草藥、一盤曬乾的藥材
         PlaceKitPiece("Apothecary_HerbTray", ApoKitModel, "ApoTable", ApoHerbTray, parent, G(tablePos.x + tableSize.x * 0.5f + 0.4f, tablePos.z + 0.1f), 0f, 1.8f, out _, collider: true);
@@ -3878,6 +3892,17 @@ public static class JapaneseVillageBuilder
         UnhookFromArm(apo.gameObject, "Right");
         UnhookFromArm(apo.gameObject, "Left"); // 受傷的左手垂著不動：衣襬也不要跟著它
         routine.walkSpeed = 0.95f;
+        // 倒下後來找藥師：拿起藥缽把藥倒進葫蘆藥瓶、走過來遞給玩家喝（壯力藥，ApothecaryPotionGift）。藥缽、藥瓶會被拿起來，不能是 Static
+        if (mortarGo != null && bottleGo != null)
+        {
+            JVGarden.ClearStatic(mortarGo);
+            JVGarden.ClearStatic(bottleGo);
+            var gift = apo.gameObject.AddComponent<ApothecaryPotionGift>();
+            gift.mortar = mortarGo.transform;
+            gift.mortarSize = mortarSize;
+            gift.gourd = bottleGo.transform;
+            gift.bottleHeight = 0.24f * BottleScale;
+        }
         Debug.Log($"[JapaneseVillage] 藥師：藥鋪門口 {door}，桌子 {tablePos}，陶爐 {stovePos}");
     }
 
@@ -3886,7 +3911,7 @@ public static class JapaneseVillageBuilder
     /// 綁了 side 手臂（上臂、前臂、手掌、手指）骨頭的頂點，如果離大腿 / 小腿 / 身體比離手臂還近（或是手掌的骨頭、卻離手腕很遠），
     /// 就改成不跟著手臂動（StripMeshParts.Rebind：手臂的權重拿掉、剩下的重新分配；都沒有了就綁在骨盆 / 胸口）。
     /// </summary>
-    internal static bool[] ArmUnhookMask(Mesh mesh, Transform[] bones, string side, out int[] armBones, out int hips, out int chest, out float waistY)
+    internal static bool[] ArmUnhookMask(Mesh mesh, Transform[] bones, string side, out int[] armBones, out int hips, out int chest, out float waistY, bool strict = false)
     {
         Vector3 P(string suffix)
         {
@@ -3935,19 +3960,65 @@ public static class JapaneseVillageBuilder
                                                && (v[i] - mesh.bindposes[bi].inverse.MultiplyPoint3x4(Vector3.zero)).magnitude > 0.035f * H;
             if (FingerFar(b.boneIndex0, b.weight0) || FingerFar(b.boneIndex1, b.weight1) || FingerFar(b.boneIndex2, b.weight2) || FingerFar(b.boneIndex3, b.weight3)) handFar = true;
             // 手臂本身（袖子、手）離手臂的骨頭很近：留著；離身體 / 腿比較近：是衣服
-            if (handFar || (dBody < dArm && dArm > 0.03f * H)) mask[i] = true;
+            if (!strict) { if (handFar || (dBody < dArm && dArm > 0.03f * H)) mask[i] = true; continue; }
+            // 嚴格（所有村民共用的檢查）：只看腰以下（手垂在大腿旁、黏到褲子 / 衣襬的地方），而且要同時
+            //   - 明顯比較靠近腿 / 身體（離手臂骨頭也夠遠：手掌、手指本身不算）
+            //   - 綁骨本來就有一點跟著腿 / 骨盆（Tripo 把它當成下半身的一部分，只是被手臂分走了）
+            //   - 不是整個綁在手臂上（整個綁在手臂上的是袖子：寬袖子垂到腰下也要跟著手抬起來，拿掉會穿模、看起來消失）
+            // 以前連「手掌骨頭上離手腕遠的頂點」也算（指尖就離手腕那麼遠），手指會留在大腿旁，這裡不用
+            if (v[i].y > waistY) continue;
+            float armW = 0f, lowW = 0f;
+            void Add(int bi, float w)
+            {
+                if (w <= 0f || bones[bi] == null) return;
+                if (set.Contains(bi)) armW += w;
+                else if (bones[bi].name.Contains("UpLeg") || bones[bi].name.EndsWith("Leg") || bones[bi].name.EndsWith("Hips")) lowW += w;
+            }
+            Add(b.boneIndex0, b.weight0); Add(b.boneIndex1, b.weight1); Add(b.boneIndex2, b.weight2); Add(b.boneIndex3, b.weight3);
+            if (dBody < dArm * 0.6f && dArm > 0.06f * H && lowW >= 0.05f && armW < 0.95f) mask[i] = true;
         }
         return mask;
     }
 
-    static void UnhookFromArm(GameObject npc, string side)
+    /// <summary>
+    /// 所有村民（NPCs 底下的人形模型）都檢查一次：兩隻手臂各算有幾個「其實是衣服、卻綁著手臂骨頭」的頂點（嚴格的條件），
+    /// 超過 minVertices 個就改成不跟著手臂動（做動作抬手時不會把褲子 / 衣襬拉出去）。藥師另外處理過（兩隻手都用一般的條件），跳過。
+    /// </summary>
+    static void UnhookAllNpcArms(Transform npcs, int minVertices = 12, int maxVertices = 400)
     {
-        var smr = npc.GetComponentInChildren<SkinnedMeshRenderer>(true);
+        int fixedCount = 0;
+        foreach (var smr in npcs.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            var root = smr.GetComponentInParent<Animator>();
+            if (root == null || !root.isHuman) continue;
+            var npc = root.transform.parent != null ? root.transform.parent.gameObject : root.gameObject;
+            if (npc.name == "NPC_Apothecary") continue;
+            var mi = (ModelImporter)AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(smr.sharedMesh));
+            if (mi == null) continue;
+            if (!mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); }
+            foreach (string side in new[] { "Right", "Left" })
+            {
+                var mask = ArmUnhookMask(smr.sharedMesh, smr.bones, side, out _, out _, out _, out _, strict: true);
+                int n = 0;
+                foreach (bool m in mask) if (m) n++;
+                if (n < minVertices) { Debug.Log($"[JapaneseVillage] 手臂和衣服：{npc.name} {(side == "Right" ? "右" : "左")}手 {n} 個（不用改）"); continue; }
+                // 太多：手臂和整片衣服本來就綁在一起（寬袖子、長袍），拆開會讓袖子留在原地、手臂穿出去，不改
+                if (n > maxVertices) { Debug.Log($"[JapaneseVillage] 手臂和衣服：{npc.name} {(side == "Right" ? "右" : "左")}手 {n} 個，太多（是袖子 / 長袍），不改"); continue; }
+                UnhookFromArm(npc, side, true, smr);
+                fixedCount++;
+            }
+        }
+        Debug.Log($"[JapaneseVillage] 手臂和衣服：改了 {fixedCount} 隻手臂");
+    }
+
+    static void UnhookFromArm(GameObject npc, string side, bool strict = false, SkinnedMeshRenderer smr = null)
+    {
+        if (smr == null) smr = npc.GetComponentInChildren<SkinnedMeshRenderer>(true);
         if (smr == null) return;
         var mi = (ModelImporter)AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(smr.sharedMesh));
         if (mi != null && !mi.isReadable) { mi.isReadable = true; mi.SaveAndReimport(); }
         var mesh = smr.sharedMesh;
-        var mask = ArmUnhookMask(mesh, smr.bones, side, out var armBones, out int hips, out int chest, out float waistY);
+        var mask = ArmUnhookMask(mesh, smr.bones, side, out var armBones, out int hips, out int chest, out float waistY, strict);
         int n = 0;
         foreach (bool m in mask) if (m) n++;
         var strip = smr.GetComponent<StripMeshParts>();
@@ -3966,7 +4037,9 @@ public static class JapaneseVillageBuilder
         strip.detachBones = armBones;
 
         // 手指 / 前臂和衣服本來是同一片網格（Tripo 把垂在大腿旁的手和衣襬黏在一起）：換骨頭之後，
-        // 腰以下一邊還跟著前臂 / 手、一邊已經不跟的三角形會被拉成一大片，直接拿掉（只在腰以下，不動袖子和肩膀的接縫）
+        // 腰以下一邊還跟著前臂 / 手、一邊已經不跟的三角形會被拉成一大片，直接拿掉（只在腰以下，不動袖子和肩膀的接縫）。
+        // 只有藥師這樣做（一般村民用嚴格的條件，換骨頭的頂點少、本來就不太會拉開；挖掉三角形會在衣服上留下洞）
+        if (!strict)
         {
             var verts = mesh.vertices;
             var weights = mesh.boneWeights;

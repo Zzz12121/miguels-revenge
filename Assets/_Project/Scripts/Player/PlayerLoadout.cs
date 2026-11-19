@@ -489,13 +489,136 @@ public class PlayerLoadout : MonoBehaviour
 
         var melee = MeleeFor(Current);
         if (melee != shownMelee) ShowMelee(melee);
-        KeepWeaponInHand(melee);
+        if (holster == HolsterPhase.None || holster == HolsterPhase.Drawing && holsterT >= RevealAt) KeepWeaponInHand(melee);
         TrackAttack(melee);
         UpdateSpearThrust(melee);
         UpdateKnifeMoves(melee);
         UpdateBowModel();
         UpdateArrowDraw();
         UpdateBowString();
+        UpdateHolster(melee);
+    }
+
+    // ---------------- 收武器 / 拿出武器（劇情動作：喝藥、睡覺、看書…） ----------------
+
+    static readonly HashSet<Object> holsterOwners = new HashSet<Object>();
+
+    /// <summary>
+    /// 開始做劇情動作之前呼叫：右手的武器（大刀、小刀、長槍）先收起來（手往左腰 / 背後一收、武器消失），
+    /// 左手的弓也背到背上。owner 是誰要求的（好幾個同時要求也可以）。
+    /// </summary>
+    public static void Holster(Object owner) => holsterOwners.Add(owner);
+
+    /// <summary>劇情動作做完：再把武器拿出來（手從腰間 / 背後拔出來，原本拿在手上的才拿）</summary>
+    public static void Unholster(Object owner) => holsterOwners.Remove(owner);
+
+    /// <summary>武器收好了（測試用、等收好再做動作用）</summary>
+    public static bool WeaponsAway { get; private set; }
+
+    enum HolsterPhase { None, Sheathing, Away, Drawing }
+    HolsterPhase holster;
+    float holsterT;
+    bool hadRight, hadBow;
+    Transform hipsBoneH, chestBoneH;
+    const float SheatheTime = 0.45f, DrawTime = 0.5f, HideAt = 0.7f, RevealAt = 0.22f;
+
+    void UpdateHolster(Melee melee)
+    {
+        holsterOwners.RemoveWhere(o => o == null);
+        bool want = holsterOwners.Count > 0;
+        float dt = Time.deltaTime;
+        switch (holster)
+        {
+            case HolsterPhase.None:
+                if (!want) return;
+                hadRight = presenter != null && presenter.IsDrawn;
+                hadBow = tripoBow != null && tripoBow.activeSelf;
+                holster = HolsterPhase.Sheathing;
+                holsterT = 0f;
+                if (!hadRight && !hadBow) { holster = HolsterPhase.Away; WeaponsAway = true; }
+                break;
+            case HolsterPhase.Sheathing:
+                holsterT += dt / SheatheTime;
+                if (holsterT >= HideAt) HideWeapons(true);
+                if (holsterT >= 1f) { holster = HolsterPhase.Away; WeaponsAway = true; }
+                break;
+            case HolsterPhase.Away:
+                HideWeapons(true);
+                if (!want)
+                {
+                    WeaponsAway = false;
+                    holster = hadRight || hadBow ? HolsterPhase.Drawing : HolsterPhase.None;
+                    holsterT = 0f;
+                }
+                break;
+            case HolsterPhase.Drawing:
+                if (want) { holster = HolsterPhase.Sheathing; holsterT = 1f - holsterT; break; }
+                bool before = holsterT < RevealAt;
+                holsterT += dt / DrawTime;
+                if (before && holsterT >= RevealAt) RevealWeapons(melee);
+                else if (holsterT < RevealAt) HideWeapons(true);
+                if (holsterT >= 1f) holster = HolsterPhase.None;
+                break;
+        }
+        PoseHolster(melee);
+    }
+
+    void HideWeapons(bool hide)
+    {
+        if (!hide) return;
+        if (presenter != null && presenter.IsDrawn) presenter.SheatheNow();
+        if (tripoBow != null && tripoBow.activeSelf) tripoBow.SetActive(false);
+        if (bowString != null) bowString.enabled = false;
+    }
+
+    void RevealWeapons(Melee melee)
+    {
+        if (hadRight && presenter != null)
+        {
+            if (melee == Melee.Greatsword) presenter.DrawForSeconds(1.2f); // 大刀照原本的方式聚合出來，過一下再收
+            else presenter.SetDrawnImmediate(true);
+        }
+        if (hadBow && tripoBow != null) tripoBow.SetActive(true);
+        if (bowString != null) bowString.enabled = true;
+    }
+
+    /// <summary>
+    /// 收 / 拔的手勢：右手往左腰（刀）或右肩後面（長槍）伸過去再回來；拿弓的左手往左肩後面伸。
+    /// 收的時候手伸過去、武器消失、手回來；拔的時候手從那裡拔出來、武器出現、手回到原本的姿勢
+    /// </summary>
+    void PoseHolster(Melee melee)
+    {
+        if (holster != HolsterPhase.Sheathing && holster != HolsterPhase.Drawing) return;
+        if (animator == null || !animator.isHuman) return;
+        if (hipsBoneH == null) { hipsBoneH = animator.GetBoneTransform(HumanBodyBones.Hips); chestBoneH = animator.GetBoneTransform(HumanBodyBones.Chest) ?? animator.GetBoneTransform(HumanBodyBones.Spine); }
+        if (rArmBone == null)
+        {
+            rArmBone = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            rForeBone = animator.GetBoneTransform(HumanBodyBones.RightLowerArm);
+            rHandBone = animator.GetBoneTransform(HumanBodyBones.RightHand);
+        }
+        if (lUpperArm == null) { lUpperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm); lForeArm = animator.GetBoneTransform(HumanBodyBones.LeftLowerArm); }
+        if (leftHand == null) leftHand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+        if (hipsBoneH == null || chestBoneH == null) return;
+        float t = Mathf.Clamp01(holsterT);
+        // 收：0 → HideAt 伸過去、停一下、再回來；拔：一開始就在那裡（很快混進去），拔出來、慢慢回到原本的姿勢
+        float k = holster == HolsterPhase.Sheathing
+            ? (t < 0.55f ? Mathf.SmoothStep(0f, 1f, t / 0.55f) : t < HideAt + 0.05f ? 1f : 1f - Mathf.SmoothStep(0f, 1f, (t - HideAt - 0.05f) / (0.95f - HideAt)))
+            : (t < 0.12f ? Mathf.SmoothStep(0f, 1f, t / 0.12f) : 1f - Mathf.SmoothStep(0f, 1f, (t - 0.12f) / 0.88f));
+        if (k <= 0.001f) return;
+        Vector3 up = Vector3.up, fwd = transform.forward, side = transform.right;
+        if (hadRight && rArmBone != null && rForeBone != null && rHandBone != null)
+        {
+            Vector3 at = melee == Melee.Spear
+                ? chestBoneH.position + up * 0.28f - fwd * 0.12f + side * 0.12f      // 長槍：背到右肩後面
+                : hipsBoneH.position - side * 0.14f + fwd * 0.14f + up * 0.02f;      // 刀：插回左腰
+            TwoBoneIK(rArmBone, rForeBone, rHandBone, at, rArmBone.position - up * 0.4f + side * 0.45f - fwd * 0.1f, k);
+        }
+        if (hadBow && lUpperArm != null && lForeArm != null && leftHand != null)
+        {
+            Vector3 at = chestBoneH.position + up * 0.3f - fwd * 0.16f - side * 0.1f; // 弓背到左肩後面
+            TwoBoneIK(lUpperArm, lForeArm, leftHand, at, lUpperArm.position - up * 0.4f - side * 0.45f - fwd * 0.1f, k);
+        }
     }
 
     static FieldInfo drawUntilField, skillDrawField;
@@ -792,7 +915,7 @@ public class PlayerLoadout : MonoBehaviour
 
         if (want && tripoBow == null && mount.gameObject.activeInHierarchy) BuildTripoBow(mount, (SkinnedMeshRenderer)erikaBow);
         erikaBow.enabled = !(want && tripoBow != null);
-        if (tripoBow != null) tripoBow.SetActive(want);
+        if (tripoBow != null) tripoBow.SetActive(want && (holster == HolsterPhase.None || holster == HolsterPhase.Sheathing && holsterT < HideAt || holster == HolsterPhase.Drawing && holsterT >= RevealAt));
         if (want && tripoBow != null && tripoBow.activeInHierarchy) PlaceBow();
     }
 
