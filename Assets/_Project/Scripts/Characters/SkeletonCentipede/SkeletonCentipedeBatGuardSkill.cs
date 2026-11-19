@@ -107,6 +107,7 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
         {
             if (bat == null) continue;
             if ((bat.transform.position - chest).sqrMagnitude > contactRadius * contactRadius) continue;
+            if (BatPowder.Active) break;   // 撒了石粉：護體蝙蝠也咬不到玩家
             Vector3 push = bat.transform.position - transform.position;
             push.y = 0f;
             player.TakeDamage(contactDamage, push.normalized * 4f + Vector3.up * 2f, false, "被骷髏蝙蝠群咬死");
@@ -117,6 +118,7 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
     IEnumerator Run()
     {
         IsRunning = true;
+        BatPowder.WarnSwarm(4f);   // 畫面提示：可以撒石粉
         while (pending.Count > 0)
         {
             float threshold = pending.Dequeue();

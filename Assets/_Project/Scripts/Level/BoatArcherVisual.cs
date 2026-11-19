@@ -48,6 +48,13 @@ public class BoatArcherVisual : MonoBehaviour
         return release;
     }
 
+    /// <summary>拉弓動作還沒播完就要換別的動作（例如轉身跑回掩體）：不要等一下又自己切回 Idle</summary>
+    public void CancelDraw()
+    {
+        drawing = false;
+        if (animator != null) animator.speed = 1f;
+    }
+
     /// <summary>箭的發射位置（世界座標）</summary>
     public Vector3 ArrowWorldOrigin => transform.TransformPoint(arrowOrigin);
 

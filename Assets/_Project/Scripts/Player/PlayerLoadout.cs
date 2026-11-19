@@ -55,6 +55,8 @@ public class PlayerLoadout : MonoBehaviour
     {
         Current = WeaponLoadout.Greatsword;
         Arrows = MaxArrows;
+        BowUnlocked = false;
+        lastMelee = WeaponLoadout.Greatsword;
         Changed = null;
         Instance = null;
     }
@@ -84,6 +86,66 @@ public class PlayerLoadout : MonoBehaviour
         if (loadout == WeaponLoadout.BowKnife) Arrows = MaxArrows;
         if (Instance != null) Instance.Apply();
         Changed?.Invoke();
+    }
+
+    // ---------------- 弓箭技能（投降的埋伏弓箭手把弓交給玩家） ----------------
+
+    /// <summary>拿到弓箭技能了：可以用「切換武器」鍵（預設 Tab / 手把 RT）在近戰武器和弓之間切換</summary>
+    public static bool BowUnlocked { get; private set; }
+    static WeaponLoadout lastMelee = WeaponLoadout.Greatsword;
+    float bowGrantedNotice = -100f, switchNotice = -100f;
+
+    /// <summary>獲得弓箭技能：馬上換成弓、箭補滿</summary>
+    public static void GrantBow()
+    {
+        BowUnlocked = true;
+        if (Current != WeaponLoadout.BowKnife) lastMelee = Current;
+        Equip(WeaponLoadout.BowKnife);
+        if (Instance != null) Instance.bowGrantedNotice = Time.unscaledTime;
+    }
+
+    /// <summary>近戰武器 ↔ 弓（不補箭；箭射完了換過去是小刀，撿回箭會自動換回弓）</summary>
+    public static bool ToggleBow()
+    {
+        if (!BowUnlocked) return false;
+        if (Current == WeaponLoadout.BowKnife) Current = lastMelee;
+        else { lastMelee = Current; Current = WeaponLoadout.BowKnife; }
+        if (Instance != null) { Instance.Apply(); Instance.switchNotice = Time.unscaledTime; }
+        Changed?.Invoke();
+        return true;
+    }
+
+    void UpdateWeaponSwitch()
+    {
+        if (!BowUnlocked || boatLevel || Dead || GameUI.OverlayOpen || Cursor.lockState != CursorLockMode.Locked) return;
+        if (!InputBindings.Pressed(GameAction.SwitchWeapon)) return;
+        if (combat.IsAttacking || combat.IsShieldCountering) return;   // 出招中不換，免得動作被切斷
+        if (ToggleBow())
+            GameAudio.Play("SFX/RPG/clothBelt2", transform.position, 0.7f, Current == WeaponLoadout.BowKnife ? 1.25f : 0.95f, 0.05f, 1f, 20f);
+    }
+
+    void DrawBowSkillNotice()
+    {
+        float since = Time.unscaledTime - bowGrantedNotice;
+        if (since < 5f)
+        {
+            float a = Mathf.Clamp01(5f - since);
+            GameUI.Banner("獲得技能：弓箭", new Color(1f, 0.85f, 0.45f), a);
+            var r = new Rect(0f, Screen.height * 0.32f + 46f, Screen.width, 30f);
+            var st = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 18 };
+            st.normal.textColor = new Color(1f, 1f, 1f, a);
+            GUI.Label(r, $"【{InputBindings.DisplayName(GameAction.SwitchWeapon)}】切換刀 / 弓　【{InputBindings.DisplayName(GameAction.Block)}】按住瞄準、【{InputBindings.DisplayName(GameAction.Attack)}】射箭", st);
+            return;
+        }
+        since = Time.unscaledTime - switchNotice;
+        if (since < 1.2f)
+        {
+            string name = Current == WeaponLoadout.BowKnife ? (Arrows > 0 ? "弓" : "小刀（沒有箭了）") : Current == WeaponLoadout.Spear ? "長槍" : "大刀";
+            var r = new Rect(0f, Screen.height * 0.72f, Screen.width, 30f);
+            var st = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 20, fontStyle = FontStyle.Bold };
+            st.normal.textColor = new Color(1f, 0.92f, 0.7f, Mathf.Clamp01((1.2f - since) * 2f));
+            GUI.Label(r, name, st);
+        }
     }
 
     /// <summary>撿回地上的箭（ArrowPickup）：拿著弓、箭還沒滿才收；箭射完換成小刀的時候撿到會換回弓。回傳 true = 收下了</summary>
@@ -420,6 +482,7 @@ public class PlayerLoadout : MonoBehaviour
     void LateUpdate()
     {
         if (combat == null) return;
+        UpdateWeaponSwitch();
         if (combat.stepWindup != null && combat.stepWindup != writtenWindup) ApplyTiming(); // PlayerVisualAnimator 重新設定過
         // 換關卡 / 船戰之後弓箭模式被別人關掉了：恢復成小刀以外的狀態一致
         if (!boatLevel && managingBow && !combat.bowMode) managingBow = false;
@@ -1437,6 +1500,7 @@ public class PlayerLoadout : MonoBehaviour
 
     void OnGUI()
     {
+        if (!boatLevel && !GameUI.OverlayOpen) DrawBowSkillNotice();
         if (Current != WeaponLoadout.BowKnife || boatLevel || GameUI.OverlayOpen) return;
         DrawAimRings();
         var hp = GetComponent<PlayerHealth>();

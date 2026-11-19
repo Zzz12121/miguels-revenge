@@ -11,6 +11,8 @@ public class BoatProjectile : MonoBehaviour
     public float speed = 25f;
     public float lifeTime = 5.0f;
     public float explosionRadius = 1.0f; // 攻擊半徑 1 公尺
+    [Tooltip("往下的重力加速度 (m/s²)。瞄準時要用同一個值補償")]
+    public float gravity = 2.8f;
     public Vector3 velocity;
     [Tooltip("箭：細的白色尾跡、箭頭朝著飛行方向、打中時是箭射中的聲音和木屑")]
     public bool isArrow;
@@ -42,14 +44,16 @@ public class BoatProjectile : MonoBehaviour
         if (hasExploded) return;
 
         // 微幅自然重力（垂直微幅下墜，保持直線拋物線，絕不水平轉彎追蹤）
-        velocity += Vector3.down * 2.8f * Time.deltaTime;
+        Vector3 prev = transform.position;
+        velocity += Vector3.down * gravity * Time.deltaTime;
         transform.position += velocity * Time.deltaTime;
         if (isArrow && velocity.sqrMagnitude > 0.01f) transform.rotation = Quaternion.LookRotation(velocity); // 箭頭跟著拋物線往下
 
         // 飛行中檢查是否進入玩家 1 公尺攻擊半徑
         if (cachedPlayerHealth != null && !cachedPlayerHealth.IsDead)
         {
-            float distToPlayer = Vector3.Distance(transform.position, cachedPlayerHealth.transform.position + Vector3.up * 1.0f);
+            // 用這一幀飛過的整段線段量距離：畫面卡頓、一幀飛很遠時也不會直接穿過玩家
+            float distToPlayer = DistanceToSegment(cachedPlayerHealth.transform.position + Vector3.up * 1.0f, prev, transform.position);
             if (distToPlayer <= explosionRadius)
             {
                 Explode();
@@ -62,6 +66,13 @@ public class BoatProjectile : MonoBehaviour
         {
             Destroy(gameObject);
         }
+    }
+
+    static float DistanceToSegment(Vector3 p, Vector3 a, Vector3 b)
+    {
+        Vector3 ab = b - a;
+        float t = ab.sqrMagnitude > 1e-6f ? Mathf.Clamp01(Vector3.Dot(p - a, ab) / ab.sqrMagnitude) : 0f;
+        return Vector3.Distance(p, a + ab * t);
     }
 
     void OnTriggerEnter(Collider other)

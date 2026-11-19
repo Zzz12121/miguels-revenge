@@ -7,7 +7,8 @@ using UnityEngine.InputSystem.Controls;
 public enum GameAction
 {
     Jump, Sprint, Roll, Attack, Block, Interact, Tether,
-    Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map
+    Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map,
+    SwitchWeapon, BatPowder
 }
 
 /// <summary>操作方式：自動（鍵盤滑鼠和手把都能用）/ 只用鍵盤滑鼠 / 只用手把</summary>
@@ -27,6 +28,7 @@ public static class InputBindings
         "<Keyboard>/space", "<Keyboard>/leftShift", "<Keyboard>/v", "<Mouse>/leftButton", "<Mouse>/rightButton",
         "<Keyboard>/e", "<Mouse>/middleButton",
         "<Keyboard>/1", "<Keyboard>/2", "<Keyboard>/3", "<Keyboard>/4", "<Keyboard>/q", "<Keyboard>/g", "<Keyboard>/m",
+        "<Keyboard>/tab", "<Keyboard>/f",
     };
     static readonly string[] DefaultPad =
     {
@@ -34,15 +36,17 @@ public static class InputBindings
         "<Gamepad>/buttonNorth", "<Gamepad>/rightShoulder",
         "<Gamepad>/dpad/left", "<Gamepad>/dpad/up", "<Gamepad>/dpad/right", "<Gamepad>/dpad/down",
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
+        "<Gamepad>/rightTrigger", "",   // 撒石粉：手把沒有空的按鍵了，預設不綁（可以在設定裡自己綁）
     };
 
     public static string Label(GameAction a) => a switch
     {
         GameAction.Jump => "跳躍", GameAction.Sprint => "衝刺（按住）", GameAction.Roll => "翻滾",
-        GameAction.Attack => "攻擊", GameAction.Block => "格擋 / 盾擊", GameAction.Interact => "互動",
+        GameAction.Attack => "攻擊", GameAction.Block => "格擋 / 盾反", GameAction.Interact => "互動",
         GameAction.Tether => "牽引技能", GameAction.Skill1 => "技能 1 虛空連斬", GameAction.Skill2 => "技能 2 貓躍雙斬",
         GameAction.Skill3 => "技能 3 月弧突進", GameAction.Skill4 => "技能 4 空中十字斬",
         GameAction.HealPotion => "治癒藥水", GameAction.StaminaPotion => "精力藥水", GameAction.Map => "小地圖",
+        GameAction.SwitchWeapon => "切換武器（刀 / 弓）", GameAction.BatPowder => "撒石粉（擾亂蝙蝠）",
         _ => a.ToString()
     };
 

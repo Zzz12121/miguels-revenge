@@ -6,8 +6,9 @@ using UnityEngine;
 /// <summary>
 /// 百足駭骨技能「殘影圍殺」：
 ///   1. 衝到玩家周圍的圓上（Dash 蓄力姿勢 + 快速位移）
-///   2. 以極快速度繞玩家轉圈 encircleDuration 秒，沿路留下紅色殘影；玩家腳下出現逐漸收緊的警示圈
-///   3. 時間到 → 停下轉向玩家 → Pounce 撲擊：拋物線跳到玩家位置，落地時範圍內的玩家受到傷害
+///   2. 以極快速度繞玩家轉圈 encircleDuration 秒，沿路留下紅色殘影（這時候還沒有警示圈）
+///   3. 時間到 → 停下轉向玩家 → Pounce 撲擊。落地前 telegraphLead 秒（預設 0.5）在玩家腳下出現警示圈並鎖定位置，
+///      Boss 撲向那個圈。落地時玩家還在圈裡、而且腳踩在地上才會受傷：這 0.5 秒內跳起來或跑出圈外就能躲過
 ///
 /// 技能執行期間由這個元件直接移動 Boss 的 Transform，Boss AI 要等 IsRunning 變回 false 再接手。
 /// 傷害走 PlayerHealth.TakeDamage，所以翻滾無敵、舉盾格擋都照常有效。
@@ -42,6 +43,10 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
     public float recoverTime = 0.75f;
     [Tooltip("撲到玩家前方多少公尺停下（不要整隻疊在玩家身上）")]
     public float landShort = 2.5f;
+    [Tooltip("落地前幾秒出現警示圈（圈的位置在出現時鎖定）")]
+    public float telegraphLead = 0.5f;
+    [Tooltip("落地那一刻玩家腳底離地超過這個高度 = 跳起來躲過")]
+    public float jumpClearance = 0.6f;
 
     [Header("殘影")]
     public Material afterimageMaterial;
@@ -177,8 +182,7 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
             yield return null;
         }
 
-        // 2. 高速繞圈 + 殘影 + 警示圈收緊
-        ShowTelegraph(true);
+        // 2. 高速繞圈 + 殘影（警示圈等到撲擊前才出現）
         float elapsed = 0f;
         while (elapsed < encircleDuration)
         {
@@ -192,11 +196,10 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
             Face(tangent, leanAngle);
             Place(p);
             TickTrail(ref nextGhost, ref nextDust);
-            UpdateTelegraph(center, elapsed / encircleDuration);
             yield return null;
         }
 
-        // 3. 撲擊：停下、轉向玩家、跳過去
+        // 3. 撲擊：停下、轉向玩家、跳過去。落地前 telegraphLead 秒出現警示圈並鎖定位置
         driver.SetMoveSpeed(0f);
         center = Center(player);
         Vector3 start = transform.position;
@@ -205,6 +208,9 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
         Face(toPlayer, 0f);
         driver.PlayPounce();
 
+        float showAt = Mathf.Max(0f, leapEnd - telegraphLead);
+        bool shown = false;
+        Vector3 zone = center;       // 警示圈的中心（出現時鎖定）
         Vector3 landing = start;
         bool leapLocked = false;
         float pounceT = 0f;
@@ -212,12 +218,18 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
         {
             if (driver.IsDead) { Stop(); yield break; }
             pounceT += Time.deltaTime;
+            if (!shown && pounceT >= showAt)
+            {
+                shown = true;
+                zone = Center(player);
+                ShowTelegraph(true);
+            }
             if (!leapLocked && pounceT >= leapStart)
             {
-                // 離地那一刻才鎖定落點，玩家在蓄力時還有機會跑開或翻滾
+                // 離地那一刻往警示圈跳（落在圈的前緣，不整隻疊在圈中間）
                 leapLocked = true;
-                center = Center(player);
-                Vector3 dir = center - start;
+                Vector3 aimAt = shown ? zone : Center(player);
+                Vector3 dir = aimAt - start;
                 dir.y = 0f;
                 float dist = Mathf.Max(0f, dir.magnitude - landShort);
                 landing = start + (dir.sqrMagnitude > 0.001f ? dir.normalized * dist : Vector3.zero);
@@ -230,15 +242,16 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
                 float groundY = Mathf.Lerp(GroundY(start), GroundY(landing), u);
                 p.y = groundY + groundOffset + 4f * leapHeight * u * (1f - u);
                 transform.position = p;
-                UpdateTelegraph(center, 1f);
             }
+            if (shown) UpdateTelegraph(zone, Mathf.Clamp01((pounceT - showAt) / Mathf.Max(0.01f, leapEnd - showAt)));
             yield return null;
         }
+        if (!shown) zone = Center(player);
 
         Place(landing);
         ShowTelegraph(false);
-        bool hit = DealDamage(player, landing);
-        Spawn(landingSlamPrefab, new Vector3(landing.x, GroundY(landing), landing.z), landingEffectScale);
+        bool hit = DealDamage(player, zone);
+        Spawn(landingSlamPrefab, new Vector3(zone.x, GroundY(zone), zone.z), landingEffectScale);
         Spawn(landingDebrisPrefab, new Vector3(landing.x, GroundY(landing), landing.z), landingEffectScale * 0.8f);
         ThirdPersonCamera.ShakeMain(0.35f, 0.35f);
         PounceLanded?.Invoke(landing, hit);
@@ -276,13 +289,14 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(dir) * Quaternion.AngleAxis(lean, Vector3.forward) * facingFix;
     }
 
-    bool DealDamage(PlayerHealth player, Vector3 landing)
+    /// <summary>落地：玩家在警示圈（zone，半徑 hitRadius）裡、而且腳踩在地上才算打中</summary>
+    bool DealDamage(PlayerHealth player, Vector3 zone)
     {
         if (player == null || player.IsDead) return false;
-        Vector3 away = player.transform.position - landing;
+        Vector3 away = player.transform.position - zone;
         away.y = 0f;
-        // 落點本來就停在玩家前方 landShort，所以範圍要把這段加回去
-        if (away.magnitude > hitRadius + landShort) return false;
+        if (away.magnitude > hitRadius) return false;                                          // 跑出圈外
+        if (player.FeetY - GroundY(player.transform.position) > jumpClearance) return false;   // 跳起來了
         Vector3 push = (away.sqrMagnitude > 0.001f ? away.normalized : transform.forward) * knockback + Vector3.up * 4f;
         return player.TakeDamage(damage, push, false, "被百足駭骨撲殺");
     }
@@ -398,8 +412,8 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
     void UpdateTelegraph(Vector3 center, float progress)
     {
         if (telegraph == null || !telegraph.enabled) return;
-        // 從繞圈半徑收緊到撲擊範圍，越接近撲擊越亮、閃得越快
-        float radius = Mathf.Lerp(orbitRadius * 0.85f, hitRadius, progress);
+        // 出現時稍微大一點、0.15 秒內收到撲擊範圍（hitRadius = 實際判定範圍），越接近落地越亮、閃得越快
+        float radius = Mathf.Lerp(hitRadius * 1.25f, hitRadius, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(progress / 0.3f)));
         float pulse = 0.6f + 0.4f * Mathf.Sin(Time.time * Mathf.Lerp(6f, 28f, progress));
         Color c = telegraphColor * Mathf.Lerp(0.4f, 1.3f, progress) * pulse;
         c.a = Mathf.Lerp(0.35f, 1f, progress);

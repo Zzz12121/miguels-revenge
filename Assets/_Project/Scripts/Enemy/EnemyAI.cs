@@ -92,6 +92,8 @@ public class EnemyAI : MonoBehaviour
     public float stompDamage = 15f;
 
     public State CurrentState => state;
+    /// <summary>現在在追的目標（玩家，或玩家的幻影分身）</summary>
+    public Transform Target => player;
     /// <summary>正在跟玩家戰鬥中</summary>
     public bool IsEngaged => state == State.Alerted || state == State.Chase || state == State.Dropping
                           || state == State.Jumping || state == State.Spawning;
@@ -102,6 +104,8 @@ public class EnemyAI : MonoBehaviour
     EnemyCombat combat;
     EnemyHealth health;
     CharacterController cc;
+    EnemySquadTactics squad;  // 有掛的話：好幾隻一起包圍玩家、輪流接力劈砍
+    EnemyShieldBlock shield;  // 有掛的話：玩家揮刀時可能舉盾格擋
     Transform player;        // 現在要追的目標（玩家，或玩家的幻影分身）
     Transform realPlayer;    // 真正的玩家（踩人 / 撲人的傷害只算真正的玩家）
     PlayerHealth playerHealth;
@@ -139,6 +143,8 @@ public class EnemyAI : MonoBehaviour
         combat = GetComponent<EnemyCombat>();
         health = GetComponent<EnemyHealth>();
         cc = GetComponent<CharacterController>();
+        squad = GetComponent<EnemySquadTactics>();
+        shield = GetComponent<EnemyShieldBlock>();
         controller.aiControlled = true;
 
         homePos = transform.position;
@@ -444,12 +450,23 @@ public class EnemyAI : MonoBehaviour
             return;
         }
 
+        // 舉盾中：站穩、盾牌對著玩家
+        if (shield != null && shield.IsBlocking)
+        {
+            controller.SetAIInput(Vector3.zero);
+            TurnTowards(to, 360f);
+            return;
+        }
+
         // 硬直中或正在揮劍：不移動（揮劍時的轉向和踏步由 EnemyCombat 處理）
         if (staggerTimer > 0f || combat.IsAttacking)
         {
             controller.SetAIInput(Vector3.zero);
             return;
         }
+
+        // 圍攻：附近有其他同伴時由 EnemySquadTactics 決定站位和誰出刀
+        if (squad != null && squad.isActiveAndEnabled && controller.IsGrounded && squad.Drive(to, dist)) return;
 
         // 撲向玩家
         if (canJump && controller.IsGrounded && pounceRange.y > 0f && Time.time >= nextPounceTime
@@ -556,6 +573,15 @@ public class EnemyAI : MonoBehaviour
             if (FlatDistance(other.transform.position, transform.position) <= callForHelpRadius)
                 other.Alert(false);
         }
+    }
+
+    /// <summary>攻擊被玩家的盾牌彈開：中斷這一刀、硬直 seconds 秒（不扣血）</summary>
+    public void Parried(float seconds)
+    {
+        if (health != null && health.IsDead) return;
+        staggerTimer = Mathf.Max(staggerTimer, seconds);
+        combat.CancelAttack();
+        nextAttackTime = Mathf.Max(nextAttackTime, Time.time + seconds + 0.25f);
     }
 
     void OnDamaged(float amount)
@@ -936,7 +962,7 @@ public class EnemyAI : MonoBehaviour
         return Vector3.Distance(a, b);
     }
 
-    Vector3 Separation()
+    internal Vector3 Separation()
     {
         Vector3 push = Vector3.zero;
         foreach (var o in All)
@@ -950,7 +976,7 @@ public class EnemyAI : MonoBehaviour
         return push;
     }
 
-    void TurnTowards(Vector3 flatDir, float degreesPerSecond)
+    internal void TurnTowards(Vector3 flatDir, float degreesPerSecond)
     {
         flatDir.y = 0f;
         if (flatDir.sqrMagnitude < 0.0001f) return;

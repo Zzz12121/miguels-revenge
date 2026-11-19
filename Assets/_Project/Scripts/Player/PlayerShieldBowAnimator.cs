@@ -5,6 +5,7 @@ using UnityEngine;
 ///   ShieldBash   右鍵按一下舉盾衝撞（整段播完）
 ///   BlockIdle    右鍵按住舉盾格擋
 ///   BlockHit     用盾牌擋下攻擊（破防的那一下由 PlayerVisualAnimator 播受擊）
+///   盾反突刺     身體用 ShieldBash 往前頂，右手由 ShieldCounterPose 擺成突刺（會自動加上）
 ///   BowDraw      第二關在船上拉弓：瞄準時停在拉滿弓、射箭時放手（Mixamo Longbow 的拉弓放箭）
 /// 動畫狀態在 AC_PlayerCatWarrior.controller（用聖騎士的 Mixamo 動畫，Humanoid 可以直接套用）。
 /// 弓箭模式時左手拿敵艦弓箭手的弓（PlayerArcherBow，會自動加上），光劍收在腰上。
@@ -41,6 +42,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         animator = GetComponentInChildren<Animator>(true);
         weaponPresenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         if (GetComponent<PlayerArcherBow>() == null) gameObject.AddComponent<PlayerArcherBow>();
+        if (GetComponent<ShieldCounterPose>() == null) gameObject.AddComponent<ShieldCounterPose>();
     }
 
     void OnEnable()
@@ -50,6 +52,8 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
             combat.OnShieldBash += HandleShieldBash;
             combat.OnBlockChanged += HandleBlockChanged;
             combat.OnBlockedHit += HandleBlockedHit;
+            combat.OnShieldCounter += HandleShieldCounter;
+            combat.OnShieldParry += HandleShieldParry;
             combat.OnBowAim += HandleBowAim;
             combat.OnBowShot += HandleBowShot;
         }
@@ -63,6 +67,8 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
             combat.OnShieldBash -= HandleShieldBash;
             combat.OnBlockChanged -= HandleBlockChanged;
             combat.OnBlockedHit -= HandleBlockedHit;
+            combat.OnShieldCounter -= HandleShieldCounter;
+            combat.OnShieldParry -= HandleShieldParry;
             combat.OnBowAim -= HandleBowAim;
             combat.OnBowShot -= HandleBowShot;
         }
@@ -150,6 +156,15 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         Play("BlockHit", 0.05f, 1.2f);
         busyUntil = Time.time + blockHitDuration;
     }
+
+    void HandleShieldCounter(float duration)
+    {
+        // 身體往前頂（盾擊的動作，播快一點）；右手的突刺姿勢由 ShieldCounterPose 疊上去
+        Play("ShieldBash", 0.05f, 1.35f);
+        busyUntil = Time.time + duration;
+    }
+
+    void HandleShieldParry(Vector3 point, Vector3 from) => ShieldParryVFX.Spawn(point, from);
 
     // ---------------- 弓箭 ----------------
 

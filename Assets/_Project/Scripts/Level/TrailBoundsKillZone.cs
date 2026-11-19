@@ -5,6 +5,7 @@ using UnityEngine;
 /// 離開步道不會馬上死：要「掉下山谷」——腳比最近的步道 / 山頂平台 / 吊橋低超過 fallDepth 才死亡，
 /// 玩家會先看到自己往霧裡掉一段。沒有掉下去、但在山坡上走得太遠（maxWanderDistance）也算迷失。
 /// 死亡走 PlayerHealth 原本的死亡與重生流程。所有座標都是這個物件的區域座標（生成器會填好）。
+/// rescueInsteadOfDeath（預設開）：不死亡，改成把玩家拉回最後一次站穩的步道位置（可選擇扣一點血）。
 /// </summary>
 public class TrailBoundsKillZone : MonoBehaviour
 {
@@ -28,10 +29,19 @@ public class TrailBoundsKillZone : MonoBehaviour
     public Vector3 bridgeStart, bridgeEnd;
     public float bridgeHalfWidth = 1.6f;
 
+    [Header("救回（不死亡）")]
+    [Tooltip("勾選：掉下去 / 走太遠時不會死，改成拉回最後站穩的步道位置")]
+    public bool rescueInsteadOfDeath = true;
+    [Tooltip("被拉回時扣多少血（0 = 不扣）")]
+    public float rescueDamage = 0f;
+
     public string fallReason = "墜入山谷";
     public string lostReason = "迷失在山霧中";
 
     PlayerHealth player;
+    ThirdPersonController mover;
+    Vector3 lastSafeWorld;
+    bool hasSafe;
 
     void Update()
     {
@@ -48,9 +58,30 @@ public class TrailBoundsKillZone : MonoBehaviour
         Nearest(Mathf.Max(0f, dpl), plateauCenter.y, 0.6f, ref best, ref refY, ref safeRadius);
         Nearest(BridgeDistance(p, out float by), by, bridgeHalfWidth + 0.4f, ref best, ref refY, ref safeRadius);
 
-        if (best <= safeRadius) return;                                   // 還在步道上
-        if (feet < refY - fallDepth) { player.Kill(fallReason); return; } // 掉下山谷
-        if (best > maxWanderDistance) player.Kill(lostReason);           // 走太遠
+        if (best <= safeRadius)                                           // 還在步道上
+        {
+            if (mover == null) mover = player.GetComponent<ThirdPersonController>();
+            if (mover == null || mover.IsGrounded) { lastSafeWorld = player.transform.position; hasSafe = true; }
+            return;
+        }
+        if (feet < refY - fallDepth) { Fail(fallReason); return; }  // 掉下山谷
+        if (best > maxWanderDistance) Fail(lostReason);             // 走太遠
+    }
+
+    void Fail(string reason)
+    {
+        if (!rescueInsteadOfDeath || !hasSafe) { player.Kill(reason); return; }
+        Vector3 delta = lastSafeWorld + Vector3.up * 0.15f - player.transform.position;
+        var cc = player.GetComponent<CharacterController>();
+        if (cc != null) cc.enabled = false;
+        player.transform.position += delta;
+        if (cc != null) cc.enabled = true;
+        if (mover == null) mover = player.GetComponent<ThirdPersonController>();
+        if (mover != null) mover.ResetMotion();
+        var cam = FindAnyObjectByType<ThirdPersonCamera>();
+        if (cam != null) cam.WarpWithTarget(delta);
+        CombatVFX.Puff(player.transform.position + Vector3.up * 0.4f, Vector3.up, new Color(0.9f, 0.92f, 0.95f, 0.6f));
+        if (rescueDamage > 0f) player.TakeDamage(rescueDamage, Vector3.zero, true);
     }
 
     static void Nearest(float d, float y, float radius, ref float best, ref float refY, ref float safeRadius)
