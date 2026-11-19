@@ -28,6 +28,13 @@ public sealed class PhantomDecoy : MonoBehaviour
     Mesh[] meshes;
     int drawCount;
     Matrix4x4 mirror = Matrix4x4.identity;
+    // 衝刺殘影：分身跟著本尊衝的時候，每隔一小段時間把當下的樣子留在原地、慢慢淡掉（跟本尊那一側的殘影對稱）
+    const float TrailInterval = .045f, TrailLife = .28f, TrailAlpha = .45f;
+    sealed class TrailGhost { public Mesh[] meshes; public bool[] owned; public Matrix4x4[] matrices; public float born; }
+    readonly List<TrailGhost> trail = new List<TrailGhost>();
+    bool[] drawBaked;
+    float nextTrail;
+    ThirdPersonController ownerController;
     Color color;
     MaterialPropertyBlock block;
     float lureRadius, lureUntil, dissolveStart, dissolveTime = .45f, spawnTime;
@@ -35,8 +42,11 @@ public sealed class PhantomDecoy : MonoBehaviour
 
     /// <summary>還在場上（鏡像中或誘敵中）</summary>
     public bool Alive => mode != Mode.Dissolve;
-    /// <summary>正在原地誘敵</summary>
-    public bool IsLure => mode == Mode.Lure;
+    /// <summary>正在誘敵（停在原地，或一邊當本尊的鏡像一邊誘敵）</summary>
+    public bool IsLure => mode == Mode.Lure || (mode == Mode.Mirror && mirrorLure);
+    /// <summary>誘敵中而且跟著本尊鏡像動作（本尊揮刀時分身也會砍）</summary>
+    public bool IsMirrorLure => mode == Mode.Mirror && mirrorLure;
+    bool mirrorLure;
 
     /// <summary>離 from 最近、還在誘敵、且在它的吸引範圍內的分身（沒有就回傳 null）</summary>
     public static Transform NearestLure(Vector3 from)
@@ -45,7 +55,7 @@ public sealed class PhantomDecoy : MonoBehaviour
         for (int i = lures.Count - 1; i >= 0; i--)
         {
             var d = lures[i];
-            if (d == null || d.mode != Mode.Lure) continue;
+            if (d == null || !d.IsLure) continue;
             float sqr = (d.transform.position - from).sqrMagnitude;
             if (sqr <= d.lureRadius * d.lureRadius && sqr < bestSqr) { bestSqr = sqr; best = d.transform; }
         }
@@ -71,6 +81,8 @@ public sealed class PhantomDecoy : MonoBehaviour
         for (int i = 0; i < d.baked.Length; i++) d.baked[i] = new Mesh { name = "PhantomClone" };
         d.meshes = new Mesh[n];
         d.matrices = new Matrix4x4[n];
+        d.drawBaked = new bool[n];
+        d.ownerController = owner.GetComponent<ThirdPersonController>();
         d.SetMirror(point, normal);
         d.spawnTime = Time.time;
         d.body = go.AddComponent<CapsuleCollider>();
@@ -93,7 +105,8 @@ public sealed class PhantomDecoy : MonoBehaviour
         m.m10 = -2 * normal.y * normal.x; m.m11 = 1 - 2 * normal.y * normal.y; m.m12 = -2 * normal.y * normal.z; m.m13 = -2 * d * normal.y;
         m.m20 = -2 * normal.z * normal.x; m.m21 = -2 * normal.z * normal.y; m.m22 = 1 - 2 * normal.z * normal.z; m.m23 = -2 * d * normal.z;
         mirror = m;
-        if (mode == Mode.Lure) lures.Remove(this);
+        lures.Remove(this);
+        mirrorLure = false;
         mode = Mode.Mirror;
         if (body != null) body.enabled = false;
     }
@@ -114,6 +127,21 @@ public sealed class PhantomDecoy : MonoBehaviour
         if (!lures.Contains(this)) lures.Add(this);
     }
 
+    /// <summary>
+    /// 砍完之後不定格：繼續當本尊的鏡像（本尊走它也走、本尊揮刀它也揮刀），同時吸引小怪的仇恨；
+    /// seconds 秒後自己消散，被小怪打一下也會消散。鏡射平面維持出招時的那一面。
+    /// </summary>
+    public void BecomeMirrorLure(float seconds, float radius)
+    {
+        if (mode == Mode.Dissolve) return;
+        mode = Mode.Mirror;
+        mirrorLure = true;
+        lureRadius = radius;
+        lureUntil = Time.time + seconds;
+        body.enabled = true;
+        if (!lures.Contains(this)) lures.Add(this);
+    }
+
     /// <summary>被打中：馬上消散</summary>
     public void Break() => Dissolve();
 
@@ -122,6 +150,7 @@ public sealed class PhantomDecoy : MonoBehaviour
         if (mode == Mode.Dissolve) return;
         if (mode == Mode.Mirror) Capture();
         mode = Mode.Dissolve;
+        mirrorLure = false;
         lures.Remove(this);
         if (body != null) body.enabled = false;
         dissolveStart = Time.time;
@@ -143,14 +172,17 @@ public sealed class PhantomDecoy : MonoBehaviour
             var r = skinned[i];
             if (r == null || !r.enabled || !r.gameObject.activeInHierarchy || r.sharedMesh == null) continue;
             r.BakeMesh(baked[i], true);
+            drawBaked[drawCount] = true;
             meshes[drawCount] = baked[i];
-            matrices[drawCount++] = mirror * Matrix4x4.TRS(r.transform.position, r.transform.rotation, Vector3.one);
+            // BakeMesh(useScale: true) 烘出來的頂點是「除掉縮放」的，畫的時候要把模型的縮放乘回去（不然分身會比本尊小）
+            matrices[drawCount++] = mirror * r.transform.localToWorldMatrix;
         }
         foreach (var r in rigid)
         {
             if (r == null || !r.enabled || !r.gameObject.activeInHierarchy) continue;
             var mf = r.GetComponent<MeshFilter>();
             if (mf == null || mf.sharedMesh == null) continue;
+            drawBaked[drawCount] = false;
             meshes[drawCount] = mf.sharedMesh;
             matrices[drawCount++] = mirror * r.localToWorldMatrix;
         }
@@ -169,6 +201,17 @@ public sealed class PhantomDecoy : MonoBehaviour
             case Mode.Mirror:
                 Capture();
                 alpha *= Mathf.Clamp01((Time.time - spawnTime) / .08f); // 出現時淡入
+                if (mirrorLure)
+                {
+                    if (Time.time >= lureUntil) { Dissolve(); break; }
+                    alpha *= .85f + .15f * Mathf.Sin(Time.time * 9f); // 誘敵中輕輕閃爍
+                }
+                if (ownerController != null && ownerController.IsScriptedMoving && ownerController.ScriptedMoveDirection.sqrMagnitude > .01f
+                    && Time.time >= nextTrail)
+                {
+                    nextTrail = Time.time + TrailInterval;
+                    LeaveTrailGhost();
+                }
                 break;
             case Mode.Lure:
                 if (Time.time >= lureUntil) { Dissolve(); break; }
@@ -186,6 +229,49 @@ public sealed class PhantomDecoy : MonoBehaviour
                   * Matrix4x4.Scale(new Vector3(s, 1f + .05f * u, s)) * Matrix4x4.Translate(-pivot);
         }
         Draw(alpha, extra);
+        DrawTrail();
+    }
+
+    /// <summary>把分身現在的樣子複製一份留在原地（烘出來的網格要複製，下一幀會被新的姿勢蓋掉；武器那種固定網格直接共用）</summary>
+    void LeaveTrailGhost()
+    {
+        if (drawCount == 0) return;
+        var g = new TrailGhost { meshes = new Mesh[drawCount], owned = new bool[drawCount], matrices = new Matrix4x4[drawCount], born = Time.time };
+        for (int i = 0; i < drawCount; i++)
+        {
+            g.owned[i] = drawBaked[i] && meshes[i] != null;
+            g.meshes[i] = g.owned[i] ? Instantiate(meshes[i]) : meshes[i];
+            g.matrices[i] = matrices[i];
+        }
+        trail.Add(g);
+    }
+
+    void DrawTrail()
+    {
+        if (trail.Count == 0) return;
+        var mat = Material();
+        for (int n = trail.Count - 1; n >= 0; n--)
+        {
+            var g = trail[n];
+            float k = 1f - (Time.time - g.born) / TrailLife;
+            if (k <= 0f || mat == null) { FreeTrailGhost(g); trail.RemoveAt(n); continue; }
+            var c = color; c.a = TrailAlpha * k * k;
+            block.SetColor(ColorId, c);
+            block.SetColor(BaseColorId, c);
+            for (int i = 0; i < g.meshes.Length; i++)
+            {
+                var mesh = g.meshes[i];
+                if (mesh == null) continue;
+                for (int sub = 0; sub < mesh.subMeshCount; sub++)
+                    Graphics.DrawMesh(mesh, g.matrices[i], mat, 0, null, sub, block, false, false);
+            }
+        }
+    }
+
+    static void FreeTrailGhost(TrailGhost g)
+    {
+        for (int i = 0; i < g.meshes.Length; i++)
+            if (g.owned[i] && g.meshes[i] != null) Destroy(g.meshes[i]);
     }
 
     void Draw(float alpha, Matrix4x4 extra)
@@ -218,5 +304,7 @@ public sealed class PhantomDecoy : MonoBehaviour
     {
         lures.Remove(this);
         if (baked != null) foreach (var m in baked) if (m != null) Destroy(m);
+        foreach (var g in trail) FreeTrailGhost(g);
+        trail.Clear();
     }
 }
