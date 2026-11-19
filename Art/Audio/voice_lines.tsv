@@ -98,6 +98,9 @@ man	想要什麼？	What do you need?
 man	成交！治癒藥水一瓶。	Deal! One healing potion.
 man	成交！精力藥水一瓶。	Deal! One stamina potion.
 man	{res}不夠喔，{item}要 {n} 株{res}。	You don't have enough herbs for that one.
+man	等等，先別走。我把剛磨好的藥倒一瓶給你。	Wait, don't go yet. Let me pour you a bottle of the medicine I just ground.
+man	喝了吧。藥效撐不了太久，趁身子還熱著，去把場子討回來。	Drink up. It won't last long, so while your blood is still hot, go win back what you lost.
+player	@……身體裡像有火在燒。	It's like a fire is burning inside me.
 # ---------- 散步的老奶奶 ----------
 oldwoman	我每天都到村長家門口走走，年輕時那棵大櫻花就已經在院子裡了。	I walk past the chief's gate every day. That big cherry tree was already in his garden when I was young.
 player	@那棵櫻花一定很老了。	That tree must be very old.

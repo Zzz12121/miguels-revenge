@@ -19,8 +19,8 @@ public static class VillageProgress
 /// 倒下之後被抬回村子（不用在場景裡放東西，自動執行）：
 ///   - 在道場、霧海孤島被打倒：畫面暗下來，「村民把你抬回了村子」，載入漁村，在暫居地（Residence）醒來
 ///   - 在村子裡倒下：照原本的重生流程，在暫居地醒來
-///   - 這條主線不會 Game Over：每次倒下都把命補滿（GameManager.RestoreLives）
-/// 醒來後米格爾自言自語一句，村長、僧侶頭上出現指引標記。之後跟村長、僧侶、守祠的師父、女鐵匠、藥師、行商、
+///   - 每次倒下照常扣一條命；這條主線不會 Game Over：最後一條命用完時命補滿（GameManager.SetLives）
+/// 醒來後米格爾自言自語一句（不再在村長、僧侶頭上放驚嘆號）。之後跟村長、僧侶、守祠的師父、女鐵匠、藥師、行商、
 /// 小孩、茶屋老闆娘、女書生說話時，他們會先安慰、鼓勵他繼續努力（每個人每次倒下講一次，講完恢復平常的對話）。
 /// 第一次倒下和之後再倒下講的話不一樣；村長會提到上一次輸給誰（CombatLog 記下的對手）。
 /// </summary>
@@ -86,8 +86,11 @@ public class VillageReturn : MonoBehaviour
         Defeats++;
         comfortPending = true;
         comforted.Clear();
-        // PlayerHealth 在 OnDied 之後才扣命：先補滿，扣完還有命，就不會 Game Over
-        GameManager.Instance?.RestoreLives();
+        ApothecaryPotionGift.Pending = true; // 這次倒下，去找藥師可以拿一瓶壯力藥
+        // 每次倒下照常扣一條命（血條旁的血滴少一顆）。最後一條命也用完了：村民還是把你救回來、命補滿，不會 Game Over
+        // （PlayerHealth 在 OnDied 之後才扣命：先設成上限 + 1，扣完剛好是滿的）
+        var gm = GameManager.Instance;
+        if (gm != null && gm.Lives <= 1) gm.SetLives(gm.maxLives + 1);
         if (scene == VillageScene) return; // 村子裡：PlayerHealth 自己會在暫居地（respawnPoint）重生
         if (!Application.CanStreamedLevelBeLoaded(VillageScene))
         {
@@ -129,7 +132,6 @@ public class VillageReturn : MonoBehaviour
         var p = PlayerHealth.Find();
         var home = FindFirstObjectByType<Residence>();
         if (p != null && home != null && home.wakePoint != null) Residence.MovePlayer(p, home.wakePoint);
-        GameManager.Instance?.RestoreLives();
         yield return new WaitForSecondsRealtime(0.9f);
         while (GameManager.Instance != null && GameManager.Instance.IsLoading) yield return null;
         overlayTitle = overlaySub = null;
@@ -139,7 +141,7 @@ public class VillageReturn : MonoBehaviour
         yield return AfterWake(true);
     }
 
-    /// <summary>醒來：米格爾自言自語，村長、僧侶頭上出現指引標記</summary>
+    /// <summary>醒來：米格爾自言自語（藥師那裡有一瓶壯力藥等著）</summary>
     IEnumerator AfterWake(bool carried)
     {
         yield return new WaitForSecondsRealtime(0.4f);
@@ -151,8 +153,6 @@ public class VillageReturn : MonoBehaviour
         var story = new List<StoryDialogue.Line>();
         foreach (var l in lines) story.Add(StoryDialogue.L("米格爾", p.transform, false, l, PlanetStory.PlayerColor));
         StoryDialogue.Play(story);
-        foreach (var npc in FindObjectsByType<MerchantNPC>(FindObjectsSortMode.None))
-            if (npc.speakerName == "村長" || npc.speakerName == "僧侶") npc.ShowGuideMarker();
     }
 
     void Update()

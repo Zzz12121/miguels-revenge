@@ -421,7 +421,7 @@ public class MerchantNPC : MonoBehaviour
         var box = new Rect((Screen.width - w) * 0.5f, Screen.height - h - 40f, w, h);
         // 左邊玩家、右邊商人的半身像（商人在說話）
         StoryDialogue.DrawPortraits(box, player, transform, playerSpeaks, !playerSpeaks);
-        GameUI.Panel(box);
+        GameUI.ScrollPanel(box); // 卷軸的上半截（下半截在畫面外）
         GUI.color = playerSpeaks ? PlanetStory.PlayerColor : GameUI.Accent;
         GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), playerSpeaks ? playerSpeakerName : speakerName, new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold });
 

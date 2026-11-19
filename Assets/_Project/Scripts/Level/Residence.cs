@@ -65,6 +65,10 @@ public class Residence : MonoBehaviour
         resting = true;
         var controller = player.GetComponent<ThirdPersonController>();
         if (controller != null) { controller.LockActions(); controller.inputEnabled = false; }
+        // 先把武器收起來（手往腰間 / 背後一收），收好了才躺下
+        PlayerLoadout.Holster(this);
+        float h0 = Time.time;
+        while (!PlayerLoadout.WeaponsAway && Time.time - h0 < 1.2f) yield return null;
         GameAudio.Play("SFX/RPG/cloth4", bed.position, 0.7f, 0.8f, 0.05f, 0.5f, 20f);
         fadeTarget = 1f;
         while (fade < 0.999f) yield return null;
@@ -85,6 +89,7 @@ public class Residence : MonoBehaviour
             controller.SuppressJump(0.3f);
             controller.inputEnabled = true;
         }
+        PlayerLoadout.Unholster(this); // 起來：再把武器拔出來
         while (fade > 0.001f) yield return null;
         resting = false;
     }

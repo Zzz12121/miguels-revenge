@@ -210,19 +210,25 @@ public class PlayerHealth : MonoBehaviour
         OnRespawned?.Invoke();
     }
 
+    /// <summary>VitalsHud（日式的血量 / 精力條）在畫的時候設成 true：這裡和 PlayerStamina 就不畫原本的長方形血條、精力條</summary>
+    public static bool SimpleBarHidden;
+
     // ---------- 簡易 HUD（之後可以換成正式 UI） ----------
     void OnGUI()
     {
         const float w = 260f, h = 18f, x = 20f, y = 20f;
-        GUI.color = new Color(0f, 0f, 0f, 0.6f);
-        GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
-        GUI.color = new Color(0.85f, 0.15f, 0.15f);
-        GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
+        if (!SimpleBarHidden)
+        {
+            GUI.color = new Color(0f, 0f, 0f, 0.6f);
+            GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
+            GUI.color = new Color(0.85f, 0.15f, 0.15f);
+            GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
+        }
 
         var gm = GameManager.Instance;
-        if (gm != null)
+        if (gm != null && !SimpleBarHidden) // VitalsHud 用血條旁的血滴表示剩下幾條命
         {
             GUI.color = new Color(1f, 0.55f, 0.55f);
             GUI.Label(new Rect(x + w + 12, y, 200, h + 4), $"生命 × {gm.Lives}");

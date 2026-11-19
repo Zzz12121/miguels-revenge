@@ -158,7 +158,7 @@ public class StoryDialogue : MonoBehaviour
         var box = new Rect((Screen.width - w) * 0.5f, Screen.height - h - 40f, w, h);
         DrawPortraits(box, leftWho, rightWho, !line.right, line.right);
 
-        GameUI.Panel(box);
+        GameUI.ScrollPanel(box); // 卷軸的上半截（下半截在畫面外）
         nameStyle ??= new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold };
         nameStyle.alignment = line.right ? TextAnchor.UpperRight : TextAnchor.UpperLeft;
         GUI.color = line.nameColor.a > 0f ? line.nameColor : GameUI.Accent;

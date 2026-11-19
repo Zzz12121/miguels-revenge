@@ -75,11 +75,40 @@ public class NpcRoutine : MonoBehaviour
     /// <summary>現在在做什麼（測試用）</summary>
     public Act CurrentAct => walking ? Act.Pass : stops != null && stops.Length > 0 ? stops[index].act : Act.Stand;
     public bool Walking => walking;
+
+    /// <summary>
+    /// 劇情接手（藥師倒藥給玩家，ApothecaryPotionGift）：日常暫停（不走、不坐、不看玩家），
+    /// 走路的動畫用 ScriptedSpeed（m/s）；位置、方向、手臂由接手的腳本擺。做完呼叫 ResumeRoutine 走回這一站
+    /// </summary>
+    [System.NonSerialized] public bool Scripted;
+    [System.NonSerialized] public float ScriptedSpeed;
+    /// <summary>劇情中坐下（坐面的高度，0 = 站著）：坐在板凳上做事</summary>
+    [System.NonSerialized] public float ScriptedSeatY;
+
+    /// <summary>劇情結束：從現在的位置走回目前這一站，接著照常做事</summary>
+    public void ResumeRoutine()
+    {
+        Scripted = false;
+        ScriptedSpeed = 0f;
+        ScriptedSeatY = 0f;
+        if (stops == null || stops.Length == 0) return;
+        from = transform.position;
+        to = stops[index].position;
+        Vector3 d = to - from;
+        d.y = 0f;
+        walkLen = d.magnitude;
+        walkDone = 0f;
+        legSpeed = stops[index].speed > 0f ? stops[index].speed : walkSpeed;
+        walking = walkLen > 0.05f;
+        timer = stops[index].duration;
+    }
     public bool Interrupted => interrupted;
     public int StopIndex => index;
     public float SitWeight => sitW;
 
     int index;
+    float lastSeatY; // 最後一次坐的坐面高度（站起來的過程用）
+    bool doorMutedTalk; // 開門的動畫進行中把對話關掉了（門的動作做完再打開）
     float timer, walkDone, walkLen, sitW, actW, insideT, crouchW, hopW, readW, fanW, legSpeed;
     Vector3 modelRest;
     bool modelRestSet;
@@ -118,20 +147,25 @@ public class NpcRoutine : MonoBehaviour
         bool talking = npc != null && npc.InConversation;
         bool near = false;
         bool atDoor = doorPhase != DoorPhase.None; // 正在開門、上下台階：不停下來看玩家
-        if (player != null && !hidden && !atDoor)
+        if (player != null && !hidden && !atDoor && !Scripted)
         {
             Vector3 d = player.position - transform.position;
             d.y = 0f;
             near = !ignorePlayer && d.magnitude < (interrupted ? resumeRadius : noticeRadius);
             if (near && !talking && d.sqrMagnitude > 0.01f) Face(d, 220f);
         }
-        interrupted = (near || (talking && !ignorePlayer)) && !hidden && !atDoor;
+        interrupted = (near || (talking && !ignorePlayer)) && !hidden && !atDoor && !Scripted;
 
         var stop = stops[index];
         float speed = 0f;
         float wantSit = 0f, wantAct = 0f, wantCrouch = 0f, wantHop = 0f, wantRead = 0f;
 
-        if (atDoor)
+        if (Scripted)
+        {
+            speed = ScriptedSpeed; // 做事的姿勢都慢慢收掉（wantXxx = 0）；要坐就坐
+            if (ScriptedSeatY > 0f) wantSit = 1f;
+        }
+        else if (atDoor)
         {
             speed = UpdateDoor(stop, dt);
         }
@@ -199,16 +233,23 @@ public class NpcRoutine : MonoBehaviour
         }
 
         sitW = Mathf.MoveTowards(sitW, wantSit, dt * 2.2f);
+        // 開門、關門、進出屋子的動畫進行中不能對話（對話提示也不出現）；在屋裡另外由 SetHidden 關掉；劇情（Scripted）由劇情自己管
+        // （只還原自己關掉的，其他系統關掉的對話不會被打開）
+        if (npc != null && !hidden && !Scripted)
+        {
+            if (doorPhase != DoorPhase.None && npc.enabled && !npc.InConversation) { npc.enabled = false; doorMutedTalk = true; }
+            else if (doorPhase == DoorPhase.None && doorMutedTalk) { npc.enabled = true; doorMutedTalk = false; }
+        }
         readW = Mathf.MoveTowards(readW, wantRead, dt * 2f);
         if (fan != null)
         {
-            fanW = Mathf.MoveTowards(fanW, readW < 0.05f && actW < 0.05f && !hidden && doorPhase == DoorPhase.None ? 1f : 0f, dt * 4f); // 拉門時先把扇子收起來
+            fanW = Mathf.MoveTowards(fanW, readW < 0.05f && actW < 0.05f && !hidden && doorPhase == DoorPhase.None && !Scripted ? 1f : 0f, dt * 4f); // 拉門時先把扇子收起來
             bool showFan = fanW > 0.35f && !hidden;
             if (fan.gameObject.activeSelf != showFan) fan.gameObject.SetActive(showFan);
         }
         if (tool != null)
         {
-            bool show = actW > 0.25f && !hidden && !walking && stops[index].act == Act.Grind;
+            bool show = actW > 0.25f && !hidden && !walking && !Scripted && stops[index].act == Act.Grind;
             if (tool.gameObject.activeSelf != show) tool.gameObject.SetActive(show);
         }
         if (book != null)
@@ -483,7 +524,7 @@ public class NpcRoutine : MonoBehaviour
     }
 
     /// <summary>兩節骨頭的 IK（肩 → 手肘 → 手腕）：手伸到 target（搆不到就伸直指著它），手肘往 pole 那邊彎</summary>
-    static void ReachIK(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole, float w)
+    internal static void ReachIK(Transform upper, Transform lower, Transform end, Vector3 target, Vector3 pole, float w)
     {
         if (upper == null || lower == null || end == null || w <= 0.001f) return;
         float l1 = Vector3.Distance(upper.position, lower.position), l2 = Vector3.Distance(lower.position, end.position);
@@ -551,7 +592,14 @@ public class NpcRoutine : MonoBehaviour
         if (!walking && !interrupted && head != null && stops[index].act == Act.Stand)
             head.rotation = Quaternion.AngleAxis(Mathf.Sin(time * 0.6f) * 30f * Mathf.SmoothStep(0f, 1f, Mathf.Abs(Mathf.Sin(time * 0.23f))), up) * head.rotation;
 
-        if (sitW > 0.001f) PoseSit(stops[index].seatY, sitW, up, fwd, side, s);
+        if (sitW > 0.001f)
+        {
+            // 坐面高度是世界座標：站起來的那一段（sitW 慢慢變 0）這一站可能沒有坐面（劇情裡站起來、seatY = 0），
+            // 用 0 的話屁股會被拉到 y = 0（整個人沉進地底下再冒出來），所以沿用最後一次真的坐的高度
+            float seatY = Scripted && ScriptedSeatY > 0f ? ScriptedSeatY : stops[index].seatY;
+            if (seatY > 0f) lastSeatY = seatY; else seatY = lastSeatY;
+            if (seatY > 0f) PoseSit(seatY, sitW, up, fwd, side, s);
+        }
         if (actW > 0.001f) PoseWork(stops[index].act, actW, time, up, fwd, side, s);
         if (crouchW > 0.001f) PoseCrouch(crouchW, time, up, fwd, side, s);
         if (readW > 0.001f) PoseRead(readW, time, up, fwd, side, s);
@@ -577,7 +625,7 @@ public class NpcRoutine : MonoBehaviour
     }
 
     /// <summary>手掌中心：手腕往中指根部 60%（沒有手指骨頭就沿前臂方向往前 5 cm）</summary>
-    Vector3 Palm(Transform hand, Transform middle, Transform fore, float s)
+    internal static Vector3 Palm(Transform hand, Transform middle, Transform fore, float s)
     {
         if (middle != null) return Vector3.Lerp(hand.position, middle.position, 0.6f);
         Vector3 d = fore != null ? (hand.position - fore.position).normalized : Vector3.zero;
@@ -587,7 +635,7 @@ public class NpcRoutine : MonoBehaviour
     /// <summary>
     /// 手掌轉向 want（繞手指的方向轉）：手掌法線 = 中指方向 × 拇指方向（左手反過來），只轉手腕不動手臂。
     /// </summary>
-    static void TurnPalm(Transform hand, Transform middle, Transform thumb, bool left, Vector3 want, float w)
+    internal static void TurnPalm(Transform hand, Transform middle, Transform thumb, bool left, Vector3 want, float w)
     {
         if (hand == null || middle == null || thumb == null || w <= 0.001f) return;
         Vector3 along = (middle.position - hand.position).normalized;
