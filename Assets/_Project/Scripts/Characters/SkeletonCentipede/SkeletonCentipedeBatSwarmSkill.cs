@@ -8,6 +8,7 @@ using UnityEngine;
 /// → 一隻接一隻俯衝撲向玩家，碰到玩家造成傷害後散開。
 ///
 /// 傷害走 PlayerHealth.TakeDamage（有受傷無敵時間，所以一整群撞上去不會瞬間秒殺；翻滾可以全部躲掉）。
+/// 玩家撒了石粉（BatPowder.Active）：撞過來的蝙蝠被擾亂、亂飛散開，不造成傷害。
 /// </summary>
 [DisallowMultipleComponent]
 [RequireComponent(typeof(SkeletonCentipedeAnimationDriver))]
@@ -73,6 +74,7 @@ public class SkeletonCentipedeBatSwarmSkill : MonoBehaviour
     {
         IsRunning = true;
         Started?.Invoke();
+        BatPowder.WarnSwarm(summonDelay + circleTime + 3f);   // 畫面提示：可以撒石粉
         driver.PlayRoar();
         yield return new WaitForSeconds(summonDelay);
         if (driver.IsDead) { Finish(); yield break; }
@@ -122,6 +124,7 @@ public class SkeletonCentipedeBatSwarmSkill : MonoBehaviour
     void OnBatReached(SkeletonBat bat, PlayerHealth player)
     {
         if (player == null || player.IsDead) return;
+        if (BatPowder.Active) { BatPowder.Confuse(bat, player.transform.position); return; }   // 石粉：找不到玩家
         Vector3 at = bat.transform.position;
         Vector3 push = player.transform.position - transform.position;
         push.y = 0f;

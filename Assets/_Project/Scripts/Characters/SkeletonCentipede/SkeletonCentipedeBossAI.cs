@@ -68,6 +68,8 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     public float dashDamage = 24f;
     public float dashContactRadius = 3.5f;
     public float dashCooldown = 6f;
+    [Tooltip("衝刺前眼睛先亮強烈紅光幾秒（前搖，提示玩家準備翻滾閃開）")]
+    public float dashEyeTell = 0.2f;
 
     [Header("遠程")]
     public float rangedMinDistance = 10f;
@@ -138,6 +140,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     BossHealth health;
     SkeletonCentipedeEncircleSkill encircle;
     SkeletonCentipedeBatSwarmSkill batSwarm;
+    SkeletonCentipedeEyeGlow eyeGlow;
     SkeletonCentipedeBatGuardSkill batGuard;
     SkeletonCentipedeRangedVfx rangedVfx;
     PlayerHealth player;
@@ -371,6 +374,15 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             nextDash = t + Cd(dashCooldown);
             CurrentAction = "衝刺";
             yield return FacePlayer(0.5f);
+            // 前搖：眼睛亮起強烈紅光 dashEyeTell 秒，之後才開始衝刺動作
+            if (dashEyeTell > 0f && !dead)
+            {
+                if (eyeGlow == null) eyeGlow = GetComponent<SkeletonCentipedeEyeGlow>();
+                if (eyeGlow == null) eyeGlow = gameObject.AddComponent<SkeletonCentipedeEyeGlow>();
+                eyeGlow.Flash(dashEyeTell);
+                yield return Wait(dashEyeTell);
+                if (dead) yield break;
+            }
             driver.PlayDash();
             yield return TrackWhile(DashLen, 0.45f, 1f); // 蓄力時繼續瞄準，DashStart 之後鎖定方向
             yield break;
