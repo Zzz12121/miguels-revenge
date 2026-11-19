@@ -17,7 +17,8 @@ public static class VillageProgress
 
 /// <summary>
 /// 倒下之後被抬回村子（不用在場景裡放東西，自動執行）：
-///   - 在道場、霧海孤島被打倒：畫面暗下來，「村民把你抬回了村子」，載入漁村，在暫居地（Residence）醒來
+///   - 在道場被打倒：畫面暗下來，「村民把你抬回了村子」，載入漁村，在暫居地（Residence）醒來
+///   - 在霧海孤島（ForestIsland）被打倒：畫面暗下來，重新載入 ForestIsland，從吊橋上的出生點重新來過（血量補滿）
 ///   - 在村子裡倒下：照原本的重生流程，在暫居地醒來
 ///   - 這條主線不會 Game Over：每次倒下都把命補滿（GameManager.RestoreLives）
 /// 醒來後米格爾自言自語一句，村長、僧侶頭上出現指引標記。之後跟村長、僧侶、守祠的師父、女鐵匠、藥師、行商、
@@ -27,12 +28,14 @@ public static class VillageProgress
 public class VillageReturn : MonoBehaviour
 {
     public const string VillageScene = "JapaneseVillage";
-    static readonly string[] CarryBackFrom = { "DojoArena_ArchitecturePreview", "ForestIsland" };
+    /// <summary>在這個場景倒下：不抬回村子，重新載入這個場景、從吊橋上重新來過</summary>
+    public const string BridgeRestartScene = "ForestIsland";
+    static readonly string[] CarryBackFrom = { "DojoArena_ArchitecturePreview", BridgeRestartScene };
 
     static VillageReturn host;
     /// <summary>這次開遊戲以來倒下幾次（村子這條主線）</summary>
     public static int Defeats { get; private set; }
-    static bool wakePending, comfortPending;
+    static bool wakePending, comfortPending, bridgeRestartPending;
     static readonly HashSet<string> comforted = new HashSet<string>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -40,7 +43,7 @@ public class VillageReturn : MonoBehaviour
     {
         host = null;
         Defeats = 0;
-        wakePending = comfortPending = false;
+        wakePending = comfortPending = bridgeRestartPending = false;
         comforted.Clear();
     }
 
@@ -68,6 +71,7 @@ public class VillageReturn : MonoBehaviour
     {
         Hook();
         if (s.name == VillageScene && wakePending) StartCoroutine(WakeInVillage());
+        if (s.name == BridgeRestartScene && bridgeRestartPending) StartCoroutine(WakeOnBridge());
     }
 
     void Hook()
@@ -83,6 +87,14 @@ public class VillageReturn : MonoBehaviour
     {
         string scene = SceneManager.GetActiveScene().name;
         if (!InStoryScene(scene)) return;
+        if (scene == BridgeRestartScene)
+        {
+            // 霧海孤島：從吊橋上重新來過（不抬回村子、不 Game Over）
+            GameManager.Instance?.RestoreLives();
+            player.respawnDelay = 60f;   // 不要在原地（或島上的檢查點）重生，等場景重新載入
+            StartCoroutine(RestartOnBridge());
+            return;
+        }
         Defeats++;
         comfortPending = true;
         comforted.Clear();
@@ -118,6 +130,42 @@ public class VillageReturn : MonoBehaviour
         var gm = GameManager.Instance;
         if (gm != null) gm.LoadLevel(VillageScene);
         else SceneManager.LoadScene(VillageScene);
+    }
+
+    /// <summary>霧海孤島倒下：畫面暗下來 → 重新載入 ForestIsland（玩家回到進島時的狀態，出生點在吊橋上）</summary>
+    IEnumerator RestartOnBridge()
+    {
+        carrying = true;
+        bridgeRestartPending = true;
+        yield return new WaitForSecondsRealtime(1.3f);
+        overlayTitle = "你倒下了……";
+        overlaySub = "從吊橋上重新來過";
+        overlayTarget = 1f;
+        while (overlay < 0.999f) yield return null;
+        yield return new WaitForSecondsRealtime(0.5f);
+        var gm = GameManager.Instance;
+        if (gm != null) gm.ReloadLevel();
+        else SceneManager.LoadScene(BridgeRestartScene);
+    }
+
+    /// <summary>重新載入之後：血量補滿、畫面亮回來</summary>
+    IEnumerator WakeOnBridge()
+    {
+        bridgeRestartPending = false;
+        overlay = overlayTarget = 1f;
+        yield return null;
+        yield return null;   // 等新場景的 Start 跑完（玩家狀態套用完）
+        while (GameManager.Instance != null && GameManager.Instance.IsLoading) yield return null;
+        var p = PlayerHealth.Find();
+        if (p != null && !p.IsDead) p.HealFull();
+        GameManager.Instance?.RestoreLives();
+        yield return new WaitForSecondsRealtime(0.4f);
+        overlayTitle = overlaySub = null;
+        overlayTarget = 0f;
+        while (overlay > 0.05f) yield return null;
+        carrying = false;
+        if (p != null)
+            StoryDialogue.Play(new[] { StoryDialogue.L("米格爾", p.transform, false, "……再來一次。這次要小心一點。", PlanetStory.PlayerColor) });
     }
 
     IEnumerator WakeInVillage()

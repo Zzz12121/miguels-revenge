@@ -208,6 +208,29 @@ public sealed partial class VoidRendSkillDemo
         if (refractionMaterial) { refractionMaterial.SetFloat("_Strength", amount); refractionMaterial.SetFloat("_Clock", Time.unscaledTime); }
     }
 
+    /// <summary>目標的水平半徑（取碰撞體，沒有就取 Renderer 外框），用來決定衝刺停在多遠。</summary>
+    float VictimRadius()
+    {
+        if (target == null) return .5f;
+        bool has = false; var b = new Bounds(target.position, Vector3.zero);
+        foreach (var c in target.GetComponentsInChildren<Collider>())
+        {
+            if (!c.enabled || c.isTrigger) continue;
+            if (!has) { b = c.bounds; has = true; } else b.Encapsulate(c.bounds);
+        }
+        if (!has)
+            foreach (var r in target.GetComponentsInChildren<Renderer>())
+            {
+                if (r is ParticleSystemRenderer || r is LineRenderer || r is TrailRenderer) continue;
+                if (!has) { b = r.bounds; has = true; } else b.Encapsulate(r.bounds);
+            }
+        if (!has) return .5f;
+        // 目標中心到外框邊緣的水平距離（取較小的那一邊，避免長條形的武器把距離撐太大）
+        return Mathf.Clamp(Mathf.Min(b.extents.x, b.extents.z), .35f, 2.2f);
+    }
+
+    float CasterRadius() => practiceBody != null ? practiceBody.radius : .45f;
+
     IEnumerator PlaySequence()
     {
         SuspendPracticeControlsForSkill();
@@ -251,10 +274,19 @@ public sealed partial class VoidRendSkillDemo
 
         // Blend from the actual locomotion frame into the left-waist draw pose.
         Vector3 approachStart = caster.position;
-        Vector3 approachDirection = Vector3.ProjectOnPlane(arenaCenter - approachStart, Vector3.up);
+        // 衝刺停在目標身前，不衝進目標的身體裡（舊版直接停在目標中心，蓄力時會和老頭等大型目標穿模）。
+        // 空中連斬仍以目標為中心（arenaCenter），只有地面上的衝刺 / 擊飛 / 蓄力站在 groundStop。
+        Vector3 toVictim = Vector3.ProjectOnPlane(arenaCenter - approachStart, Vector3.up);
+        float standOff = VictimRadius() + CasterRadius() + .35f;
+        Vector3 groundStop = toVictim.magnitude > standOff
+            ? arenaCenter - toVictim.normalized * standOff
+            : approachStart;
+        groundStop.y = arenaCenter.y;
+        Vector3 approachDirection = Vector3.ProjectOnPlane(groundStop - approachStart, Vector3.up);
         float approachDistance = approachDirection.magnitude;
-        Quaternion drawFacing = approachDistance > .05f
-            ? Quaternion.LookRotation(approachDirection.normalized, Vector3.up) : caster.rotation;
+        // 起手面向目標（就算已經站得夠近、不需要衝刺）
+        Quaternion drawFacing = toVictim.sqrMagnitude > .0025f
+            ? Quaternion.LookRotation(toVictim.normalized, Vector3.up) : caster.rotation;
         Quaternion entryFacing = caster.rotation;
         // 鏡頭 A：角色左後方、低機位的固定特寫，角色大、目標小（近大遠小）；蹲低時慢慢推近，爆衝時鏡頭不動，看角色一路衝遠
         Vector3 openForward = drawFacing * Vector3.forward, openRight = drawFacing * Vector3.right;
@@ -285,14 +317,14 @@ public sealed partial class VoidRendSkillDemo
             float approachDuration = Mathf.Clamp(approachDistance / Mathf.Max(1f, drawDashSpeed), openingDashSeconds.x, Mathf.Max(openingDashSeconds.x, openingDashSeconds.y));
             for (float t = 0; t < approachDuration; t += Time.unscaledDeltaTime)
             {
-                // 一開始爆發（很快加速），快到目標時不減速：直接衝進去
+                // 一開始爆發（很快加速），快到目標時不減速：直接衝到目標身前
                 float u = Mathf.Clamp01(t / approachDuration);
-                caster.position = Vector3.Lerp(approachStart, arenaCenter, 1f - (1f - u) * (1f - u) * (1f - .6f * u));
+                caster.position = Vector3.Lerp(approachStart, groundStop, 1f - (1f - u) * (1f - u) * (1f - .6f * u));
                 cameraFocus = caster.position + Vector3.up * 1.35f;
                 yield return null;
             }
         }
-        caster.position = arenaCenter;
+        caster.position = groundStop;
         // 鏡頭 2：衝到目標後直接切到角色正面偏右的特寫（刀和表情），轉刀時再慢慢拉遠
         fixedShot = false;
         float heroYaw = Mathf.Atan2(openForward.x, openForward.z) * Mathf.Rad2Deg;   // 角色面向的角度（鏡頭 yaw 用同一個算法）
@@ -314,7 +346,7 @@ public sealed partial class VoidRendSkillDemo
             yield return null;
         }
         victimHeld = victimHome + Vector3.up * launchHeight;
-        caster.position = arenaCenter;
+        caster.position = groundStop;
         chargeSmoke = CreateSmoke(caster.position, true, 3.5f, .38f);
         chargeSmoke.transform.SetParent(caster, true);
         SetStage("AerialRotor");
@@ -324,7 +356,7 @@ public sealed partial class VoidRendSkillDemo
             float u = t / chargeOrbitSeconds;
             charge = u;
             // 轉刀期間角色固定站穩，只有手臂與武器在頭頂旋轉。
-            caster.position = arenaCenter;
+            caster.position = groundStop;
             FaceCurrentTarget();
             // 鏡頭 2：以刀（刀柄 = 旋轉中心）為中心，往跟刀旋轉相反的方向環繞；最後一段拉回原本的遠景接出拳
             // 刀的角度是 AngleAxis(+spin, up)，跟鏡頭 yaw 同一個方向算法，所以 yaw 往下減 = 反方向
@@ -349,7 +381,7 @@ public sealed partial class VoidRendSkillDemo
             SetDistortion(.035f * u);
             yield return null;
         }
-        caster.position = arenaCenter;
+        caster.position = groundStop;
         FaceCurrentTarget();
         chargeSmoke.Stop(true, ParticleSystemStopBehavior.StopEmitting);
         Destroy(chargeSmoke.gameObject, 4);
