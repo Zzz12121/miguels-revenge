@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 ///   正面的攻擊完全擋下 → 盾反：把攻擊的敵人彈開（硬直），接著自動往前突刺，造成兩倍傷害。
 ///   連續擋第 3 下會破防（那一下照樣扣血、盾牌放下一會兒）
 /// - shieldBashEnabled 打開時，右鍵按一下 = 舊的舉盾衝撞（盾擊）
-/// - 在船上（bowMode）：右鍵按住瞄準、左鍵射箭
+/// - 弓箭（bowMode：船戰登船，或拿到弓箭技能 / 鐵匠鋪換弓）：右鍵按住瞄準、左鍵射箭，陸地和船上的敵人都射得到
 /// </summary>
 public class PlayerCombat : MeleeCombat
 {
@@ -101,7 +101,7 @@ public class PlayerCombat : MeleeCombat
     float blockWindowEnd = float.NegativeInfinity, nextBlockTapTime;
     Coroutine shieldBashRoutine;
 
-    [Header("弓箭（在船上，VikingBoat 登船時打開）")]
+    [Header("弓箭（VikingBoat 登船、或 PlayerLoadout 換成弓時打開）")]
     [Tooltip("打開後：右鍵按住瞄準（鏡頭拉近放大），左鍵射箭；不能揮劍")]
     public bool bowMode;
     public float arrowSpeed = 70f;
@@ -109,7 +109,7 @@ public class PlayerCombat : MeleeCombat
     public float arrowCooldown = 0.55f;
     [Tooltip("沒有瞄準直接射時，箭的散佈角度（度）")]
     public float hipFireSpread = 2.5f;
-    [Tooltip("箭射中一般目標（IDamageable）時的傷害；0 = 只射得傷船員（船戰原本的規則）。鐵匠鋪換成弓時由 PlayerLoadout 設定")]
+    [Tooltip("箭射中一般目標（IDamageable）時的傷害。拿弓時由 PlayerLoadout 依蓄力設定")]
     public float arrowDamage = 0f;
     [Tooltip("瞄準中（右鍵按住）射箭時的散佈角度（度）；0 = 正中準心。鐵匠鋪的弓依蓄力的程度設定")]
     public float aimedSpread = 0f;
@@ -638,6 +638,7 @@ public class PlayerCombat : MeleeCombat
         {
             if (h.collider.transform.IsChildOf(transform)) continue;
             if (boat != null && h.collider.transform.IsChildOf(boat)) continue;
+            if (ArrowPassThrough.On(h.collider)) continue;
             if (h.distance < best) { best = h.distance; target = h.point; }
         }
 
@@ -650,6 +651,9 @@ public class PlayerCombat : MeleeCombat
         arrow.ownerBoat = boat;
         arrow.shooter = this;
         arrow.damage = arrowDamage * damageMultiplier;
+        // 海面判定（箭低於 waterLevel 就當成掉進海裡）只有船戰用得到：在陸地上地面大約在 y = 0，
+        // 瞄準敵人胸口的箭一往下掉就會被當成落海、還沒碰到敵人就消失
+        if (FindFirstObjectByType<VikingBoat>() == null) arrow.waterLevel = float.NegativeInfinity;
         OnArrowSpawned?.Invoke(arrowObj);
 
         GameAudio.Play("SFX/RPG/drawKnife3", origin, 0.85f, 1.6f, 0.08f, 0.5f, 30f);
