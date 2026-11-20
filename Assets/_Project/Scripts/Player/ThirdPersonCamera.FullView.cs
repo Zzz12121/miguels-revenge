@@ -36,7 +36,7 @@ public partial class ThirdPersonCamera
 
     Occluder Classify(Collider c)
     {
-        if (c == null || c.isTrigger || c is CharacterController) return Occluder.Ignore;
+        if (c == null || c.isTrigger || c is CharacterController || ArrowPassThrough.On(c)) return Occluder.Ignore;
         if (target != null && c.transform.IsChildOf(target)) return Occluder.Ignore;
         if (!CalligraphyWorldIsolation.Allows(c.transform)) return Occluder.Ignore;
         if (c is TerrainCollider) return Occluder.Solid;

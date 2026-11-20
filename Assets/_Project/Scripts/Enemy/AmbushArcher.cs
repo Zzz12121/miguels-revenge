@@ -211,7 +211,7 @@ public class AmbushArcher : MonoBehaviour, IDamageable
         Vector3 d = to - from; float dist = d.magnitude;
         if (dist < 0.01f) return false;
         foreach (var h in Physics.RaycastAll(from, d / dist, dist, ~0, QueryTriggerInteraction.Ignore))
-            if (!IgnoreForPhysics(h.collider)) return true;
+            if (!IgnoreForPhysics(h.collider) && !ArrowPassThrough.On(h.collider)) return true;
         return false;
     }
 
@@ -327,6 +327,37 @@ public class AmbushArcher : MonoBehaviour, IDamageable
             }
         if (body != null) body.enabled = !IsDead;
         return ok;
+    }
+
+    // ---------------- 被玩家技能控制（虛空連斬挑空） ----------------
+
+    bool skillHeld;
+
+    /// <summary>
+    /// 玩家的技能把弓箭手挑到空中時（VoidRendSkillDemo）：停下自己的移動 / 射擊流程（不然每一幀都會把自己拉回地面）；
+    /// 放開之後接著原本的狀態繼續（還在打 → 跑回掩體再出來；投降中 → 繼續等玩家接弓）。
+    /// </summary>
+    public void SkillHold(bool on)
+    {
+        if (on == skillHeld) return;
+        skillHeld = on;
+        if (on)
+        {
+            if (IsDead) return;
+            StopAllCoroutines();
+            loop = null;
+            SmoothTween.Kill(transform);
+            visual.CancelDraw();
+            return;
+        }
+        if (IsDead) { if (deathPending) { deathPending = false; KnockDown(pendingDeathPoint); } return; }
+        if (Surrendered)
+        {
+            if (!HandedOver && !offering) loop = StartCoroutine(SurrenderRoutine());
+            else if (HandedOver) StartCoroutine(FleeRoutine());
+            return;
+        }
+        if (Active) loop = StartCoroutine(RetreatThenLoop(.6f));
     }
 
     // ---------------- 移動 ----------------
@@ -521,6 +552,7 @@ public class AmbushArcher : MonoBehaviour, IDamageable
         {
             if (h.collider.GetComponentInParent<AmbushArcher>() != null) continue;
             if (h.collider.GetComponentInParent<PlayerHealth>() != null) continue;
+            if (ArrowPassThrough.On(h.collider)) continue;
             return false;   // 被石頭 / 樹 / 地形擋住
         }
         return true;
@@ -621,7 +653,16 @@ public class AmbushArcher : MonoBehaviour, IDamageable
         visual.enabled = false;
         pose.enabled = false;
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.9f, 0.8f, 0.08f, 1f, 30f);
+        // 在空中被技能抓著的時候先不變布娃娃（技能還在控制位置），等技能放開、落地後才倒下
+        if (skillHeld) { pendingDeathPoint = hitPoint; deathPending = true; return; }
+        KnockDown(hitPoint);
+    }
 
+    Vector3 pendingDeathPoint;
+    bool deathPending;
+
+    void KnockDown(Vector3 hitPoint)
+    {
         // 被打飛的方向：從玩家往弓箭手（沒有玩家就從打中的那一點往外）
         Vector3 from = player != null ? player.transform.position : hitPoint;
         Vector3 dir = transform.position - from; dir.y = 0f;
@@ -701,7 +742,7 @@ public class AmbushArcher : MonoBehaviour, IDamageable
 
     void Update()
     {
-        if (!offering || HandedOver || IsDead) return;
+        if (skillHeld || !offering || HandedOver || IsDead) return;
         if (player == null) { player = PlayerHealth.Find(); if (player == null) return; }
         Vector3 to = player.transform.position - transform.position; to.y = 0f;
         if (to.sqrMagnitude > 0.01f)
@@ -720,9 +761,11 @@ public class AmbushArcher : MonoBehaviour, IDamageable
     {
         HandedOver = true;
         offering = false;
-        // 弓、箭從弓箭手手上消失（玩家手上的弓在對話結束後由 PlayerLoadout 顯示）
+        // 弓、箭從弓箭手手上消失（玩家手上的弓在對話結束後由 PlayerLoadout 顯示）。
+        // 注意：這個 Mixamo FBX 的網格名稱是錯開的（叫 Bow_Mesh 的其實是眼睛、Arrow_Mesh 是身體），要用材質名稱找
         foreach (var r in GetComponentsInChildren<Renderer>(true))
-            if (r.name.Contains("Bow_Mesh") || r.name.Contains("Arrow_Mesh")) r.enabled = false;
+            foreach (var m in r.sharedMaterials)
+                if (m != null && (m.name.StartsWith("Bow_MAT") || m.name.StartsWith("Arrow_MAT"))) { r.enabled = false; break; }
         GameAudio.Play("SFX/RPG/clothBelt2", player.transform.position, 0.9f, 1.1f, 0.05f, 1f, 20f);
         CombatVFX.Puff(transform.position + Vector3.up * 1.1f + transform.forward * 0.5f, Vector3.up, new Color(1f, 0.9f, 0.6f, 0.6f));
 
@@ -747,20 +790,104 @@ public class AmbushArcher : MonoBehaviour, IDamageable
         });
     }
 
-    /// <summary>交出弓之後站起來、轉身逃走，跑遠了消失</summary>
+    /// <summary>
+    /// 交出弓之後：馬上站起來、轉身往山下跑。每一段挑「附近最低、跑得過去、離玩家較遠」的位置，
+    /// 一段接一段跑，跑到玩家看不到（或跑了 8 段）就消失。
+    /// </summary>
     IEnumerator FleeRoutine()
     {
-        yield return new WaitForSeconds(0.5f);
-        pose.surrender = 0f;
-        yield return new WaitForSeconds(crouchSeconds + 0.2f);
-        Vector3 away = transform.position - (player != null ? player.transform.position : transform.position - transform.forward);
-        away.y = 0f;
-        if (away.sqrMagnitude < 0.01f) away = -transform.forward;
-        Vector3 target = Grounded(transform.position + away.normalized * 14f);
+        pose.ResetImmediate();
+        visual.CancelDraw();
+        if (visual.animator != null) { visual.animator.enabled = true; visual.animator.speed = 1f; }
         if (body != null) body.enabled = false;
-        yield return MoveTo(target, runSpeed * 1.1f, true);
-        CombatVFX.Puff(transform.position + Vector3.up, Vector3.up, new Color(0.9f, 0.9f, 0.85f, 0.5f));
+        hasCover = false;
+        for (int leg = 0; leg < 8; leg++)
+        {
+            if (!PickDownhill(out Vector3 next)) break;
+            yield return MoveLeg(next, runSpeed * 1.15f, true, false);
+            if (leg >= 2 && !VisibleToCamera()) break;   // 跑出畫面了
+        }
+        if (VisibleToCamera()) CombatVFX.Puff(transform.position + Vector3.up, Vector3.up, new Color(0.9f, 0.9f, 0.85f, 0.5f));
         Destroy(gameObject);
+    }
+
+    /// <summary>下一段往山下跑的位置：12 個方向各試 9m，選最低的（往遠離玩家的方向加分），路要通</summary>
+    bool PickDownhill(out Vector3 next)
+    {
+        next = transform.position;
+        Vector3 me = transform.position;
+        Vector3 away = player != null ? Flat(me - player.transform.position) : transform.forward;
+        if (away.sqrMagnitude < 0.01f) away = transform.forward;
+        away.Normalize();
+        float best = float.MaxValue; bool found = false;
+        for (int i = 0; i < 12; i++)
+        {
+            Vector3 dir = Quaternion.Euler(0f, i * 30f, 0f) * Vector3.forward;
+            Vector3 cand = me + dir * 9f;
+            if (!TryGround(cand, me.y, 6f, out Vector3 g) || !BodyFits(g) || !Walkable(me, g)) continue;
+            float score = (g.y - me.y) - Vector3.Dot(dir, away) * 1.5f;   // 越低越好、背對玩家加分
+            if (score < best) { best = score; next = g; found = true; }
+        }
+        return found;
+    }
+
+    bool VisibleToCamera()
+    {
+        foreach (var r in GetComponentsInChildren<SkinnedMeshRenderer>())
+            if (r.enabled && r.isVisible) return true;
+        return false;
+    }
+
+
+    // ---------------- 頭上的驚嘆號（方便玩家找人） ----------------
+
+    [Header("頭上標記")]
+    [Tooltip("標記離腳底多高 (m)")]
+    public float markerHeight = 2.4f;
+    public Color enemyMarkerColor = new Color(1f, 0.22f, 0.18f, 1f);
+    public Color surrenderMarkerColor = new Color(1f, 0.85f, 0.2f, 1f);
+    static GUIStyle markerStyle;
+
+    /// <summary>
+    /// 埋伏開始後還在打的弓箭手：紅色「!」；投降、等玩家來接弓：黃色「!」（一閃一閃）。
+    /// 在畫面外時貼在畫面邊緣、指向他的方向，下面顯示距離。和村子裡 NPC 的指引標記同一種畫法。
+    /// </summary>
+    void OnGUI()
+    {
+        if (IsDead || HandedOver || GameUI.OverlayOpen || StoryDialogue.Active) return;
+        bool surrender = Surrendered;
+        if (!surrender && !Active) return;   // 還沒觸發埋伏：不暴露位置
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        Vector3 head = transform.position + Vector3.up * markerHeight;
+        Vector3 sp = cam.WorldToScreenPoint(head);
+        bool behind = sp.z < 0f;
+        if (behind) { sp.x = Screen.width - sp.x; sp.y = Screen.height - sp.y; }
+        float x = sp.x, y = Screen.height - sp.y;
+        const float m = 48f;
+        bool offscreen = behind || x < m || x > Screen.width - m || y < m || y > Screen.height - m;
+        if (offscreen)
+        {
+            Vector2 c = new Vector2(Screen.width, Screen.height) * 0.5f;
+            Vector2 d = new Vector2(x, y) - c;
+            if (d.sqrMagnitude < 1f) d = Vector2.up;
+            float k = Mathf.Min((c.x - m) / Mathf.Max(0.01f, Mathf.Abs(d.x)), (c.y - m) / Mathf.Max(0.01f, Mathf.Abs(d.y)));
+            x = c.x + d.x * k;
+            y = c.y + d.y * k;
+        }
+
+        Color col = surrender ? surrenderMarkerColor : enemyMarkerColor;
+        float bob = Mathf.Sin(Time.unscaledTime * (surrender ? 4f : 6f) + transform.position.x) * 5f;
+        if (surrender) col.a *= 0.7f + 0.3f * Mathf.Sin(Time.unscaledTime * 5f);   // 投降：一閃一閃，提醒過去接弓
+        markerStyle ??= new GUIStyle(GameUI.Title) { fontSize = 40, alignment = TextAnchor.MiddleCenter };
+        GameUI.Shadowed(new Rect(x - 30f, y - 40f + bob, 60f, 50f), "!", markerStyle, col);
+        if (player == null) player = PlayerHealth.Find();
+        if (player != null && (offscreen || surrender))
+        {
+            float dist = Vector3.Distance(player.transform.position, transform.position);
+            GameUI.Shadowed(new Rect(x - 60f, y + 10f + bob, 120f, 22f), $"{dist:0} m", GameUI.Center, col);
+        }
     }
 
     void OnDrawGizmosSelected()
