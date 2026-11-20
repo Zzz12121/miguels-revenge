@@ -202,7 +202,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         if (!playing && isActiveAndEnabled && caster != null && target != null)
         {
             PrepareSkillOrigin();
-            StartCoroutine(PlaySequence());
+            StartCoroutine(GuardedSequence(PlaySequence()));
         }
     }
 
