@@ -161,11 +161,11 @@ public class StoryDialogue : MonoBehaviour
         GameUI.ScrollPanel(box); // 卷軸的上半截（下半截在畫面外）
         nameStyle ??= new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold };
         nameStyle.alignment = line.right ? TextAnchor.UpperRight : TextAnchor.UpperLeft;
-        GUI.color = line.nameColor.a > 0f ? line.nameColor : GameUI.Accent;
+        GUI.color = line.nameColor.a > 0f ? GameUI.OnPaper(line.nameColor) : GameUI.Cinnabar; // 紙是淺色的：名字、字都用深色
         GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), line.name, nameStyle);
 
         int n = Mathf.Clamp(VisibleChars(), 0, line.text.Length);
-        GUI.color = GameUI.TextColor;
+        GUI.color = GameUI.Ink;
         GUI.Label(new Rect(box.x + 24f, box.y + 46f, box.width - 48f, 80f), line.text.Substring(0, n), GameUI.Body);
 
         bool done = n >= line.text.Length;
@@ -174,9 +174,9 @@ public class StoryDialogue : MonoBehaviour
         string action = index == lines.Count - 1 ? "結束" : "繼續";
         float actionW = right.CalcSize(new GUIContent(action)).x;
         float y = box.yMax - 34f, x = box.xMax - 24f - actionW;
-        GUI.color = new Color(1f, 1f, 1f, a);
+        GUI.color = new Color(GameUI.Ink.r, GameUI.Ink.g, GameUI.Ink.b, a);
         GUI.Label(new Rect(x, y, actionW, 24f), action, right);
-        GameUI.Key(new Rect(x - 64f, y, 58f, 24f), "Space", a);
+        GameUI.Key(new Rect(x - 64f, y, 58f, 24f), "Space", a, true);
         GUI.color = Color.white;
     }
 

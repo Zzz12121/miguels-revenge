@@ -7,7 +7,8 @@ using UnityEngine.InputSystem.Controls;
 ///
 ///   左搖桿 移動          右搖桿 轉鏡頭（技能瞄準時改成移動準心）
 ///   A / ×  對話下一句、選單確認      B / ○  取消瞄準、離開商店
-///   Start  暫停          十字鍵 ← ↑ → = 商店 / 能力植物的選項 1 2 3
+///   Start  暫停          十字鍵 ← ↑ → = 能力植物的選項 1 2 3
+///   對話的選項、商店：十字鍵 ↑ ↓ 或左搖桿上下移動游標（按住會連續移動），A 選、B / Y 離開（MerchantNPC）
 /// 預設可改鍵的手把按鍵：A 跳躍、B 翻滾、X 攻擊、Y 互動、LB 衝刺、RB 牽引、LT 格擋、
 ///   十字鍵 ← ↑ → ↓ 技能 1~4、R3 治癒藥水、L3 精力藥水、Select 小地圖
 /// 設定選單選「只用鍵盤滑鼠」時，這裡全部回傳沒按。
@@ -44,7 +45,25 @@ public static class PadInput
     /// <summary>取消瞄準、離開選單</summary>
     public static bool CancelPressed => Down(Pad?.buttonEast);
 
-    /// <summary>十字鍵 ← ↑ → ↓ 對應 1 2 3 4（商店、能力植物的選項）。沒按回傳 0</summary>
+    /// <summary>
+    /// 選單上下移動：十字鍵 ↑ ↓，或左搖桿往上 / 往下推（推著不放：0.35 秒後每 0.13 秒再動一格）。
+    /// 回傳 -1 = 往上、+1 = 往下、0 = 沒動。每個選單自己記上一次的方向（state）
+    /// </summary>
+    public static int NavigatePressed(ref int lastDir, ref float repeatAt)
+    {
+        var p = Pad;
+        if (p == null) { lastDir = 0; return 0; }
+        if (p.dpad.up.wasPressedThisFrame) { lastDir = 0; return -1; }
+        if (p.dpad.down.wasPressedThisFrame) { lastDir = 0; return 1; }
+        float y = Move.y;
+        int dir = y > 0.6f ? -1 : y < -0.6f ? 1 : 0;
+        if (dir == 0) { lastDir = 0; return 0; }
+        if (dir != lastDir) { lastDir = dir; repeatAt = Time.unscaledTime + 0.35f; return dir; }
+        if (Time.unscaledTime >= repeatAt) { repeatAt = Time.unscaledTime + 0.13f; return dir; }
+        return 0;
+    }
+
+    /// <summary>十字鍵 ← ↑ → ↓ 對應 1 2 3 4（能力植物的選項）。沒按回傳 0</summary>
     public static int NumberPressed
     {
         get

@@ -115,6 +115,22 @@ public class CombatLog : MonoBehaviour
     PlayerHealth player;
     PlayerCombat combat;
 
+    /// <summary>
+    /// 正在跟真的敵人打（戰鬥音樂用）：這一場還沒結束，而且還有沒倒下的對手、不是只有練習用的木人 / 過招
+    /// （還沒認出對手就被打到，也算在打）
+    /// </summary>
+    public static bool InFight
+    {
+        get
+        {
+            if (host == null || !host.active) return false;
+            if (host.opponents.Count == 0) return true;
+            foreach (var o in host.opponents.Values)
+                if (!o.training && !o.killed && o.target != null) return true;
+            return false;
+        }
+    }
+
     void OnEnable() => SceneManager.sceneLoaded += OnSceneLoaded;
     void OnDisable() => SceneManager.sceneLoaded -= OnSceneLoaded;
 

@@ -106,6 +106,9 @@ public static class GameAudio
     }
 
     /// <summary>停止背景音樂，fadeOut 秒淡出</summary>
+    /// <summary>現在在播的背景音樂（沒在播 = null）</summary>
+    public static AudioClip CurrentMusic => host != null ? host.CurrentMusic : null;
+
     public static void StopMusic(float fadeOut = 1f)
     {
         if (host != null) host.StopMusic(fadeOut);

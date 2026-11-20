@@ -5,6 +5,9 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 雙極能量牽引：中鍵進入五秒緩速瞄準、左鍵鎖定，滾輪上拉自己、下拉目標。
 /// 第一次左鍵鎖定；第二次可在畫面任意位置按住拖甩，放開投擲。
+/// 外觀（look）：Rope = 麻繩 + 三爪鉤爪（TetherRopeVisual），先從右手丟出鉤爪、勾住了才開始拉；Energy = 原本的紅藍能量光束。
+/// 精力：每拉一次（拉自己、拉目標、甩出去）照距離扣精力，貼著目標 minStaminaCost、最遠射程 maxStaminaCost；
+/// 精力不夠就拉不動（精力條閃一下）。拉的時候武器收起來（PlayerLoadout.Holster，立刻收），拉完再拔出來。
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class EnergyTetherSkill : MonoBehaviour
@@ -35,7 +38,17 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     TetherThrownMotion activeMotion;
     bool pullingPlayerControls, playerInputBeforePull;
 
+    [Header("精力")]
+    [Tooltip("拉索一次消耗的精力（佔上限的比例）：貼著目標 = 最少，最遠射程（maximumRange）= 最多，中間照距離")]
+    [Range(0f, 1f)] public float minStaminaCost = .25f;
+    [Range(0f, 1f)] public float maxStaminaCost = .75f;
+
+    public enum TetherLook { Rope, Energy }
     [Header("視覺")]
+    [Tooltip("Rope = 麻繩 + 鉤爪（先丟出鉤爪，勾住再拉）；Energy = 原本的紅藍能量光束")]
+    public TetherLook look = TetherLook.Rope;
+    [Tooltip("鉤爪飛出去的速度 (m/s)")]
+    [Min(5f)] public float hookSpeed = 70f;
     [Range(5, 32)] public int beamSegments = 18;
     [Min(.01f)] public float beamWidth = .085f;
     [Min(0f)] public float beamJitter = .18f;
@@ -56,6 +69,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     ThirdPersonController movement;
     CharacterController body;
     PlayerHealth health;
+    PlayerStamina stamina;
+    TetherRopeVisual rope;
+    Vector3 hookBiteDir;
     Camera aimCamera;
     ThirdPersonCamera orbitCamera;
     Animator animator;
@@ -90,6 +106,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         movement = GetComponent<ThirdPersonController>();
         body = GetComponent<CharacterController>();
         health = GetComponent<PlayerHealth>();
+        stamina = GetComponent<PlayerStamina>();
+        rope = GetComponent<TetherRopeVisual>();
+        if (rope == null) rope = gameObject.AddComponent<TetherRopeVisual>();
         ResolveCameraAndHands();
         CreateVisuals();
     }
@@ -125,7 +144,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             begin && Time.unscaledTime >= nextUseTime && (health == null || !health.IsDead) &&
             (movement == null || !movement.ActionsLocked))
         {
-            BeginAiming(false);
+            if (StaminaAllowsAiming()) BeginAiming(false); // 連最近的一下都拉不動：不進入瞄準
             return;
         }
 
@@ -209,6 +228,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
                 // Screen-relative swipe only: never re-raycast a destination or require
                 // the pointer to remain over the locked target. Gravity handles landing.
                 Vector3 direction=(dragCameraRight*gesture.x + dragCameraUp*gesture.y).normalized;
+                if (!PayStamina(thrownPoint)) return;
                 EndAiming(false);
                 StartCoroutine(ThrowTarget(thrownPoint,direction*force));
                 return;
@@ -224,6 +244,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (Mathf.Abs(scroll) < .01f) return;
         AimPoint chosen = locked;
         if (scroll < 0 && IsStaticAnchor(chosen)) { Notify("無法拖動此目標"); return; }
+        if (!PayStamina(chosen)) return;
         bool pullSelf = scroll > 0f;
         EndAiming(false);
         StartCoroutine(pullSelf ? PullPlayer(chosen) : PullTarget(chosen));
@@ -320,6 +341,62 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     }
     void Notify(string message) { feedback=message; feedbackUntil=Time.unscaledTime+2f; }
 
+    /// <summary>拉到 point 這一下要花的精力（佔上限的比例）：照距離在 minStaminaCost ~ maxStaminaCost 之間</summary>
+    public float StaminaCostFor(Vector3 point) =>
+        Mathf.Lerp(minStaminaCost, maxStaminaCost, Mathf.Clamp01(Vector3.Distance(transform.position, point) / Mathf.Max(1f, maximumRange)));
+
+    /// <summary>扣這一下的精力；不夠就不扣、精力條閃一下、繼續瞄準（可以改瞄近一點的目標）</summary>
+    bool PayStamina(AimPoint point)
+    {
+        if (stamina == null) stamina = GetComponent<PlayerStamina>();
+        if (stamina == null) return true;
+        float cost = StaminaCostFor(point.Point);
+        if (stamina.TrySpendRatio(cost)) return true;
+        Notify($"精力不足：這一下要 {cost * 100f:0}% 精力");
+        return false;
+    }
+
+    bool StaminaAllowsAiming()
+    {
+        if (stamina == null) stamina = GetComponent<PlayerStamina>();
+        if (stamina == null || stamina.CanAfford(minStaminaCost)) return true;
+        stamina.FlashDenied();
+        Notify("精力不足，休息一下再用拉索");
+        return false;
+    }
+
+    /// <summary>
+    /// 丟出鉤爪（Rope 外觀）：從右手飛到 target（目標會動就跟著），飛的時候繩子鬆鬆的甩動，勾住後很快拉直。
+    /// Energy 外觀直接跳過（光束是瞬間連上的）。
+    /// </summary>
+    IEnumerator ThrowHook(System.Func<Vector3> target)
+    {
+        hookBiteDir = Vector3.zero;
+        if (look != TetherLook.Rope || rope == null) yield break;
+        FaceFlat(target() - transform.position); // 先轉向目標再丟
+        Vector3 start = rope.HandPoint, prev = start;
+        float distance = Vector3.Distance(start, target());
+        float duration = Mathf.Clamp(distance / hookSpeed, .12f, .5f);
+        float arc = Mathf.Min(1.5f, distance * .06f);
+        for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
+        {
+            float u = Mathf.Clamp01(t / duration);
+            Vector3 head = Vector3.Lerp(start, target(), u) + Vector3.up * (Mathf.Sin(u * Mathf.PI) * arc);
+            if ((head - prev).sqrMagnitude > 1e-6f) hookBiteDir = (head - prev).normalized;
+            rope.Show(head, hookBiteDir, 1f - u * .7f);
+            prev = head;
+            yield return null;
+        }
+        if (hookBiteDir.sqrMagnitude < .5f) hookBiteDir = (target() - start).normalized;
+        GameAudio.Play("SFX/RPG/metalClick", target(), 0.6f, 1.1f, 0.1f, 1f, 30f); // 鉤爪勾住
+        const float tighten = .08f;
+        for (float t = 0f; t < tighten; t += Time.unscaledDeltaTime)
+        {
+            rope.Show(target(), hookBiteDir, .3f * (1f - t / tighten));
+            yield return null;
+        }
+    }
+
     IEnumerator ThrowTarget(AimPoint point, Vector3 velocity)
     {
         Transform root=ResolveTargetRoot(point);
@@ -328,10 +405,13 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         executing=true;
         activeMotion=root.GetComponent<TetherThrownMotion>() ?? root.gameObject.AddComponent<TetherThrownMotion>();
         activeMotion.Hold();
+        PlayerLoadout.Holster(this, true); // 拉的時候不拿武器
+        yield return ThrowHook(() => point.Point);
         // Brief tension build; do not teleport the target to the destination.
         for(float t=0;t<.1f;t+=Time.deltaTime) { if (!root) break; UpdateBeams(point.Point); yield return null; }
         if (activeMotion) activeMotion.Release(velocity,true);
         activeMotion=null; SetBeams(false); executing=false;
+        PlayerLoadout.Unholster(this);
         nextUseTime=Time.unscaledTime+skillCooldown;
     }
 
@@ -358,6 +438,8 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         bool previousInput = movement == null || movement.inputEnabled;
         playerInputBeforePull=previousInput; pullingPlayerControls=true;
         if (movement != null) { movement.inputEnabled = false; movement.ResetMotion(); }
+        PlayerLoadout.Holster(this, true); // 拉的時候不拿武器
+        yield return ThrowHook(() => targetPoint.Point); // 先丟出鉤爪，勾住了才拉
         Vector3 start = transform.position;
         Vector3 normal = targetPoint.Normal.sqrMagnitude > .001f ? targetPoint.Normal : Vector3.up;
         float stop = 1.05f;
@@ -383,6 +465,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (movement != null) movement.inputEnabled = previousInput;
         pullingPlayerControls=false;
         executing = false;
+        PlayerLoadout.Unholster(this);
     }
 
     IEnumerator PullTarget(AimPoint targetPoint)
@@ -396,6 +479,10 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         TetherInteractable marker = targetRoot.GetComponent<TetherInteractable>() ?? targetRoot.GetComponentInChildren<TetherInteractable>();
         activeMotion=targetRoot.GetComponent<TetherThrownMotion>() ?? targetRoot.gameObject.AddComponent<TetherThrownMotion>();
         activeMotion.Hold();
+        PlayerLoadout.Holster(this, true); // 拉的時候不拿武器
+        Vector3 hookLocal = targetRoot.InverseTransformPoint(targetPoint.Point); // 鉤爪勾在目標身上的位置
+        yield return ThrowHook(() => targetRoot ? targetRoot.TransformPoint(hookLocal) : targetPoint.Point);
+        if (!targetRoot) { executing=false; SetBeams(false); PlayerLoadout.Unholster(this); yield break; }
 
         Vector3 start = targetRoot.position;
         Vector3 destination = transform.position + transform.forward * objectHoverDistance + Vector3.up * 1.15f;
@@ -403,10 +490,10 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         SetBeams(true);
         for (float t = 0f; t < duration; t += Time.unscaledDeltaTime)
         {
-            if (!targetRoot) { executing=false; SetBeams(false); yield break; }
+            if (!targetRoot) { executing=false; SetBeams(false); PlayerLoadout.Unholster(this); yield break; }
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration));
             targetRoot.position = Vector3.Lerp(start, destination, u);
-            UpdateBeams(targetRoot.position);
+            UpdateBeams(look == TetherLook.Rope ? targetRoot.TransformPoint(hookLocal) : targetRoot.position);
             yield return null;
         }
         SetBeams(false);
@@ -416,6 +503,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (activeMotion) activeMotion.Release(Vector3.zero,false);
         activeMotion=null;
         executing = false;
+        PlayerLoadout.Unholster(this);
     }
 
     Transform ResolveTargetRoot(AimPoint point)
@@ -549,17 +637,25 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         }
         Color color = selectionLocked ? new Color(1f, .8f, .12f, 1f) : new Color(1f, .04f, .035f, .95f);
         reticle.startColor = reticle.endColor = color;
-        if (selectionLocked) UpdateBeams(point.Point);
+        if (selectionLocked && look == TetherLook.Energy) UpdateBeams(point.Point);
         else SetBeams(false);
     }
 
     void SetBeams(bool enabled)
     {
-        foreach (LineRenderer beam in beams) if (beam != null) beam.enabled = enabled;
+        bool energy = enabled && look == TetherLook.Energy;
+        foreach (LineRenderer beam in beams) if (beam != null) beam.enabled = energy;
+        if (!enabled && rope != null) rope.Hide();
     }
 
     void UpdateBeams(Vector3 targetPoint)
     {
+        if (look == TetherLook.Rope)
+        {
+            // 繩子拉直、鉤爪插在勾住的地方（方向維持勾住那一刻）
+            if (rope != null) rope.Show(targetPoint, hookBiteDir.sqrMagnitude > .5f ? hookBiteDir : targetPoint - rope.HandPoint, 0f);
+            return;
+        }
         SetBeams(true);
         Vector3 fallbackLeft = transform.position + transform.up * 1.25f - transform.right * .25f;
         Vector3 fallbackRight = transform.position + transform.up * 1.25f + transform.right * .25f;
@@ -626,6 +722,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         activeMotion=null; executing=false; dragging=false;
         if (pullingPlayerControls && movement) movement.inputEnabled=playerInputBeforePull;
         pullingPlayerControls=false;
+        PlayerLoadout.Unholster(this);
         SetBeams(false);
         UpdateReticle(default, false);
     }

@@ -178,7 +178,7 @@ public class PlayerLoadout : MonoBehaviour
     // 原本：判定中心在前方 1.3 m、半徑 1.4 m（最遠 2.7 m）
     static readonly Stats GreatswordStats = new Stats(1.25f, 1.15f, 1f, 1f);   // 前方 1.6 m、半徑 1.6 m：最遠約 3.2 m，比原本多 0.5 m
     static readonly Stats KnifeStats = new Stats(0.72f, 0.75f, 0.6f, 0.7f);    // 最遠約 2 m；出手快 40%、每下傷害 70%
-    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 1.05f, 1f);     // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄
+    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 0.8f, 0.85f);   // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄；出手快 20%、每下傷害 85%
 
     static Stats StatsFor(Melee m) => m == Melee.Knife ? KnifeStats : m == Melee.Spear ? SpearStats : GreatswordStats;
 
@@ -243,11 +243,13 @@ public class PlayerLoadout : MonoBehaviour
         float k = Mathf.Clamp01(damage / 30f);
         ThirdPersonCamera.ShakeMain(0.05f + 0.07f * k, 0.12f);
         // 頓幀：一下打中好幾個也只頓一次；別的東西正在改時間（暫停、慢動作）就不頓
+        // 刀、長槍砍中敵人（target 不是 null；箭是 null）：刀停在砍中的地方久一點（0.09 ~ 0.14 秒），接著一小段加速，像把刀從肉裡快速抽出來
+        bool melee = target != null && !(Current == WeaponLoadout.BowKnife && Arrows > 0 && combat.IsAimingBow);
         if (Time.unscaledTime >= hitStopUntil && Time.timeScale >= 0.99f)
         {
-            float stop = 0.04f + 0.03f * k;
-            hitStopUntil = Time.unscaledTime + stop + 0.05f;
-            StartCoroutine(HitStop(stop));
+            float stop = melee ? 0.09f + 0.05f * k : 0.04f + 0.03f * k;
+            hitStopUntil = Time.unscaledTime + stop + (melee ? 0.15f : 0.05f);
+            StartCoroutine(HitStop(stop, melee));
         }
         var pad = Gamepad.current;
         if (pad != null && InputBindings.PadEnabled)
@@ -259,11 +261,18 @@ public class PlayerLoadout : MonoBehaviour
 
     const float HitStopScale = 0.05f;
 
-    System.Collections.IEnumerator HitStop(float seconds)
+    const float PullOutScale = 1.7f, PullOutTime = 0.07f;
+
+    System.Collections.IEnumerator HitStop(float seconds, bool pullOut = false)
     {
         Time.timeScale = HitStopScale;
         yield return new WaitForSecondsRealtime(seconds);
-        if (Mathf.Approximately(Time.timeScale, HitStopScale)) Time.timeScale = 1f;
+        if (!Mathf.Approximately(Time.timeScale, HitStopScale)) yield break; // 別的東西改了時間（暫停、技能慢動作）：交給它
+        if (!pullOut) { Time.timeScale = 1f; yield break; }
+        // 抽刀：一小段時間走得比平常快（刀從砍中的地方快速抽出來），再回到正常
+        Time.timeScale = PullOutScale;
+        yield return new WaitForSecondsRealtime(PullOutTime);
+        if (Mathf.Approximately(Time.timeScale, PullOutScale)) Time.timeScale = 1f;
     }
 
     PlayerShieldBowAnimator shieldBow;
@@ -343,6 +352,7 @@ public class PlayerLoadout : MonoBehaviour
         combat.hitRadius = baseRadius * s.radius;
         combat.weaponDamageScale = s.damage;
         combat.arrowDamage = Current == WeaponLoadout.BowKnife ? ArrowDamage : 0f;
+        combat.hideBowHint = !boatLevel; // 「只有射中船上的弓箭手才有效」是船戰的說明，這裡的弓不用
         ApplyTiming();
 
         if (!boatLevel)
@@ -509,8 +519,21 @@ public class PlayerLoadout : MonoBehaviour
     /// </summary>
     public static void Holster(Object owner) => holsterOwners.Add(owner);
 
+    /// <summary>instant = 不做收武器的手勢，這一幀就收好（拉索：手要馬上丟出鉤爪）</summary>
+    public static void Holster(Object owner, bool instant)
+    {
+        holsterOwners.Add(owner);
+        if (instant) instantHolsterOwners.Add(owner);
+    }
+
     /// <summary>劇情動作做完：再把武器拿出來（手從腰間 / 背後拔出來，原本拿在手上的才拿）</summary>
-    public static void Unholster(Object owner) => holsterOwners.Remove(owner);
+    public static void Unholster(Object owner)
+    {
+        holsterOwners.Remove(owner);
+        instantHolsterOwners.Remove(owner);
+    }
+
+    static readonly HashSet<Object> instantHolsterOwners = new HashSet<Object>();
 
     /// <summary>武器收好了（測試用、等收好再做動作用）</summary>
     public static bool WeaponsAway { get; private set; }
@@ -525,7 +548,9 @@ public class PlayerLoadout : MonoBehaviour
     void UpdateHolster(Melee melee)
     {
         holsterOwners.RemoveWhere(o => o == null);
+        instantHolsterOwners.RemoveWhere(o => o == null || !holsterOwners.Contains(o));
         bool want = holsterOwners.Count > 0;
+        bool instant = instantHolsterOwners.Count > 0;
         float dt = Time.deltaTime;
         switch (holster)
         {
@@ -535,9 +560,10 @@ public class PlayerLoadout : MonoBehaviour
                 hadBow = tripoBow != null && tripoBow.activeSelf;
                 holster = HolsterPhase.Sheathing;
                 holsterT = 0f;
-                if (!hadRight && !hadBow) { holster = HolsterPhase.Away; WeaponsAway = true; }
+                if (instant || !hadRight && !hadBow) { HideWeapons(true); holster = HolsterPhase.Away; WeaponsAway = true; }
                 break;
             case HolsterPhase.Sheathing:
+                if (instant) { HideWeapons(true); holster = HolsterPhase.Away; WeaponsAway = true; break; }
                 holsterT += dt / SheatheTime;
                 if (holsterT >= HideAt) HideWeapons(true);
                 if (holsterT >= 1f) { holster = HolsterPhase.Away; WeaponsAway = true; }
@@ -552,6 +578,7 @@ public class PlayerLoadout : MonoBehaviour
                 }
                 break;
             case HolsterPhase.Drawing:
+                if (want && instant) { HideWeapons(true); holster = HolsterPhase.Away; WeaponsAway = true; break; }
                 if (want) { holster = HolsterPhase.Sheathing; holsterT = 1f - holsterT; break; }
                 bool before = holsterT < RevealAt;
                 holsterT += dt / DrawTime;

@@ -665,6 +665,9 @@ public class PlayerCombat : MeleeCombat
         if (valid) OnDealtHit?.Invoke(arrowDamage, null);
     }
 
+    /// <summary>不顯示畫面下方船戰用的射箭說明（日式村莊的弓由 PlayerLoadout 打開這個）</summary>
+    [System.NonSerialized] public bool hideBowHint;
+
     void OnGUI()
     {
         if (health != null && health.IsDead) return;
@@ -695,9 +698,12 @@ public class PlayerCombat : MeleeCombat
             GUI.Label(new Rect(cx - 30f, cy - 30f, 60f, 60f), "✕", style);
         }
 
-        var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
-        GUI.color = new Color(1f, 1f, 1f, 0.75f);
-        GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        if (!hideBowHint)
+        {
+            var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
+            GUI.color = new Color(1f, 1f, 1f, 0.75f);
+            GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        }
         GUI.color = Color.white;
     }
 

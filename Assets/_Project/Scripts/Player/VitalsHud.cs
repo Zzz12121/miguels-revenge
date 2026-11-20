@@ -8,6 +8,8 @@ using UnityEngine;
 ///     少一條命那顆血滴破掉、濺出小血點，變成空的殼
 ///   - 血量像液體：數值用彈簧追（會晃一下再停）、液面的邊緣是波浪，扣血時波浪變大、濺出幾滴血，
 ///     失去的那段先留著暗紅色、慢慢流掉；補血時液面湧上來、冒小氣泡；裡面有緩緩流動的光澤
+///   - 茶屋甜點：護盾（SweetShield）是血條上一層淡金色的釉，從左邊算起、長度 = 護盾 / 最大生命，擋下傷害時閃一下；
+///     額外精力（PlayerStamina.Bonus01）是精力條右邊多出來的一截金色的霧，用掉就縮回去
 ///   - 精力像氣體：半透明的霧，濃淡隨時間飄移、尾端是散開的煙；用掉的那段化成一團團煙往上飄散，
 ///     平常液面上也會偶爾冒出細細的煙；精力不夠時外框閃紅、精力低時顏色偏橘並微微閃爍
 /// 用 GL 在 OnGUI 的 Repaint 畫多邊形（斜角、波浪、圓點、血滴），不畫文字。
@@ -267,8 +269,9 @@ public class VitalsHud : MonoBehaviour
     {
         GL.Begin(GL.TRIANGLES);
         DrawHealth(t);
+        DrawShield(t);
         DrawLives(t);
-        if (showStamina) DrawStamina(t);
+        if (showStamina) { DrawStamina(t); DrawBonusStamina(t); }
         DrawParticles(showStamina);
         GL.End();
     }
@@ -355,6 +358,53 @@ public class VitalsHud : MonoBehaviour
         if (low) c *= 0.85f + 0.15f * Mathf.Sin(t * 6f); // 血少時一明一暗（心跳）
         c.a = 1f;
         return c;
+    }
+
+    // ---- 茶屋甜點：護盾、額外精力 ----
+
+    static readonly Color ShieldGold = new Color(1f, 0.84f, 0.48f);
+
+    /// <summary>護盾：血條上一層淡金色（左邊起，長度 = 護盾 / 最大生命），上緣一條亮線、光澤往右流；擋下傷害時亮一下</summary>
+    void DrawShield(float t)
+    {
+        if (health == null || SweetShield.Amount <= 0f) return;
+        float len = Mathf.Clamp01(SweetShield.Amount / Mathf.Max(1f, health.maxHealth));
+        float flash = 1f - Mathf.Clamp01((Time.unscaledTime - SweetShield.LastHitTime) / 0.4f);
+        int cols = Mathf.Max(2, Mathf.CeilToInt(HpW * len / 6f));
+        for (int c = 0; c < cols; c++)
+        {
+            float a = len * c / cols, b = len * (c + 1) / cols;
+            float sheen = Mathf.Pow(Mathf.Sin((a * HpW) * 0.05f - t * 2.4f) * 0.5f + 0.5f, 4f);
+            Color col = new Color(ShieldGold.r, ShieldGold.g, ShieldGold.b, 0.32f + 0.18f * sheen + 0.4f * flash);
+            ParaPart(HpX, HpY, HpW, HpH, HpSlant, a, b, col);
+        }
+        float ts = HpSlant * 2f / HpH; // 上緣 2 px 的亮線（斜率跟血條一樣）
+        ParaPart(HpX + HpSlant - ts, HpY, HpW, 2f, ts, 0f, len, new Color(1f, 0.95f, 0.8f, 0.7f + 0.3f * flash));
+        // 右端一條亮邊
+        ParaPart(HpX, HpY, HpW, HpH, HpSlant, Mathf.Max(0f, len - 1.5f / HpW), len, new Color(1f, 0.93f, 0.7f, 0.85f));
+    }
+
+    /// <summary>額外精力：精力條右邊多出來的一截（外框 + 金色的霧）</summary>
+    void DrawBonusStamina(float t)
+    {
+        float bonus = stamina != null ? stamina.Bonus01 : 0f;
+        if (bonus <= 0.002f) return;
+        float x = StX + StW + 3f, w = StW * bonus;
+        Para(x, StY, w, StH, StSlant, 2.5f, Frame);
+        Para(x, StY, w, StH, StSlant, 1.2f, FrameInner);
+        int cols = Mathf.Max(2, Mathf.CeilToInt(w / 6f));
+        for (int c = 0; c < cols; c++)
+        {
+            float a = (float)c / cols, b = (float)(c + 1) / cols;
+            float n = Mathf.PerlinNoise((x + w * a) * 0.05f - t * 0.7f, t * 0.4f);
+            ParaPart(x, StY, w, StH, StSlant, a, b, new Color(ShieldGold.r, ShieldGold.g, ShieldGold.b, 0.55f + 0.35f * n));
+        }
+    }
+
+    /// <summary>斜角平行四邊形的其中一段（a ~ b，0~1，沿著長邊）</summary>
+    static void ParaPart(float x, float y, float w, float h, float slant, float a, float b, Color c)
+    {
+        Quad(new Vector2(x + slant + w * a, y), new Vector2(x + slant + w * b, y), new Vector2(x + w * b, y + h), new Vector2(x + w * a, y + h), c);
     }
 
     // ---- 命（血滴） ----

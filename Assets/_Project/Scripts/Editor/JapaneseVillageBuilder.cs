@@ -2962,6 +2962,8 @@ public static class JapaneseVillageBuilder
         mat.EnableKeyword("_METALLICSPECGLOSSMAP");
         mat.SetFloat("_SmoothnessTextureChannel", 0f);
         mat.SetFloat("_Smoothness", 0.8f);
+        // 老漁夫的模型（斗笠、衣服下襬）有些面是單面 / 反的，從上面看會破洞：兩面都畫
+        if (name == "Fisherman") { mat.SetFloat("_Cull", 0f); mat.doubleSidedGI = true; }
         EditorUtility.SetDirty(mat);
         return mat;
     }
