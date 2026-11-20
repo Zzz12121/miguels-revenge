@@ -985,9 +985,54 @@ public class PlayerLoadout : MonoBehaviour
             }
         }
         // JV_Bow：弓身沿 +Y、弓背朝 +Z（瞄準時弓背朝箭飛的方向，抬頭低頭時弓跟著仰俯）
-        Quaternion carry = Quaternion.LookRotation(-side, (up * 0.85f + fwd * 0.45f).normalized);
+        // 沒瞄準：弓背朝前（稍微往外偏 bowCarryOutward 度），弓弦在後面靠近身體那側；弓身往前倒 bowCarryTilt 度
+        Vector3 carryBack = Quaternion.AngleAxis(-bowCarryOutward, up) * fwd;
+        Vector3 carryUp = Quaternion.AngleAxis(bowCarryTilt, Vector3.Cross(up, carryBack)) * up;
+        Quaternion carry = Quaternion.LookRotation(carryBack, carryUp);
         Quaternion draw = Quaternion.LookRotation(bowFace, (up + side * 0.14f).normalized);
-        tripoBow.transform.SetPositionAndRotation(leftHand.position + fwd * 0.04f * aimBlend, Quaternion.Slerp(carry, draw, aimBlend));
+        // 左手掌心握在弓的握把（弓身中段）上：JV_Bow 的原點在弓弦那條線上，直接放在手上看起來像握著弦
+        if (lMiddleFinger == null && animator != null && animator.isHuman) lMiddleFinger = animator.GetBoneTransform(HumanBodyBones.LeftMiddleProximal);
+        Vector3 palm = Palm(leftHand, lMiddleFinger) + fwd * 0.04f * aimBlend;
+        tripoBow.transform.rotation = Quaternion.Slerp(carry, draw, aimBlend);
+        tripoBow.transform.position = palm - tripoBow.transform.TransformVector(bowGripLocal);
+    }
+
+    Transform lMiddleFinger;
+    [Header("拿弓的角度（沒瞄準時）")]
+    [Tooltip("弓背從正前方往左外側偏幾度（0 = 弓背正對前方，弓弦正對後方）")]
+    [Range(-60f, 90f)] public float bowCarryOutward = 20f;
+    [Tooltip("弓身往前倒幾度（0 = 直立）")]
+    [Range(-30f, 60f)] public float bowCarryTilt = 15f;
+    /// <summary>JV_Bow 握把（弓身中段）在弓自己座標裡的位置（BuildTripoBow 從網格算出來）</summary>
+    Vector3 bowGripLocal;
+
+    /// <summary>
+    /// 握把的位置：弓身中段（上下各 6% 以內）、離弓弦那條線（z = 0）有一段距離的頂點平均 = 握把的中心。
+    /// 網格讀不到時，用包圍盒估：弓背最外側往弓弦方向 30%。
+    /// </summary>
+    static Vector3 FindBowGrip(GameObject bow)
+    {
+        Vector3 sum = Vector3.zero; int n = 0;
+        float half = BowPrefabLength * 0.06f;
+        foreach (var mf in bow.GetComponentsInChildren<MeshFilter>(true))
+        {
+            var mesh = mf.sharedMesh;
+            if (mesh == null || !mesh.isReadable) continue;
+            foreach (var v in mesh.vertices)
+            {
+                Vector3 q = bow.transform.InverseTransformPoint(mf.transform.TransformPoint(v));
+                if (Mathf.Abs(q.y) > half || q.z < 0.015f) continue;   // 只要中段、而且不是弓弦
+                sum += q; n++;
+            }
+        }
+        if (n > 0) return new Vector3(0f, sum.y / n, sum.z / n);
+        float maxZ = 0f;
+        foreach (var r in bow.GetComponentsInChildren<Renderer>(true))
+        {
+            var b = r.bounds;
+            maxZ = Mathf.Max(maxZ, bow.transform.InverseTransformPoint(b.center + bow.transform.forward * b.extents.magnitude).z);
+        }
+        return new Vector3(0f, 0f, maxZ * 0.7f);
     }
 
     void BuildTripoBow(Transform mount, SkinnedMeshRenderer erika)
@@ -1023,6 +1068,7 @@ public class PlayerLoadout : MonoBehaviour
         tripoBow.transform.localRotation = Quaternion.AngleAxis(twist, axis) * toAxis;
         tripoBow.transform.localPosition = c;
         tripoBow.transform.localScale = Vector3.one * (length / BowPrefabLength);
+        bowGripLocal = FindBowGrip(tripoBow);
     }
 
     /// <summary>JV_Bow 的弓身長度（公尺，Builder 做 Prefab 時縮放成這個長度）</summary>

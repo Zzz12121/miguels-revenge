@@ -1,24 +1,26 @@
 using UnityEngine;
 
 /// <summary>
-/// 玩家在船上射出的箭：
+/// 玩家射出的箭（陸地、船上都用這個）：
 ///   - 直線飛、帶一點點重力，箭頭跟著飛行方向
-///   - 射中敵艦的船員（BoatCrewMember）→ 有效，船員受傷 / 倒下
+///   - 射中一般目標（IDamageable：敵人、弓箭手、Boss、木樁人偶）→ 造成 damage 的傷害
+///   - 射中其他東西就插在上面（ArrowRecovery 撿回來）
+/// 船戰（場景裡有 VikingBoat）的額外規則：
+///   - 射中敵艦的船員（BoatCrewMember）→ 船員受傷 / 倒下；同一段路徑同時碰到船身和船員時算船員
 ///   - 射中敵艦船身 → 無效（插在船上，跳出「無效」）
-///   - 射中其他東西就插在上面；掉進海裡濺起水花
-///   - damage > 0（鐵匠鋪換成弓的時候）：射中一般目標（IDamageable，例如敵人、木樁人偶）也會造成傷害
-/// 船員優先：同一段飛行路徑上同時碰到船身和船員（船員站在船舷後面）時，算射中船員。
+///   - 低於海面（waterLevel）→ 掉進海裡濺起水花。陸地上 PlayerCombat 會把 waterLevel 設成負無限大（不做這個判定）
 /// </summary>
 public class PlayerArrow : MonoBehaviour
 {
     public Vector3 velocity;
     public float gravity = 4f;
     public float lifeTime = 4f;
+    [Tooltip("海面高度：箭低於這個高度就當成落海消失（只有船戰用；陸地上由 PlayerCombat 關掉）")]
     public float waterLevel = 1.3f;
     [HideInInspector] public Transform owner;      // 射箭的玩家（不會射到自己）
     [HideInInspector] public Transform ownerBoat;  // 玩家搭的船
     [HideInInspector] public PlayerCombat shooter; // 射中時通知準心顯示命中
-    [HideInInspector] public float damage;         // 射中一般目標（IDamageable）的傷害；0 = 只有船員算
+    [HideInInspector] public float damage;         // 射中一般目標（IDamageable）的傷害
 
     float spawnTime;
     bool stuck;
@@ -82,6 +84,7 @@ public class PlayerArrow : MonoBehaviour
             Transform t = h.collider.transform;
             if (owner != null && t.IsChildOf(owner)) continue;
             if (ownerBoat != null && t.IsChildOf(ownerBoat)) continue;
+            if (ArrowPassThrough.On(h.collider)) continue;   // 吊橋的隱形扶手：箭穿過去
 
             var c = h.collider.GetComponentInParent<BoatCrewMember>();
             if (c != null && !c.IsDead)

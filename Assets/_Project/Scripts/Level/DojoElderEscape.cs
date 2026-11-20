@@ -29,10 +29,15 @@ public sealed class DojoElderEscape : MonoBehaviour
     void OnEnable(){health.OnDamaged+=OnDamaged;}
     void OnDamaged(float amount)
     {
+        // 鎖血：開打之後（含逃走演出開始、在等玩家技能放完的這段）血量都不會低於一半。
+        // 虛空連斬這類技能打到半血之後還有好幾十刀和爆炸，原本開始等待之後就不再擋，會一路打穿 50%
+        // 只看 encounter.Running 不夠：老頭還沒變身（一般型態的 Brain 在打）時 Running 是 false，會被一路打死。
+        // 改成只要 Boss 戰開打（FightActive）就鎖；關掉「半血逃走」（escapeAtHalfHealth）的版本才可以打到 50% 以下。
+        bool fighting=Started||(encounter&&encounter.Running)||(boss&&boss.FightActive);
+        bool locks=!encounter||encounter.escapeAtHalfHealth;
+        if(locks && fighting && health.Health<health.maxHealth*.5f)health.SetHealth(health.maxHealth*.5f);
         if(Started || !encounter || !encounter.Running || health.Health>health.maxHealth*.5f)return;
         Started=true;
-        // The story transition also catches a single attack which crosses the threshold by a large amount.
-        if(health.Health<health.maxHealth*.5f)health.SetHealth(health.maxHealth*.5f);
         StartCoroutine(EscapeWhenPlayerSkillEnds());
     }
     // 半血那一下常常是玩家的電影式技能（例如虛空裂斬）打出來的：技能還在接管角色與鏡頭時就開演，

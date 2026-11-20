@@ -183,6 +183,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         StopAllCoroutines();
         if (IsTargeting) CancelTargeting();
         if (charging) CancelCharge();
+        VoidRendAimHighlight.Clear();
         if(playing) Time.fixedDeltaTime = fixedDeltaStart;
         RestorePose();
         RestoreCamera();
@@ -538,7 +539,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     void FaceTarget()
     {
-        Vector3 flat = target.position - caster.position;
+        Vector3 flat = VictimBody(target).position - caster.position;
         flat.y = 0f;
         if (flat.sqrMagnitude > 0.01f) caster.rotation = Quaternion.LookRotation(flat.normalized, Vector3.up);
     }
@@ -577,6 +578,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         fovKick = 0f;
         hasQueuedCameraPose = false;
         cameraHandoffWeight = 0f;
+        RestoreSkillOccluders(true);   // 技能鏡頭隱藏的樹 / 石頭還原
         if (cinematicCameraDriver != null) cinematicCameraDriver.Release(this);
     }
 

@@ -168,6 +168,33 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
         yield return Cast(6);
         RestoreEntrance();EntranceComplete=true;
         yield return new WaitForSeconds(betweenAttacks);
+        yield return Cycle(next);
+    }
+    // 玩家的電影式技能（虛空裂斬）把老頭挑到空中時：出招 / 瞬移 / 走路的流程先停下，
+    // 不然瞬移會把書法分身直接放回地面。技能放完再從一般循環接回來（不重播進場跳砸）。
+    int heldDepth;
+    public bool HeldBySkill=>heldDepth>0;
+    public void HoldForPlayerSkill(bool held)
+    {
+        if(held)
+        {
+            if(heldDepth++>0)return;
+            if(loop!=null){StopCoroutine(loop);loop=null;}
+            RestoreEntrance();RestoreMaterials();
+            if(Form&&Form.gameObject.activeInHierarchy)foreach(var c in formColliders)if(c)c.enabled=true;
+            return;
+        }
+        if(heldDepth==0||--heldDepth>0)return;
+        if(Running&&Form&&loop==null)loop=StartCoroutine(ResumeAfterSkill());
+    }
+    IEnumerator ResumeAfterSkill()
+    {
+        EntranceComplete=true;
+        yield return new WaitForSeconds(betweenAttacks);
+        yield return Cycle(2);
+    }
+    IEnumerator Cycle(int next)
+    {
         while(Alive)
         {
             if(!escapeAtHalfHealth&&!UltimateTriggered&&health.Health<=health.maxHealth*ultimateHealthThreshold)

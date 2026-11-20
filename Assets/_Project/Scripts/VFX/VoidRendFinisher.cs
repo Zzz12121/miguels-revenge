@@ -29,6 +29,15 @@ public sealed partial class VoidRendSkillDemo
     [Range(25f, 75f)] public float spinOrbitFov = 50f;
     [Tooltip("轉刀進行到幾成之後開始拉回原本的遠景（接下一段出拳的鏡頭）")]
     [Range(.3f, 1f)] public float spinOrbitPullOutFrom = .75f;
+    [Header("Skill 1 / 挑空（衝到敵人身邊 → 上撈拔刀斬把敵人挑到空中 → 慢動作）")]
+    [Tooltip("刀撈上來碰到敵人之後，敵人多快飛到 60% 高度（秒）")]
+    [Range(.08f, .6f)] public float launchRiseSeconds = .22f;
+    [Tooltip("慢動作：敵人四肢無力在空中翻滾的時間（真實秒數）")]
+    [Range(.3f, 3f)] public float airSlowSeconds = 1.3f;
+    [Tooltip("慢動作的時間倍率（0.25 = 四分之一速度）")]
+    [Range(.05f, 1f)] public float airSlowTimeScale = .25f;
+    [Tooltip("敵人在空中翻滾的總角度（度）")]
+    public float airTumbleDegrees = 160f;
     [Header("Skill 1 / 收招鏡頭（砍完 → 推近主角 → 後面爆炸 → 平順回到玩家鏡頭）")]
     [Tooltip("砍完之後停在離目標中心多遠（公尺）：遠一點比較看得清楚角色，鏡頭也不容易被怪物擋住")]
     [Min(1f)] public float finisherLandingDistance = 4.5f;
@@ -64,6 +73,7 @@ public sealed partial class VoidRendSkillDemo
     Vector3 victimHome, victimHeld, arenaCenter, cameraFocus;
     Vector3 victimLanding, previewVictimStart;
     bool completedLanding;
+    float tumbleAtFall;
     Quaternion victimRotation;
     float cameraYaw = 160, cameraRadius = 8, cameraHeight = 2.2f, cinematicFov = 48, cameraRoll;
     // 鏡頭對準 cameraFocus 之後再往左 / 往上轉幾度（讓對準的東西落在畫面的某個角落，不是正中間）
@@ -165,8 +175,9 @@ public sealed partial class VoidRendSkillDemo
 
     void LockVictim()
     {
-        victimHome = target.position;
-        victimRotation = target.rotation;
+        Transform body = VictimBody(target);   // 老頭變身後是書法分身，不是留在原地的根物件
+        victimHome = body.position;
+        victimRotation = body.rotation;
         victimHeld = victimHome;
         HoldVictim(target);
         targetLocked = true;
@@ -212,14 +223,15 @@ public sealed partial class VoidRendSkillDemo
     float VictimRadius()
     {
         if (target == null) return .5f;
-        bool has = false; var b = new Bounds(target.position, Vector3.zero);
-        foreach (var c in target.GetComponentsInChildren<Collider>())
+        Transform body = VictimBody(target);
+        bool has = false; var b = new Bounds(body.position, Vector3.zero);
+        foreach (var c in body.GetComponentsInChildren<Collider>())
         {
             if (!c.enabled || c.isTrigger) continue;
             if (!has) { b = c.bounds; has = true; } else b.Encapsulate(c.bounds);
         }
         if (!has)
-            foreach (var r in target.GetComponentsInChildren<Renderer>())
+            foreach (var r in body.GetComponentsInChildren<Renderer>())
             {
                 if (r is ParticleSystemRenderer || r is LineRenderer || r is TrailRenderer) continue;
                 if (!has) { b = r.bounds; has = true; } else b.Encapsulate(r.bounds);
@@ -264,6 +276,7 @@ public sealed partial class VoidRendSkillDemo
         cinematicCamera = true;
         voidRendCinematicActive = true;
         AcquireCinematicCamera();
+        ResetSkillCameraSafety();
         arenaCenter = new Vector3(victimHome.x, casterStartPosition.y, victimHome.z);
         cameraFocus = arenaCenter + Vector3.up * 1.5f;
         cameraYaw = 155; cameraRadius = 8; cameraHeight = 2.2f; cinematicFov = 48;
@@ -277,11 +290,23 @@ public sealed partial class VoidRendSkillDemo
         // 衝刺停在目標身前，不衝進目標的身體裡（舊版直接停在目標中心，蓄力時會和老頭等大型目標穿模）。
         // 空中連斬仍以目標為中心（arenaCenter），只有地面上的衝刺 / 擊飛 / 蓄力站在 groundStop。
         Vector3 toVictim = Vector3.ProjectOnPlane(arenaCenter - approachStart, Vector3.up);
-        float standOff = VictimRadius() + CasterRadius() + .35f;
+        // 衝到敵人腳邊就停（不衝過頭）：敵人身體邊緣 + 自己的半徑 + 一點點空隙
+        float standOff = VictimRadius() * .8f + CasterRadius() + approachStopGap;
         Vector3 groundStop = toVictim.magnitude > standOff
             ? arenaCenter - toVictim.normalized * standOff
             : approachStart;
         groundStop.y = arenaCenter.y;
+        // 不穿模：衝刺路上有牆 / 建築就停在它前面；停下的地方貼齊地面（敵人站在不同高度時不會浮空或陷進地裡）
+        {
+            Vector3 dash = groundStop - approachStart; float len = Vector3.ProjectOnPlane(dash, Vector3.up).magnitude;
+            if (len > .1f && SkillPathBlocked(approachStart, groundStop))
+            {
+                float lo = 0f, hi = 1f;
+                for (int k = 0; k < 8; k++) { float mid = (lo + hi) * .5f; if (SkillPathBlocked(approachStart, Vector3.Lerp(approachStart, groundStop, mid))) hi = mid; else lo = mid; }
+                groundStop = Vector3.Lerp(approachStart, groundStop, lo);
+            }
+            if (SkillGroundBelow(groundStop, 1.5f, out Vector3 stopGround) && Mathf.Abs(RootOnGround(stopGround).y - groundStop.y) < 2.5f) groundStop.y = RootOnGround(stopGround).y;
+        }
         Vector3 approachDirection = Vector3.ProjectOnPlane(groundStop - approachStart, Vector3.up);
         float approachDistance = approachDirection.magnitude;
         // 起手面向目標（就算已經站得夠近、不需要衝刺）
@@ -332,70 +357,71 @@ public sealed partial class VoidRendSkillDemo
         cameraYaw = spinYawStart; cameraRadius = spinCloseUpDistance; cameraHeight = -.12f; cameraRoll = 0f;
         cameraFocus = caster.position + Vector3.up * spinCloseUpFocusHeight;
         cinematicFov = spinCloseUpFov;
-        // Draw immediately on arrival: no extra unrelated overhead windup.
+        // ── 中段：上撈的拔刀斬把敵人挑到空中 → 慢動作：敵人四肢無力、在空中翻滾 ──
+        // Launch 姿勢（ApplyDrawDashPose）：刀從左腰後方一路往前上方撈到頭頂，0.11 秒左右經過正前方 = 碰到敵人
         SetStage("Launch");
+        Vector3 launchSide = Vector3.Cross(Vector3.up, openForward);
+        victimTumbleAxis = launchSide.sqrMagnitude > .01f ? launchSide.normalized : Vector3.right;   // 往後翻
+        victimTumbleDegrees = 0f;
+        yield return Wait(.11f);
         LaunchNearbyVictims();
-        victimHeld = victimHome + Vector3.up * .08f;
-        UpdateLiftedVictims();
-        SpawnArc(victimHome, Quaternion.Euler(0, 0, 80), 3.2f, -100, 100, .18f, .55f, pale);
-        PunchCamera(.78f, 7); Flash(cyan, .18f);
-        for (float t = 0; t < .35f; t += Time.unscaledDeltaTime)
+        BeginVictimLimp(1f);
+        Vector3 launchHit = victimHome + Vector3.up * 1.1f;
+        SpawnArc(victimHome + Vector3.up * .9f, Quaternion.LookRotation(openForward, Vector3.up) * Quaternion.Euler(0f, 0f, 90f), 2.4f, -100f, 100f, .16f, .5f, pale);
+        SpawnSlashPair(launchHit, (openForward + Vector3.up * 1.6f).normalized, 4.5f, .09f, .4f, pale);
+        SpawnParticles(launchHit, 40, .8f, 9f, .02f, .07f, cyan);
+        SpawnRing(victimHome + Vector3.up * .06f, .2f, 2.2f, .07f, .45f, pale);
+        PunchCamera(.7f, 6); Flash(cyan, .16f);
+        KickVictimLimbs(Vector3.up, 8f);
+
+        // 快速飛起：launchRiseSeconds 秒到 60% 高度；鏡頭從特寫轉到角色後方的低角度（往上拍敵人）
+        float riseHeight = launchHeight * .6f;
+        float slowYaw = heroYaw + 180f - 30f;
+        float camYaw0 = cameraYaw, camR0 = cameraRadius, camH0 = cameraHeight, camFov0 = cinematicFov;
+        Vector3 camFocus0 = cameraFocus;
+        for (float t = 0; t < launchRiseSeconds; t += Time.unscaledDeltaTime)
         {
-            float u = Mathf.Clamp01(t / .35f);
-            victimHeld = victimHome + Vector3.up * Mathf.Lerp(.08f, launchHeight, 1 - Mathf.Pow(1-u, 3));
+            float u = Mathf.Clamp01(t / launchRiseSeconds);
+            victimHeld = victimHome + Vector3.up * Mathf.Lerp(.08f, riseHeight, 1f - Mathf.Pow(1f - u, 3f));
+            victimTumbleDegrees = Mathf.Lerp(0f, 35f, u);
+            float cu = Mathf.SmoothStep(0f, 1f, u);
+            cameraYaw = Mathf.LerpAngle(camYaw0, slowYaw, cu); cameraRadius = Mathf.Lerp(camR0, 4.2f, cu);
+            cameraHeight = Mathf.Lerp(camH0, -.5f, cu); cinematicFov = Mathf.Lerp(camFov0, 48f, cu);
+            cameraFocus = Vector3.Lerp(camFocus0, Vector3.Lerp(caster.position + Vector3.up * 1.3f, victimHeld + Vector3.up, .6f), cu);
             yield return null;
         }
-        victimHeld = victimHome + Vector3.up * launchHeight;
-        caster.position = groundStop;
-        chargeSmoke = CreateSmoke(caster.position, true, 3.5f, .38f);
-        chargeSmoke.transform.SetParent(caster, true);
-        SetStage("AerialRotor");
-        float nextParticle = 0;
-        for (float t = 0; t < chargeOrbitSeconds; t += Time.unscaledDeltaTime)
+
+        DiagnoseLift();
+        // 慢動作：整個世界變慢，敵人慢慢升到最高點、翻滾、四肢無力甩動；鏡頭慢慢繞一點
+        Time.timeScale = airSlowTimeScale;
+        Time.fixedDeltaTime = fixedDeltaStart * airSlowTimeScale;
+        SetVictimLimpSlow(airSlowTimeScale);
+        float nextAirSpark = 0f;
+        for (float t = 0; t < airSlowSeconds; t += Time.unscaledDeltaTime)
         {
-            float u = t / chargeOrbitSeconds;
-            charge = u;
-            // 轉刀期間角色固定站穩，只有手臂與武器在頭頂旋轉。
-            caster.position = groundStop;
-            FaceCurrentTarget();
-            // 鏡頭 2：以刀（刀柄 = 旋轉中心）為中心，往跟刀旋轉相反的方向環繞；最後一段拉回原本的遠景接出拳
-            // 刀的角度是 AngleAxis(+spin, up)，跟鏡頭 yaw 同一個方向算法，所以 yaw 往下減 = 反方向
-            float orbitTravel = spinOrbitDegreesPerSecond * Mathf.Max(0f, t - .15f);     // 一開始 0.3 秒慢慢加速
-            if (t < .3f) orbitTravel = spinOrbitDegreesPerSecond * (t * t / .6f);           // 0.3 秒時兩段剛好接上（角度和速度都連續）
-            cameraYaw = spinYawStart - orbitTravel;
-            float pull = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(spinOrbitPullOutFrom, 1f, u));
-            Vector3 swordFocus = weapon != null ? weapon.position : caster.position + Vector3.up * spinCloseUpFocusHeight;
-            cameraFocus = Vector3.Lerp(swordFocus, caster.position + Vector3.up * 1.5f, pull);
-            cameraRadius = Mathf.Lerp(spinOrbitRadius, spinCameraEndRadius, pull);
-            cameraHeight = Mathf.Lerp(spinOrbitHeight, 2.45f, pull);
-            cinematicFov = Mathf.Lerp(spinOrbitFov, 52f, pull);
-            if (t >= nextParticle)
+            float u = Mathf.Clamp01(t / airSlowSeconds);
+            victimHeld = victimHome + Vector3.up * Mathf.Lerp(riseHeight, launchHeight, 1f - (1f - u) * (1f - u));
+            victimTumbleDegrees = Mathf.Lerp(35f, airTumbleDegrees, u);
+            cameraYaw = slowYaw + 25f * u; cameraRadius = Mathf.Lerp(4.2f, 5.4f, u);
+            cameraHeight = Mathf.Lerp(-.5f, .2f, u); cinematicFov = Mathf.Lerp(48f, 56f, u); cameraRoll = 0f;
+            cameraFocus = Vector3.Lerp(caster.position + Vector3.up * 1.3f, victimHeld + Vector3.up, .6f);
+            if (t >= nextAirSpark)
             {
-                nextParticle += .12f;
-                // 光點和光環跟著刀（刀柄就是旋轉中心），刀飛到前上方時特效也一起過去
-                Vector3 swordCenter = weapon != null ? weapon.position : caster.position + Vector3.up * 2.05f;
-                SpawnParticles(swordCenter, 6, .7f, .65f, .008f, .024f, cyan);
-                if (Mathf.FloorToInt(t / .38f) != Mathf.FloorToInt((t - .12f) / .38f))
-                    SpawnArc(swordCenter, Quaternion.Euler(90f, 0f, 0f), 1.2f, -150f, 150f, .055f, .42f, pale);
+                nextAirSpark = t + .12f;
+                SpawnParticles(victimHeld + Vector3.up + Random.insideUnitSphere * .4f, 3, .9f, .35f, .008f, .02f, cyan);
             }
-            SetDistortion(.035f * u);
+            SetDistortion(.12f * u);
             yield return null;
         }
-        caster.position = groundStop;
-        FaceCurrentTarget();
-        chargeSmoke.Stop(true, ParticleSystemStopBehavior.StopEmitting);
-        Destroy(chargeSmoke.gameObject, 4);
-        SetStage("Punch"); charge = 1;
-        if (!useLegacyProceduralPose) PlaySwordAnimation(1);
-        Vector3 fist = caster.position + Vector3.up*1.8f + caster.forward*.65f;
-        SpawnRing(fist, .2f, 4.7f * effectRangeMultiplier, .26f, .95f, pale);
-        SpawnParticles(fist, 160, 1.4f, 16, .02f, .12f, cyan);
-        CreateSmoke(fist, false, 2.5f, 1.4f);
-        Flash(pale, .68f); PunchCamera(.9f, 12); SetDistortion(.85f);
-        yield return Wait(.42f);
-        SetStage("DashLattice");
-        SetWindupInvulnerability(false);
+        Time.timeScale = priorTimeScale;
+        Time.fixedDeltaTime = fixedDeltaStart;
+        SetVictimLimpSlow(1f);
         Vector3 center = victimHeld;
+        Flash(pale, .3f); PunchCamera(.45f, 6); SetDistortion(.45f);
+        if (!useLegacyProceduralPose) PlaySwordAnimation(1);
+        SetWindupInvulnerability(false);
+        yield return Wait(.12f);
+        SetStage("DashLattice");
         cameraFocus = center - Vector3.up*1.2f;
         Vector3 last = caster.position;
         int cuts = 22;
@@ -403,8 +429,12 @@ public sealed partial class VoidRendSkillDemo
         {
             if (!useLegacyProceduralPose && i % 3 == 0) PlaySwordAnimation(i / 3);
             float angle = (i * 137.508f + 24) * Mathf.Deg2Rad;
-            float radius = teleportRadius * effectRangeMultiplier * (i%3 == 0 ? .8f : .57f);
-            Vector3 next = arenaCenter + new Vector3(Mathf.Cos(angle)*radius, 2 + (i%5)*1.05f, Mathf.Sin(angle)*radius);
+            float radius = Mathf.Min(teleportRadius * effectRangeMultiplier, latticeMaxRadius) * (i%3 == 0 ? 1f : .72f);
+            Vector3 desired = arenaCenter + new Vector3(Mathf.Cos(angle)*radius, 2 + (i%5)*1.05f, Mathf.Sin(angle)*radius);
+            // 不穿模：落點卡進牆 / 地形，或衝過去的路被擋，就往目標靠近、左右偏一點；都不行就原地
+            Vector3 next = SafeLatticePoint(last, desired, victimHeld);
+            KickVictimLimbs(next - last, 5f);
+            victimTumbleDegrees += 7f;
             CreateAfterimage(); poseSide = (i%2 == 0 ? 1 : -1);
             // Geometry is emitted from the exact swept character path, with a advancing head.
             const float dashDuration = .15f;
@@ -450,11 +480,19 @@ public sealed partial class VoidRendSkillDemo
         Vector3 recoveryFallStart = caster.position;
         Vector3 recoveryForward = Vector3.ProjectOnPlane(victimRotation * Vector3.forward, Vector3.up).normalized;
         if (recoveryForward.sqrMagnitude < .001f) recoveryForward = Vector3.forward;
-        // 落點：原本是「目標面向的前方 finisherLandingDistance 公尺」，但那裡可能是牆或房子（例如道場 Boss 戰）。
-        // 從那個方向開始左右找一個「有地板、站得下、跟目標之間沒有牆、上方有空間」的地方；空中停的高度也照天花板降低
-        bool holdInAir=HasSkillClipPoses && practiceController!=null;
-        Vector3 recoveryGround = FindSafeRecoveryPoint(victimHome, ref recoveryForward, finisherLandingDistance,
-            holdInAir ? finisherAirHoldHeight : 0f, out float safeHoldHeight);
+        // 收招的跪地（居合低伏）要在地面 / 屋頂上：不停在空中，直接落到找到的地面上
+        bool holdInAir=false;
+        // 收招位置：前方找一個站得下、下面有地面 / 屋頂、飛過去不會撞牆的地方（不穿模、之後不會落進地裡）
+        Vector3 recoveryGround, recoveryHold;
+        if (FindRecoverySpot(recoveryFallStart, recoveryForward, holdInAir ? finisherAirHoldHeight : 0f, out recoveryGround, out recoveryHold, out Vector3 safeFacing))
+            recoveryForward = safeFacing;
+        else
+        {
+            // 找不到：留在最後一刀的位置正下方的地面上空
+            // 找不到：落在最後一刀位置正下方的地面上（腳踩地面）
+            if (!SkillGroundBelow(recoveryFallStart, 1f, out recoveryGround)) recoveryGround = FeetOf(new Vector3(recoveryFallStart.x, casterStartPosition.y, recoveryFallStart.z));
+            recoveryHold = RootOnGround(recoveryGround);
+        }
         Quaternion recoveryRotation = Quaternion.LookRotation(recoveryForward, Vector3.up);
         Quaternion recoveryStartRotation = caster.rotation;
         float frontCameraYaw = Mathf.Atan2(recoveryForward.x, recoveryForward.z) * Mathf.Rad2Deg;
@@ -464,8 +502,6 @@ public sealed partial class VoidRendSkillDemo
         // 目標留在切割與爆炸中心，爆炸後才垂直落回原地。
         victimLanding=victimHome;
         // 砍完不落地：飛到目標前方的空中停住（馬步），等技能結束、鏡頭切回玩家後才往下掉
-        // 只有玩家控制器在的時候才停在空中（技能結束後要靠它的重力掉下來）
-        Vector3 recoveryHold=recoveryGround+Vector3.up*safeHoldHeight;
         // 收招鏡頭：先繞到角色正前方（偏一側，目標和爆炸在角色後面），然後一路慢慢推近到爆炸結束
         float shotYaw=frontCameraYaw+finisherCameraSideAngle;
         // 鏡頭先花 1.3 秒繞到角度（角色移到畫面右下角），角度對了才開始推近，推到最近之後停住
@@ -476,8 +512,9 @@ public sealed partial class VoidRendSkillDemo
         for(float t=0;t<2.4f;t+=Time.unscaledDeltaTime)
         {
             float travel=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/1.75f));
+            // 落到地面上跪地：最後貼在地面（不加上下晃動，不然會陷進地裡或浮起來）
             caster.position=Vector3.Lerp(recoveryFallStart,recoveryHold,travel)
-                +Vector3.up*(Mathf.Sin(t*2.6f)*.04f*travel);
+                +Vector3.up*(holdInAir?Mathf.Sin(t*2.6f)*.04f*travel:0f);
             caster.rotation=Quaternion.Slerp(recoveryStartRotation,recoveryRotation,travel);
             float swing=Mathf.SmoothStep(0,1,Mathf.Clamp01(t/1.3f));
             cameraYaw=Mathf.LerpAngle(yawStart,shotYaw,swing);
@@ -488,6 +525,7 @@ public sealed partial class VoidRendSkillDemo
             // 角色慢慢移到畫面右下角（鏡頭往左上轉，看到後面的爆炸）
             cameraFrameAngles=FrameAnglesFor(finisherCharacterScreenPos,cinematicFov)*swing;
             victimHeld=Vector3.Lerp(heldStart,victimLanding+Vector3.up*launchHeight,Mathf.SmoothStep(0,1,t/2.4f));
+            victimTumbleDegrees+=12f*Time.unscaledDeltaTime;
             SetDistortion(.18f + Mathf.Sin(t*7)*.08f);
             yield return null;
         }
@@ -517,6 +555,9 @@ public sealed partial class VoidRendSkillDemo
         {
             float u=t/.8f;
             victimHeld=Vector3.Lerp(victimLanding+Vector3.up*launchHeight,victimLanding,u*u);
+            // 掉回地面：翻滾慢慢轉正，落地時腳踩在原本的地面上（不會陷進地裡或浮在空中）
+            if(t==0f)tumbleAtFall=victimTumbleDegrees;
+            victimTumbleDegrees=Mathf.LerpAngle(tumbleAtFall,0f,Mathf.SmoothStep(0,1,u));
             cameraRadius=PushRadius(2.52f+t); cameraFocus=ShotFocus();
             SetDistortion((1-u)*.35f);
             yield return null;
@@ -559,7 +600,7 @@ public sealed partial class VoidRendSkillDemo
             if (!useLegacyProceduralPose)
             {
                 // 人還在空中：直接進下落動畫，交給玩家控制器往下掉，落地時跟跳躍一樣播 Land
-                bool inAir = HasSkillClipPoses && practiceController != null && casterAnimator.HasState(0, Animator.StringToHash("Fall"));
+                bool inAir = holdInAir && HasSkillClipPoses && practiceController != null && casterAnimator.HasState(0, Animator.StringToHash("Fall"));
                 if (inAir) { casterAnimator.Play("Fall", 0, 0f); BeginHandoffToAnimator(); }
                 else casterAnimator.CrossFadeInFixedTime("Idle", 0.16f, 0, 0f);
             }
@@ -580,11 +621,15 @@ public sealed partial class VoidRendSkillDemo
         cinematicCamera = true;
         if (fixedShot)
         {
+            HideSkillOccluders(fixedShotPosition);
             QueueCinematicCameraPose(fixedShotPosition + shake, fixedShotRotation * Quaternion.Euler(rotationShake), fixedShotFov - fovKick);
             return;
         }
         float a=cameraYaw*Mathf.Deg2Rad;
         Vector3 p=cameraFocus+new Vector3(Mathf.Sin(a)*cameraRadius,cameraHeight,Mathf.Cos(a)*cameraRadius);
+        // 不被建築擋：大東西擋住就拉近 / 往上抬，小東西直接隱藏
+        p=ResolveSkillCamera(cameraFocus,p);
+        HideSkillOccluders(p);
         Quaternion rotation=Quaternion.LookRotation(cameraFocus-p)*Quaternion.Euler(-cameraFrameAngles.y,-cameraFrameAngles.x,0f)
             *Quaternion.Euler(rotationShake+Vector3.forward*cameraRoll);
         QueueCinematicCameraPose(p+shake, rotation, cinematicFov-fovKick);
