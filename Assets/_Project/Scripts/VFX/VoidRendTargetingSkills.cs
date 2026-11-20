@@ -291,30 +291,13 @@ public sealed partial class VoidRendSkillDemo
         targetingReticle.enabled = false;
     }
 
+    /// <summary>瞄準提示：被對到的敵人整個身體變紅（可以攻擊）；技能 1 蓄滿時鮮紅閃爍、還在蓄力時淡紅。原本貼在身上的小圓圈不再顯示</summary>
     void UpdateTargetingReticle(TargetSelection selection)
     {
-        if (targetingReticle == null) CreateTargetingReticle();
-        if (targetingReticle == null) return;
-        targetingReticle.enabled = (IsTargeting || charging) && selection.IsValid;
-        if (!targetingReticle.enabled) return;
-        // 蓄力中：還沒蓄滿是淡橘色，蓄滿（可以出招）變紅
-        Color rc = charging && !chargeFull ? new Color(1f, .7f, .35f, .8f) : new Color(1f, .04f, .025f, .98f);
-        targetingReticle.startColor = rc; targetingReticle.endColor = rc;
-
-        Vector3 normal = selection.WorldNormal;
-        if (normal.sqrMagnitude < .001f) normal = skillCamera != null ? -skillCamera.transform.forward : Vector3.up;
-        normal.Normalize();
-        Vector3 tangent = Vector3.Cross(normal, Vector3.up);
-        if (tangent.sqrMagnitude < .001f) tangent = Vector3.Cross(normal, Vector3.right);
-        tangent.Normalize();
-        Vector3 bitangent = Vector3.Cross(normal, tangent).normalized;
-        Vector3 center = selection.WorldPoint + normal * .018f;
-        const float radius = .24f;
-        for (int i = 0; i < targetingReticle.positionCount; i++)
-        {
-            float angle = i / (float)targetingReticle.positionCount * Mathf.PI * 2f;
-            targetingReticle.SetPosition(i, center + (tangent * Mathf.Cos(angle) + bitangent * Mathf.Sin(angle)) * radius);
-        }
+        bool aiming = (IsTargeting || charging) && selection.IsValid;
+        if (aiming) VoidRendAimHighlight.Show(selection.marker.transform, !charging || chargeFull);
+        else VoidRendAimHighlight.Clear();
+        if (targetingReticle != null) targetingReticle.enabled = false;
     }
 
     void CancelTargeting()

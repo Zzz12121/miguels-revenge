@@ -97,6 +97,13 @@ public sealed class ArcherCoverPose : MonoBehaviour
         }
     }
 
+    /// <summary>馬上回到站姿（不慢慢過渡）：例如交出弓之後要直接轉身跑走</summary>
+    public void ResetImmediate()
+    {
+        crouch = surrender = 0f;
+        Weight = SurrenderWeight = 0f;
+    }
+
     /// <summary>a = 大腿、b = 小腿、c = 腳；把 c 放到 target，膝蓋往 bendDir 彎</summary>
     static void SolveLeg(Transform a, Transform b, Transform c, Vector3 target, Vector3 bendDir, Quaternion footRot)
     {
