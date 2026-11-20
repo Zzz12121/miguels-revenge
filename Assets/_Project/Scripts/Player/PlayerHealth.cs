@@ -117,6 +117,9 @@ public class PlayerHealth : MonoBehaviour
     /// <summary>造成傷害；回傳 true 代表這次真的有打到（不在無敵時間內）</summary>
     /// <param name="ignoreInvincibility">true = 持續傷害（例如光束），不受也不觸發受傷後的無敵時間</param>
     /// <param name="deathReason">這一下把玩家打死時，死亡畫面顯示的原因</param>
+    /// <summary>上一次「一般受擊」（會播受擊動畫、會僵直）的時間；持續傷害、被打飛、毒氣、架擋不算</summary>
+    public float StandardHitTime { get; private set; } = -99f;
+
     public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false,
                            string deathReason = "被打倒了", bool applyHitStun = true,
                            PlayerHitReaction reaction = PlayerHitReaction.Auto)
@@ -152,6 +155,8 @@ public class PlayerHealth : MonoBehaviour
         Health = Mathf.Max(practiceProtection.Count > 0 ? 1f : 0f, Health - amount);
         bool stunHit = applyHitStun && !ignoreInvincibility && amount > 0f;
         PlayerHitReaction resolved = ResolveReaction(reaction, knockback, stunHit);
+        // 一般受擊（播 Hit / hit_to_xxx、會僵直的那種）：PlayerVisualAnimator 看到就把移動鎖到受擊動畫播完
+        if (stunHit && (resolved == PlayerHitReaction.Standard || resolved == PlayerHitReaction.Auto)) StandardHitTime = Time.time;
         Vector3 flatKnock = new Vector3(knockback.x, 0f, knockback.z);
         switch (resolved)
         {

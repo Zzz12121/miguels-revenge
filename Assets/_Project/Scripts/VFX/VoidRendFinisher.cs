@@ -450,8 +450,11 @@ public sealed partial class VoidRendSkillDemo
         Vector3 recoveryFallStart = caster.position;
         Vector3 recoveryForward = Vector3.ProjectOnPlane(victimRotation * Vector3.forward, Vector3.up).normalized;
         if (recoveryForward.sqrMagnitude < .001f) recoveryForward = Vector3.forward;
-        Vector3 recoveryGround = victimHome + recoveryForward * finisherLandingDistance;
-        recoveryGround.y = casterStartPosition.y;
+        // 落點：原本是「目標面向的前方 finisherLandingDistance 公尺」，但那裡可能是牆或房子（例如道場 Boss 戰）。
+        // 從那個方向開始左右找一個「有地板、站得下、跟目標之間沒有牆、上方有空間」的地方；空中停的高度也照天花板降低
+        bool holdInAir=HasSkillClipPoses && practiceController!=null;
+        Vector3 recoveryGround = FindSafeRecoveryPoint(victimHome, ref recoveryForward, finisherLandingDistance,
+            holdInAir ? finisherAirHoldHeight : 0f, out float safeHoldHeight);
         Quaternion recoveryRotation = Quaternion.LookRotation(recoveryForward, Vector3.up);
         Quaternion recoveryStartRotation = caster.rotation;
         float frontCameraYaw = Mathf.Atan2(recoveryForward.x, recoveryForward.z) * Mathf.Rad2Deg;
@@ -462,8 +465,7 @@ public sealed partial class VoidRendSkillDemo
         victimLanding=victimHome;
         // 砍完不落地：飛到目標前方的空中停住（馬步），等技能結束、鏡頭切回玩家後才往下掉
         // 只有玩家控制器在的時候才停在空中（技能結束後要靠它的重力掉下來）
-        bool holdInAir=HasSkillClipPoses && practiceController!=null;
-        Vector3 recoveryHold=recoveryGround+Vector3.up*(holdInAir?finisherAirHoldHeight:0f);
+        Vector3 recoveryHold=recoveryGround+Vector3.up*safeHoldHeight;
         // 收招鏡頭：先繞到角色正前方（偏一側，目標和爆炸在角色後面），然後一路慢慢推近到爆炸結束
         float shotYaw=frontCameraYaw+finisherCameraSideAngle;
         // 鏡頭先花 1.3 秒繞到角度（角色移到畫面右下角），角度對了才開始推近，推到最近之後停住
@@ -547,6 +549,7 @@ public sealed partial class VoidRendSkillDemo
         voidRendCinematicActive = false;
         cinematicCamera = false;
         ReleaseCinematicCamera();
+        EnsureCasterNotInsideWalls(); // 保險：交還操作之前確定角色沒有卡在牆 / 房子裡（不然會動不了）
         SetStage("Complete"); playing=false; CompletedRuns++;
         if(casterAnimator)
         {
@@ -904,6 +907,132 @@ public sealed partial class VoidRendSkillDemo
         ps.GetComponent<ParticleSystemRenderer>().sharedMaterial=smokeMaterial;
         go.SetActive(true);ps.Play();if(!continuous)Destroy(go,life+1);
         return ps;
+    }
+
+    // ---------------- 防卡牆 / 防卡死 ----------------
+
+    bool IgnoredByWallCheck(Collider c) =>
+        c == null || c.isTrigger || (caster != null && c.transform.IsChildOf(caster)) || (target != null && c.transform.IsChildOf(target))
+        || c is CharacterController; // 其他角色（小怪）會走開，不算牆
+
+    float CasterHeight() => practiceBody != null ? practiceBody.height : 2f;
+    /// <summary>角色原點（技能開始時的位置）比腳底高多少</summary>
+    float CasterRootAboveFeet() => practiceBody != null ? practiceBody.height * .5f - practiceBody.center.y : 1f;
+
+    /// <summary>角色的膠囊放在 root（角色原點）這裡會不會撞到東西（自己、目標、觸發器不算）</summary>
+    bool CasterCapsuleBlocked(Vector3 root, float shrink = .95f)
+    {
+        float r = CasterRadius() * shrink, h = CasterHeight();
+        Vector3 feet = root - Vector3.up * CasterRootAboveFeet();
+        Vector3 a = feet + Vector3.up * (r + .06f), b = feet + Vector3.up * Mathf.Max(r + .06f, h - r);
+        foreach (var c in Physics.OverlapCapsule(a, b, r, ~0, QueryTriggerInteraction.Ignore))
+            if (!IgnoredByWallCheck(c)) return true;
+        return false;
+    }
+
+    /// <summary>p 正下方的地板高度（找不到就回傳 false）</summary>
+    bool GroundBelow(Vector3 p, float up, float down, out float groundY)
+    {
+        groundY = 0f;
+        float best = float.MaxValue; bool found = false;
+        foreach (var hit in Physics.RaycastAll(p + Vector3.up * up, Vector3.down, up + down, ~0, QueryTriggerInteraction.Ignore))
+        {
+            if (IgnoredByWallCheck(hit.collider) || hit.normal.y < .5f) continue;
+            if (hit.distance < best) { best = hit.distance; groundY = hit.point.y; found = true; }
+        }
+        return found;
+    }
+
+    bool PathBlocked(Vector3 from, Vector3 to)
+    {
+        Vector3 d = to - from; float len = d.magnitude;
+        if (len < .01f) return false;
+        foreach (var hit in Physics.SphereCastAll(from, .25f, d / len, len, ~0, QueryTriggerInteraction.Ignore))
+            if (!IgnoredByWallCheck(hit.collider)) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// 收招的落點：從 preferredDir 開始、左右輪流轉開找，距離由遠到近。要同時符合：
+    /// 有地板（高低差不大）、角色站得下、跟目標之間沒有牆、空中停的高度沒有撞到天花板。
+    /// 都找不到就退回技能開始時站的地方（那裡一定站得下）。dir 會改成實際用的方向。
+    /// </summary>
+    Vector3 FindSafeRecoveryPoint(Vector3 victim, ref Vector3 dir, float distance, float wantHold, out float hold)
+    {
+        float rootAbove = CasterRootAboveFeet();
+        float startFeet = casterStartPosition.y - rootAbove;
+        Vector3 from = new Vector3(victim.x, startFeet + 1.2f, victim.z);
+        float[] angles = { 0f, 35f, -35f, 70f, -70f, 110f, -110f, 150f, -150f, 180f };
+        float[] scales = { 1f, .75f, .5f };
+        foreach (float s in scales)
+            foreach (float a in angles)
+            {
+                Vector3 d = Quaternion.AngleAxis(a, Vector3.up) * dir;
+                float dist = Mathf.Max(1.8f, distance * s);
+                Vector3 p = new Vector3(victim.x, startFeet, victim.z) + d * dist;
+                if (!GroundBelow(p, 3f, 4f, out float g) || Mathf.Abs(g - startFeet) > 1.6f) continue;
+                Vector3 root = new Vector3(p.x, g + rootAbove + .02f, p.z);
+                if (CasterCapsuleBlocked(root)) continue;
+                if (PathBlocked(from, new Vector3(p.x, g + 1.2f, p.z))) continue;
+                // 空中停的高度：上面有天花板 / 屋簷就降低
+                float h = wantHold;
+                if (h > 0f)
+                {
+                    Vector3 top = root + Vector3.up * (CasterHeight() - rootAbove);
+                    foreach (var hit in Physics.RaycastAll(top, Vector3.up, h + .4f, ~0, QueryTriggerInteraction.Ignore))
+                        if (!IgnoredByWallCheck(hit.collider)) h = Mathf.Min(h, Mathf.Max(0f, hit.distance - .4f));
+                    if (h > 0f && CasterCapsuleBlocked(root + Vector3.up * h)) h = 0f;
+                }
+                dir = d; hold = h;
+                return root;
+            }
+        Vector3 back = casterStartPosition - new Vector3(victim.x, casterStartPosition.y, victim.z);
+        if (back.sqrMagnitude > .01f) dir = back.normalized;
+        hold = 0f;
+        return casterStartPosition;
+    }
+
+    /// <summary>交還操作前：角色如果跟牆 / 房子重疊，就搬到附近站得下的地方（找不到就回技能開始的位置）</summary>
+    void EnsureCasterNotInsideWalls()
+    {
+        if (caster == null || practiceBody == null) return;
+        Physics.SyncTransforms();
+        if (!CasterCapsuleBlocked(caster.position)) return;
+        Vector3 c = caster.position;
+        for (float r = .5f; r <= 4f; r += .5f)
+            for (int i = 0; i < 12; i++)
+            {
+                Vector3 p = c + Quaternion.AngleAxis(i * 30f, Vector3.up) * Vector3.forward * r;
+                if (GroundBelow(p, 3f, 6f, out float g)) p.y = Mathf.Max(p.y, g + CasterRootAboveFeet() + .02f);
+                if (!CasterCapsuleBlocked(p) && !PathBlocked(c, p)) { caster.position = p; return; }
+            }
+        caster.position = casterStartPosition;
+    }
+
+    /// <summary>技能的協程外面包一層：中途出錯（例如目標在技能中被刪掉）就取消技能、把操作還給玩家，不會卡住不能動</summary>
+    IEnumerator GuardedSequence(IEnumerator inner)
+    {
+        while (true)
+        {
+            object current;
+            try
+            {
+                if (!inner.MoveNext()) yield break;
+                current = inner.Current;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogException(e, this);
+                Debug.LogWarning("[虛空連斬] 技能中途出錯，已取消並把操作還給玩家。", this);
+                if (playing) Time.timeScale = priorTimeScale > 0f ? priorTimeScale : 1f;
+                if (weaponPresenter) weaponPresenter.EndSkillDraw(true);
+                if (casterAnimator) { casterAnimator.enabled = true; casterAnimator.speed = 1f; casterAnimator.CrossFadeInFixedTime("Idle", .1f, 0, 0f); }
+                ReleaseVictim(false);
+                CancelSkill();
+                yield break;
+            }
+            yield return current;
+        }
     }
 
     public void CancelSkill()
