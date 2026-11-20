@@ -23,6 +23,12 @@ public class PlayerState
 
     public static GameObject FindPlayer() => GameObject.FindWithTag("Player");
 
+    /// <summary>
+    /// 暫時的攻擊力加成（藥師的壯力藥，AttackPotionBuff）：Capture 讀 damageMultiplier 時扣掉，
+    /// 才不會被存進存檔、帶到下一關變成永久的。沒有加成時是 null。
+    /// </summary>
+    public static System.Func<GameObject, float> TemporaryDamageBonus;
+
     /// <summary>讀出玩家目前的狀態；找不到玩家回傳 null</summary>
     public static PlayerState Capture(GameObject player)
     {
@@ -44,7 +50,7 @@ public class PlayerState
         var combat = player.GetComponent<PlayerCombat>();
         if (combat != null)
         {
-            s.damageMultiplier = combat.damageMultiplier;
+            s.damageMultiplier = combat.damageMultiplier - (TemporaryDamageBonus?.Invoke(player) ?? 0f);
             s.comboDamage = combat.comboDamage != null ? (float[])combat.comboDamage.Clone() : null;
         }
         var inv = player.GetComponent<PlayerInventory>();

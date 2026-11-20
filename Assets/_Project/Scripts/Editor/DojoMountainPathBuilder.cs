@@ -128,6 +128,7 @@ public static class DojoMountainPathBuilder
         BuildEastWall(root.transform);
         BuildOuterStream(root.transform);
         BuildWaterfall(root.transform);
+        BuildEdgeFalls(root.transform);
         BuildCliffRocks(root.transform);
         BuildStoneSteps(root.transform);
         BuildCurbs(root.transform);
@@ -142,6 +143,7 @@ public static class DojoMountainPathBuilder
 
         var prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(root, PrefabPath, InteractionMode.AutomatedAction);
         OpenEastGate();
+        DojoArcherAmbushInstaller.Place();   // 地形變了：弓箭手埋伏點重新貼齊地面
         EnsureBuildSettings();
 
         EditorSceneManager.MarkSceneDirty(scene);
@@ -197,9 +199,11 @@ public static class DojoMountainPathBuilder
     static float DesignHeight(float x, float z)
     {
         // 主山坡：越往北越高，靠近道場那一側壓到地面以下（被道場外的地面蓋住）
-        float rise = Mathf.Clamp(0.27f * (z - 118f), 0f, 32f) * Smooth(54f, 70f, x);
+        // 道場後牆（EastZ1）以北沒有牆擋：山一路延伸到地形西緣，西緣是整排瀑布的峭壁（BuildEdgeFalls）
+        float northOfDojo = Smooth(EastZ1 + 1f, EastZ1 + 14f, z);
+        float rise = Mathf.Clamp(0.27f * (z - 118f), 0f, 32f) * Mathf.Lerp(Smooth(54f, 70f, x), 1f, northOfDojo);
         rise += Mathf.Max(0f, x - 110f) * 0.08f * Smooth(120f, 160f, z);
-        float noise = (Fbm(x * 0.035f, z * 0.035f) - 0.5f) * 7f * Smooth(56f, 75f, x);
+        float noise = (Fbm(x * 0.035f, z * 0.035f) - 0.5f) * 7f * Mathf.Lerp(Smooth(56f, 75f, x), 1f, northOfDojo);
         float h = rise + noise;
 
         // 遠方的主峰（北方）
@@ -218,7 +222,7 @@ public static class DojoMountainPathBuilder
         h = Mathf.Lerp(h, 0.8f, gorge * Smooth(0f, 5f, 220f - x));
 
         // 靠近道場一側：地面以下
-        h *= Smooth(51f, 57f, x);
+        h *= Mathf.Lerp(Smooth(51f, 57f, x), 1f, northOfDojo);
         h = Mathf.Max(h, -0.25f);
 
         // 溪流與水潭：兩岸墊高，水道底高於道場外的地面
@@ -253,8 +257,50 @@ public static class DojoMountainPathBuilder
             float wn = (Fbm(x * 0.18f, z * 0.18f) - 0.5f) * 1.6f * wallRise;   // 山壁頂不要一條直線
             h = Mathf.Max(h, Mathf.Lerp(h, baseY + wallH + wn, wallRise));
         }
+
+        // 高處的步道與山頂平台：路邊原本是往下掉的山坡，再過去就是懸崖。
+        // 改成「只填不挖」的緩坡：離路 0~11m 最多只比路面低約 2m，11~19m 再慢慢隆起成一道矮山脊當自然邊界，
+        // 25~40m 才回到原本的山形。吊橋下的山谷維持原樣（吊橋要有懸空感，平台東緣另外有隱形牆）。
+        {
+            float plateauEdge = dpl - PlateauRadius;
+            bool byPlateau = plateauEdge < pathEdge;
+            float safeEdge = Mathf.Max(0f, byPlateau ? plateauEdge : pathEdge);
+            float safeY = byPlateau ? Plateau.y : py;
+            float high = byPlateau ? 1f : Smooth(8f, 11.5f, py);   // 低處已經有山壁，不用再墊
+            float gorgeHere = Smooth(127f, 134f, x) * (1f - Smooth(26f, 36f, Mathf.Abs(z - 200f)));
+            float w = high * (1f - gorgeHere) * (1f - Smooth(25f, 40f, safeEdge));
+            if (w > 0f)
+            {
+                float drop = Mathf.Lerp(0.15f, 2.1f, Smooth(0f, 11f, safeEdge));   // 緩緩往下
+                float ridge = 3.2f * Smooth(11f, 19f, safeEdge);                  // 再緩緩隆起
+                float rn = (Fbm(x * 0.12f, z * 0.12f) - 0.5f) * 1.4f * Smooth(6f, 14f, safeEdge);   // 不要一條直線
+                h = Mathf.Max(h, Mathf.Lerp(h, safeY - drop + ridge + rn, w));
+            }
+        }
+
+        // 地形外框：瀑布峭壁。外緣（道場後牆以北的西緣、北緣、東緣、南緣東段）保留山原本的高度，
+        // 邊緣直接垂直落下，由 BuildEdgeFalls 在崖面放岩壁 + 整排瀑布遮住（地形本身沒有側面）。
+        // 太矮的地方抬到至少 RimMin，每一段都看得到水落下來。南緣靠道場那段是平地：壓到地面高度，不做瀑布。
+        {
+            float d = EdgeFallDistance(x, z);
+            h = Mathf.Max(h, RimMin * (1f - Smooth(4f, 14f, d)));
+            float southFlat = 1f - Smooth(FallSouthX0 - 8f, FallSouthX0, x);
+            if (southFlat > 0f) h = Mathf.Lerp(h, Mathf.Lerp(-0.25f, h, Smooth(0f, 8f, z - TerrainZ0)), southFlat);
+        }
         return h;
     }
+
+    const float RimMin = 6f;                     // 外緣瀑布崖至少多高
+    const float FallSouthX0 = TerrainX0 + 70f;   // 南緣從這裡往東才有瀑布（靠道場那段是平地）
+
+    /// <summary>離「有瀑布的外緣」多遠（道場東牆擋住的西緣、南緣靠道場那段不算）</summary>
+    static float EdgeFallDistance(float x, float z)
+    {
+        float dW = Mathf.Lerp(x - TerrainX0 + 200f, x - TerrainX0, Smooth(EastZ1 - 1f, EastZ1 + 3f, z));
+        float dS = Mathf.Lerp(z - TerrainZ0 + 200f, z - TerrainZ0, Smooth(FallSouthX0 - 8f, FallSouthX0, x));
+        return Mathf.Min(Mathf.Min(dW, TerrainX0 + TerrainSize - x), Mathf.Min(dS, TerrainZ0 + TerrainSize - z));
+    }
+
 
     static Terrain BuildTerrain(Transform parent)
     {
@@ -960,6 +1006,153 @@ public static class DojoMountainPathBuilder
         if (src.clip == null) Object.DestroyImmediate(src.gameObject);
     }
 
+    // =====================================================================
+    //  外緣：整排垂直瀑布當邊界
+    // =====================================================================
+
+    const float FallStep = 2f;        // 沿著外緣每幾公尺取一個點
+    const float MinFallHeight = 0.8f; // 比這矮的地方不放水（例如外緣剛好是平地）
+    const float FallBaseY = 0.02f;    // 水落到的高度（道場外的地面）
+
+    /// <summary>
+    /// 地形外緣（道場後牆以北的西緣、北緣、東緣、南緣東段）：
+    ///   岩壁 —— 從崖頂垂直往下到地面以下，把地形沒有側面的地方封起來（不會再看穿）
+    ///   瀑布 —— 兩層從崖口往外拋再垂直落下的水簾，水紋貼圖每 ~9m 有一道縫，看起來是一整排並排的瀑布
+    ///   崖腳 —— 一條往外流的淺水帶 + 水霧，崖頂再加一點水花；沿線放幾個水聲
+    /// 玩家不會走到崖邊：BuildBoundary 的隱形牆在外緣內 0.5~1m。
+    /// </summary>
+    static void BuildEdgeFalls(Transform parent)
+    {
+        var g = Group("EdgeWaterfalls", parent);
+        float x0 = TerrainX0, x1 = TerrainX0 + TerrainSize, z0 = TerrainZ0, z1 = TerrainZ0 + TerrainSize;
+        BuildFallSegment(g, "West", new Vector2(x0, EastZ1 + 1f), new Vector2(x0, z1), new Vector2(-1f, 0f));
+        BuildFallSegment(g, "North", new Vector2(x0, z1), new Vector2(x1, z1), new Vector2(0f, 1f));
+        BuildFallSegment(g, "East", new Vector2(x1, z1), new Vector2(x1, z0), new Vector2(1f, 0f));
+        BuildFallSegment(g, "South", new Vector2(x1, z0), new Vector2(FallSouthX0, z0), new Vector2(0f, -1f));
+    }
+
+    static float EdgeTopY(Vector2 p, Vector2 n)
+    {
+        Vector2 q = p - n * 0.2f;   // 往內一點點取樣，避開地形最外圈
+        return terrain.SampleHeight(new Vector3(q.x, 0f, q.y)) + terrain.transform.position.y;
+    }
+
+    static void BuildFallSegment(Transform parent, string name, Vector2 a, Vector2 b, Vector2 n)
+    {
+        var g = Group($"Falls_{name}", parent);
+        float len = Vector2.Distance(a, b);
+        int cols = Mathf.Max(1, Mathf.CeilToInt(len / FallStep));
+        var pts = new Vector2[cols + 1];
+        var top = new float[cols + 1];
+        for (int i = 0; i <= cols; i++)
+        {
+            pts[i] = Vector2.Lerp(a, b, i / (float)cols);
+            top[i] = EdgeTopY(pts[i], n);
+        }
+        Vector3 N = new Vector3(n.x, 0f, n.y);
+        Vector3 W(Vector2 p, float y) => new Vector3(p.x, y, p.y);
+        bool Wet(int i) => top[i] - FallBaseY > MinFallHeight && top[i + 1] - FallBaseY > MinFallHeight;
+
+        // 岩壁：崖頂 → 地面以下 1.5m（UV 用世界尺寸，岩石貼圖不會被拉長）
+        {
+            var v = new List<Vector3>(); var uv = new List<Vector2>(); var t = new List<int>();
+            for (int i = 0; i <= cols; i++)
+            {
+                float s = i * len / cols;
+                v.Add(W(pts[i], top[i] + 0.05f)); uv.Add(new Vector2(s * 0.2f, (top[i] + 0.05f) * 0.2f));
+                v.Add(W(pts[i], -1.5f)); uv.Add(new Vector2(s * 0.2f, -0.3f));
+                if (i > 0) { int k = (i - 1) * 2; t.AddRange(new[] { k, k + 1, k + 2, k + 1, k + 3, k + 2 }); }   // 正面朝外
+            }
+            var go = MeshObj(g, "CliffFace", SaveMesh($"Mesh_DM_EdgeCliff_{name}", v, uv, t), mRock);
+            go.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.TwoSided;
+        }
+
+        // 水簾：兩層，從崖口內側 0.4m 開始往外拋出、再垂直落到地面
+        const int rows = 10;
+        for (int layer = 0; layer < 2; layer++)
+        {
+            var v = new List<Vector3>(); var uv = new List<Vector2>(); var t = new List<int>();
+            for (int i = 0; i <= cols; i++)
+            {
+                float s = i * len / cols;
+                float fall = Mathf.Max(0f, top[i] - FallBaseY);
+                float outward = Mathf.Lerp(0.8f, 2.8f, Mathf.InverseLerp(4f, 40f, fall)) + layer * 0.45f;
+                for (int j = 0; j <= rows; j++)
+                {
+                    float k = j / (float)rows;
+                    float y = Mathf.Lerp(top[i] + 0.12f + layer * 0.05f, FallBaseY, k);
+                    float off = -0.4f + (outward + 0.4f) * Mathf.Sqrt(k);   // 拋物線：先往外再落下
+                    v.Add(W(pts[i], y) + N * off);
+                    uv.Add(new Vector2(s * 0.11f + layer * 0.37f, (top[i] - y) * 0.09f));
+                }
+                if (i > 0 && Wet(i - 1))
+                {
+                    int c0 = (i - 1) * (rows + 1), c1 = i * (rows + 1);
+                    for (int j = 0; j < rows; j++)
+                        t.AddRange(new[] { c0 + j, c0 + j + 1, c1 + j, c1 + j, c0 + j + 1, c1 + j + 1 });
+                }
+            }
+            if (t.Count == 0) continue;
+            var go = MeshObj(g, $"FallSheet_{layer}", SaveMesh($"Mesh_DM_EdgeFall_{name}_{layer}", v, uv, t), mWaterfall);
+            go.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            var sc = go.AddComponent<UVScroll>();
+            sc.speed = new Vector2(0.015f * (layer == 0 ? 1f : -1f), -1.5f - layer * 0.4f);
+        }
+
+        // 崖腳：往外流的淺水帶
+        {
+            var v = new List<Vector3>(); var uv = new List<Vector2>(); var t = new List<int>();
+            const float width = 6f;
+            for (int i = 0; i <= cols; i++)
+            {
+                float s = i * len / cols;
+                v.Add(W(pts[i], FallBaseY + 0.02f) + N * 0.3f); uv.Add(new Vector2(s * 0.15f, 0f));
+                v.Add(W(pts[i], FallBaseY + 0.02f) + N * width); uv.Add(new Vector2(s * 0.15f, width * 0.15f));
+                if (i > 0) { int k = (i - 1) * 2; t.AddRange(new[] { k, k + 1, k + 2, k + 1, k + 3, k + 2 }); }
+            }
+            var go = MeshObj(g, "BaseWater", SaveMesh($"Mesh_DM_EdgeFallPool_{name}", v, uv, t), mStreamWater);
+            go.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            go.AddComponent<UVScroll>().speed = new Vector2(0f, 0.25f);
+        }
+
+        // 水霧：崖腳一長條（數量依長度，上限避免太多半透明粒子疊在一起）
+        Vector2 mid2 = (a + b) * 0.5f;
+        var mist = NewPS("FallMist", g, W(mid2, FallBaseY + 1.2f) + N * 2f);
+        mist.transform.rotation = Quaternion.LookRotation(N, Vector3.up);
+        {
+            var m = mist.main;
+            m.loop = true; m.prewarm = true; m.duration = 4f;
+            m.startLifetime = new ParticleSystem.MinMaxCurve(3f, 5f);
+            m.startSpeed = new ParticleSystem.MinMaxCurve(0.2f, 0.8f);
+            m.startSize = new ParticleSystem.MinMaxCurve(3f, 6.5f);
+            m.startRotation = new ParticleSystem.MinMaxCurve(0f, 6.28f);
+            m.startColor = new Color(0.9f, 0.94f, 0.97f, 0.2f);
+            m.maxParticles = Mathf.Clamp(Mathf.RoundToInt(len * 0.9f), 40, 220);
+            var e = mist.emission; e.rateOverTime = Mathf.Clamp(len * 0.18f, 6f, 45f);
+            var sh = mist.shape; sh.shapeType = ParticleSystemShapeType.Box; sh.scale = new Vector3(len, 1.5f, 3f);   // 物件朝外（LookRotation(N)），本地 X = 沿著外緣
+            var vel = mist.velocityOverLifetime; vel.enabled = true; vel.space = ParticleSystemSimulationSpace.World;
+            vel.x = new ParticleSystem.MinMaxCurve(N.x * 0.2f, N.x * 0.9f + 0.001f);
+            vel.y = new ParticleSystem.MinMaxCurve(0.15f, 0.5f);
+            vel.z = new ParticleSystem.MinMaxCurve(N.z * 0.2f, N.z * 0.9f + 0.001f);
+            var col = mist.colorOverLifetime; col.enabled = true; col.color = Fade();
+            SetPR(mist, mMist, 0.8f);
+        }
+
+        // 水聲：每 60m 一個（3D，靠近才聽得到）
+        var clip = Resources.Load<AudioClip>("Audio/SFX/river_loop");
+        if (clip != null)
+            for (float s = 30f; s < len; s += 60f)
+            {
+                Vector2 p = Vector2.Lerp(a, b, s / len);
+                var src = new GameObject("FallAudio").AddComponent<AudioSource>();
+                src.transform.SetParent(g, false);
+                src.transform.position = W(p, 3f) + N * 2f;
+                src.clip = clip; src.loop = true; src.playOnAwake = true; src.spatialBlend = 1f;
+                src.minDistance = 8f; src.maxDistance = 55f; src.volume = 0.45f;
+                src.pitch = 0.85f + 0.1f * Mathf.PerlinNoise(p.x * 0.1f, p.y * 0.1f);
+            }
+    }
+
     static void BuildCliffRocks(Transform parent)
     {
         // 瀑布兩側的崖面：石柱貼著陡坡，蓋住地形被拉長的貼圖
@@ -1542,6 +1735,7 @@ public static class DojoMountainPathBuilder
         Wall(new Vector3(x1 - 1f, 0, z0), new Vector3(x1 - 1f, 0, z1));     // 東
         Wall(new Vector3(x0, 0, z1 - 1f), new Vector3(x1, 0, z1 - 1f));     // 北
         Wall(new Vector3(x0 + 70f, 0, z0 + 1f), new Vector3(x1, 0, z0 + 1f)); // 南（靠道場那段是平地，不擋）
+        Wall(new Vector3(x0 + 0.5f, 0, EastZ1 + 0.3f), new Vector3(x0 + 0.5f, 0, z1)); // 西（道場後牆以北：邊緣改成緩坡後，擋住不讓人走出地形）
         // 山頂平台的東緣（吊橋口兩側），避免從平台掉進山谷
         foreach (float side in new[] { -1f, 1f })
         {
@@ -1683,7 +1877,7 @@ public static class DojoMountainPathBuilder
         return go;
     }
 
-    static GameObject Place(Transform parent, GameObject prefab, string name, Vector3 pos, Quaternion rot, float scale)
+    internal static GameObject Place(Transform parent, GameObject prefab, string name, Vector3 pos, Quaternion rot, float scale)
     {
         var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
         go.name = name;

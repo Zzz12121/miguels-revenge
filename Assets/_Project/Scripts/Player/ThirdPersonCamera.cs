@@ -8,6 +8,8 @@ using UnityEngine.InputSystem;
 ///   - CinemachineCamera 用 Third Person Follow 跟著「鏡頭注視點」（CameraTarget），
 ///     並開啟 Avoid Obstacles：鏡頭被牆擋住時自動往前拉，不會穿牆
 ///   - 這個腳本負責讀滑鼠 / 滾輪，轉動注視點、調整距離，以及畫面震動
+///   - keepPlayerVisible（ThirdPersonCamera.FullView.cs）開著時改用自己的防擋：小東西隱藏、大東西把鏡頭抬高，
+///     鏡頭不會被拉到角色身上，永遠看得到整個角色
 ///
 /// 操作：
 /// - 滑鼠移動：旋轉視角
@@ -17,7 +19,7 @@ using UnityEngine.InputSystem;
 /// 掛在 Main Camera 上，並把 Target 設為玩家。Cinemachine 的物件沒有事先擺好的話，遊戲開始時會自動建立。
 /// </summary>
 [DefaultExecutionOrder(-50)] // 要比 CinemachineBrain（LateUpdate）先更新注視點
-public class ThirdPersonCamera : MonoBehaviour
+public partial class ThirdPersonCamera : MonoBehaviour
 {
     [Header("取景（原神 / 崩鐵風格）")]
     [Tooltip("開著：鏡頭低一點、平一點（注視點在胸口附近），拉近時看得到上半身；往上看時鏡頭往角色靠近、不碰到地面，角色留在畫面裡。\n關掉 = 原本的取景（注視點固定在 Target Offset）")]
@@ -57,15 +59,17 @@ public class ThirdPersonCamera : MonoBehaviour
     public float rollFollowSmoothTime = 0.14f;
 
     [Header("距離 / 縮放")]
-    public float distance = 5f;
+    public float distance = 8f;
     public float minDistance = 2f;
-    public float maxDistance = 9f;
+    public float maxDistance = 13f;
     [Tooltip("滾輪每一格縮放的距離")]
     public float zoomStep = 0.6f;
 
     [Header("滑鼠控制")]
     [Tooltip("每移動 1 像素旋轉幾度")]
     public float mouseSensitivity = 0.12f;
+    [Tooltip("遊戲手把右搖桿推到底時，鏡頭每秒轉幾度")]
+    public float padLookSpeed = 180f;
     public bool invertY = false;
     [Tooltip("最低可往上看的角度（負值 = 從下往上看）")]
     public float minPitch = -30f;
@@ -308,12 +312,15 @@ public class ThirdPersonCamera : MonoBehaviour
         }
 
         // Cinemachine 的 Third Person Follow 會把鏡頭放在注視點正後方 distance 公尺（有牆就往前拉）
+        bool fullView = keepPlayerVisible && follow != null && !CalligraphyPaintingWorld.BlocksTether;
+        if (fullView) KeepPlayerVisible(lookPoint, ref rotation, ref dist);   // 會調整角度（抬高）和距離
+        else { autoPitch = 0f; RestoreOccluders(true); }
         cameraTarget.SetPositionAndRotation(lookPoint, rotation);
         if (follow != null)
         {
             var avoid=follow.AvoidObstacles;
             bool painting=CalligraphyPaintingWorld.BlocksTether;
-            avoid.Enabled=!painting;follow.AvoidObstacles=avoid;
+            avoid.Enabled=!painting && !fullView;follow.AvoidObstacles=avoid;
             if(painting)
                 foreach(var hit in Physics.SphereCastAll(lookPoint,collisionRadius,-(rotation*Vector3.forward),dist,collisionMask,QueryTriggerInteraction.Ignore))
                     if(!hit.transform.IsChildOf(target) && CalligraphyWorldIsolation.Allows(hit.transform) && hit.distance>0)
@@ -431,15 +438,29 @@ public class ThirdPersonCamera : MonoBehaviour
             LockCursor(true);
 #endif
 
+        // 用手把操作時自動鎖定游標（技能瞄準中不鎖，右搖桿要拿去移動準心）
+        if (Cursor.lockState != CursorLockMode.Locked && PadInput.AnyPressed && !SkillAimCancellation.IsAiming && !GameUI.OverlayOpen)
+            LockCursor(true);
+
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        if (mouse != null)
+        // 右搖桿轉鏡頭（每秒轉的角度；瞄準時一樣比較好微調）
+        Vector2 look = PadInput.Look;
+        if (look.sqrMagnitude > 0f)
         {
-            // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）
+            float padSens = padLookSpeed * InputBindings.LookSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend) * Time.unscaledDeltaTime;
+            yaw += look.x * padSens;
+            pitch += look.y * padSens * (invertY != InputBindings.InvertY ? 1f : -1f) * .7f;
+            pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
+        }
+
+        if (mouse != null && InputBindings.KeyboardEnabled) // 設定選「只用手把」時滑鼠不轉鏡頭
+        {
+            // 旋轉（滑鼠 delta 已經是每幀位移，不需要乘 deltaTime）；靈敏度 / 上下反轉可以在暫停選單「設定」裡調
             Vector2 delta = mouse.delta.ReadValue();
-            float sens = mouseSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend); // 瞄準時比較好微調
+            float sens = mouseSensitivity * InputBindings.LookSensitivity * Mathf.Lerp(1f, aimSensitivityScale, aimBlend); // 瞄準時比較好微調
             yaw += delta.x * sens;
-            pitch += delta.y * sens * (invertY ? 1f : -1f);
+            pitch += delta.y * sens * (invertY != InputBindings.InvertY ? 1f : -1f);
             pitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
             // 縮放

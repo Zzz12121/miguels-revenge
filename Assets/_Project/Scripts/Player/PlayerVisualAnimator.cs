@@ -17,6 +17,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     PlayerShieldBowAnimator shieldBow; // 盾牌格擋 / 盾擊 / 拉弓的動畫（自動加上）
     PlayerPaladinShield paladinShield; // 原本聖騎士的盾牌模型（PlayerRig 上有掛才有）
     PlayerArcherBow archerBow;         // 敵艦弓箭手的弓（PlayerShieldBowAnimator 會自動加上）
+    PlayerHitPose hitPose;             // 被打飛 / 毒氣 / 防禦的受擊姿勢（自動加上）
     [SerializeField] Vector2 idleChangeInterval = new Vector2(5.5f, 8.5f);
     [Header("弓與盾（共用角色視覺）")]
     [SerializeField] Color bowWoodColor = new Color(0.32f, 0.14f, 0.055f, 1f);
@@ -250,6 +251,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         shieldBow = GetComponent<PlayerShieldBowAnimator>();
         if (shieldBow == null) shieldBow = gameObject.AddComponent<PlayerShieldBowAnimator>();
         paladinShield = GetComponent<PlayerPaladinShield>();
+        hitPose = GetComponent<PlayerHitPose>();
+        if (hitPose == null && health != null) hitPose = gameObject.AddComponent<PlayerHitPose>();
         if (health != null) previousHealth = health.Health;
         CacheHumanoidBones();
         CacheVisualRoot();
@@ -312,6 +315,19 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (health != null && health.IsDead)
         {
             previousHealth = health.Health;
+            return;
+        }
+
+        // 被打飛 / 毒氣 / 防禦姿勢：骨架交給 PlayerHitPose，不切受擊、下落、待機動畫
+        if (hitPose != null && hitPose.OwnsPose)
+        {
+            if (health != null) previousHealth = health.Health;
+            animator.SetFloat(SpeedHash, 0f);
+            animator.SetBool(GroundedHash, true);
+            animator.SetFloat(VerticalSpeedHash, 0f);
+            landingVelocity = 0f;
+            previousGrounded = true;
+            ScheduleNextIdle(1f);
             return;
         }
 
@@ -395,8 +411,10 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (controller == null) return;
 
         bool sprinting = controller.CurrentSpeed > controller.walkSpeed * 1.05f;
-        bool jumpPressed = Keyboard.current != null && !RangeInputSettings.InputBlocked &&
-            Keyboard.current[RangeInputSettings.Binding(controller,RangeInputSettings.Action.Jump)].wasPressedThisFrame;
+        bool jumpPressed = !RangeInputSettings.InputBlocked && (RangeInputSettings.IsRange(controller)
+            ? InputBindings.PadPressed(GameAction.Jump) || (Keyboard.current != null &&
+              Keyboard.current[RangeInputSettings.Binding(controller,RangeInputSettings.Action.Jump)].wasPressedThisFrame)
+            : InputBindings.Pressed(GameAction.Jump));
         if (grounded && sprinting && jumpPressed)
         {
             pounceStartedAt = Time.unscaledTime;
@@ -491,6 +509,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (animator == null || !animator.enabled || !animator.isHuman) return;
         if (CalligraphyPlatformClimb.IsClimbing(health != null ? health.transform : transform)) return;
         if (GetComponent<CalligraphyPlayerControl>()?.Active ?? false) return;
+        if (hitPose != null && hitPose.OwnsPose) return;
         if (hips == null || chest == null) CacheHumanoidBones();
 
         if (controller != null && controller.IsRolling)

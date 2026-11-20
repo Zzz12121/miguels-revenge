@@ -33,7 +33,62 @@ public static class ArcherInstaller
         ("Idle", "standing idle 01"),
         ("Draw", DrawClip),
         ("Equip", "standing equip bow"),
+        ("Walk", "standing walk forward"),   // 埋伏弓箭手：投降時走出掩體
+        ("Run", "standing run forward"),     // 埋伏弓箭手：跑出 / 跑回掩體
     };
+
+    /// <summary>
+    /// 舊的 Archer_Crew.controller 沒有 Walk / Run：只把缺的狀態補進去（不重建 Prefab、不動船上弓箭手的設定）。
+    /// 編輯器載入時自動檢查一次；放埋伏弓箭手時也會再確認。
+    /// </summary>
+    [InitializeOnLoadMethod]
+    static void AutoEnsureLocomotion() => EditorApplication.delayCall += () => EnsureLocomotionStates();
+
+    /// <summary>跑步 / 走路改成原地播放（Root Transform Position XZ 不烘進姿勢）</summary>
+    static void EnsureInPlaceLocomotion()
+    {
+        foreach (var file in InPlaceFiles)
+        {
+            var imp = AssetImporter.GetAtPath($"{PackDir}/{file}.fbx") as ModelImporter;
+            if (imp == null) continue;
+            var clips = imp.clipAnimations;
+            if (clips == null || clips.Length == 0) clips = imp.defaultClipAnimations;
+            bool changed = false;
+            foreach (var c in clips)
+                if (c.lockRootPositionXZ) { c.lockRootPositionXZ = false; changed = true; }
+            if (!changed) continue;
+            imp.clipAnimations = clips;
+            imp.SaveAndReimport();
+            Debug.Log($"[GeminiGrowUp] 弓箭手動畫 {file} 改成原地播放（修正跑步時瞬移）");
+        }
+    }
+
+    public static bool EnsureLocomotionStates()
+    {
+        EnsureInPlaceLocomotion();
+        var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (controller == null) return false;
+        var sm = controller.layers[0].stateMachine;
+        bool changed = false;
+        foreach (var (stateName, file) in Clips)
+        {
+            if (sm.states.Any(s => s.state.name == stateName)) continue;
+            var clip = LoadClip(file);
+            if (clip == null) continue;
+            var state = sm.AddState(stateName);
+            state.motion = clip;
+            changed = true;
+        }
+        if (changed)
+        {
+            EditorUtility.SetDirty(controller);
+            AssetDatabase.SaveAssets();
+            Debug.Log("[GeminiGrowUp] 弓箭手 Animator 補上 Walk / Run 狀態（埋伏弓箭手跑回掩體用）");
+        }
+        return true;
+    }
+
+    static readonly string[] InPlaceFiles = { "standing walk forward", "standing run forward" };
 
     static readonly string[] LoopingFiles = { "standing idle 01", "unarmed idle 01", "standing walk forward", "standing run forward" };
 
@@ -131,7 +186,9 @@ public static class ArcherInstaller
                 c.keepOriginalOrientation = true;
                 c.lockRootHeightY = true;
                 c.keepOriginalPositionY = true;
-                c.lockRootPositionXZ = true;  // 站在船上不會走動：位移全部烘進姿勢
+                // 站在船上不會走動：位移全部烘進姿勢。跑步 / 走路例外：要原地播（位移交給 AmbushArcher 移動 Transform），
+                // 不然身體會在動畫裡跑出去、每一圈又彈回原點，看起來像瞬移
+                c.lockRootPositionXZ = !InPlaceFiles.Contains(file);
                 c.keepOriginalPositionXZ = true;
             }
             imp.clipAnimations = clips;

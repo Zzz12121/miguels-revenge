@@ -1,6 +1,14 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+/// <summary>講完台詞後要玩家回答的問題（任務村民用）。onPick 收到選了第幾個（從 0 開始），回傳接著要講的台詞，null = 直接結束對話</summary>
+public sealed class DialogueChoice
+{
+    public string question;
+    public string[] options;
+    public System.Func<int, string[]> onPick;
+}
+
 /// <summary>
 /// 商人：玩家走近時顯示「[E] 與流浪商人對話」，按下後開始引導式對話（畫面下方的對話框，文字逐字出現），
 /// 每按一次空白鍵繼續下一句（文字還沒跑完時先直接顯示整句）。
@@ -22,6 +30,12 @@ public class MerchantNPC : MonoBehaviour
     [Tooltip("對話框右邊半身像要拍的模型（留空 = 拍商人自己的模型）")]
     public GameObject portraitPrefab;
 
+    [Header("對話行為（村民用，預設值 = 原本的商人）")]
+    [Tooltip("講完之後打開商店；關掉就只是一般對話的村民")]
+    public bool sellsGoods = true;
+    [Tooltip("開始對話時轉身面向玩家（例如釣魚中的漁夫可以關掉）")]
+    public bool facePlayerOnTalk = true;
+
     [Header("商品")]
     public string resourceName = "Herb";
     public string resourceDisplayName = "草藥";
@@ -30,6 +44,11 @@ public class MerchantNPC : MonoBehaviour
 
     [Header("對話")]
     public string speakerName = "流浪商人";
+
+    [Tooltip("台詞開頭是 @ 的那句是玩家說的：名字顯示這個、左邊的玩家半身像亮起來")]
+    public string playerSpeakerName = "米格爾";
+    [Tooltip("選了選項之後，玩家先把選的那句話說出來，再接 NPC 的回答")]
+    public bool playerSaysChoice = true;
     [Tooltip("第一次對話：新手引導")]
     [TextArea(2, 4)]
     public string[] guideLines =
@@ -55,7 +74,19 @@ public class MerchantNPC : MonoBehaviour
 
     const Key ContinueKey = Key.Space;
 
-    enum Mode { Idle, Talking, Shopping }
+    enum Mode { Idle, Talking, Shopping, Choosing }
+
+    /// <summary>有設定的話，每次開始對話時用它決定台詞（取代 guideLines / repeatLines，任務進度用）</summary>
+    [System.NonSerialized] public System.Func<string[]> linesProvider;
+    /// <summary>有設定的話，每次開始對話時問它：講完台詞後要不要問玩家問題（回傳 null = 不問）</summary>
+    [System.NonSerialized] public System.Func<DialogueChoice> choiceProvider;
+    /// <summary>
+    /// 所有 NPC 共用：開始對話時先問它，回傳台詞就改講這些（不問選項、不呼叫 linesProvider），回傳 null 照平常。
+    /// 倒下被抬回村子後，村民的鼓勵（VillageReturn）用這個。
+    /// </summary>
+    public static System.Func<MerchantNPC, string[]> LinesOverride;
+    DialogueChoice choice;
+    bool pointerUnlocked;
 
     Transform player;
     PlayerHealth playerHealth;
@@ -71,9 +102,17 @@ public class MerchantNPC : MonoBehaviour
     string shopLine;
     // 開場劇情之後：商人頭上顯示指引標記，直到玩家第一次跟他說話
     bool guiding;
+    // 按鍵離開商店時等下一幀才解除動作鎖：同一顆鍵（例如 3）這一幀不會再觸發技能
+    bool leaveNextFrame;
+
+    /// <summary>正在對話或購物中（例如會走路的村民要停下來）</summary>
+    public bool InConversation => mode != Mode.Idle;
 
     /// <summary>開始在商人頭上顯示指引標記（第一次對話後消失）</summary>
     public void StartGuide() => guiding = !hasTalked;
+
+    /// <summary>不管有沒有講過話都顯示指引標記，下一次對話時消失（任務進度用）</summary>
+    public void ShowGuideMarker() => guiding = true;
 
     void Start()
     {
@@ -97,6 +136,13 @@ public class MerchantNPC : MonoBehaviour
         var kb = Keyboard.current;
         if (kb == null || player == null || GameUI.OverlayOpen) return; // 暫停選單開著時不處理
 
+        if (leaveNextFrame)
+        {
+            leaveNextFrame = false;
+            EndAll();
+            return;
+        }
+
         if (mode != Mode.Idle && playerHealth != null && playerHealth.IsDead)
         {
             EndAll();
@@ -114,14 +160,27 @@ public class MerchantNPC : MonoBehaviour
                 break;
 
             case Mode.Talking:
-                if (kb[ContinueKey].wasPressedThisFrame) Advance();
+                if (kb[ContinueKey].wasPressedThisFrame || PadInput.ConfirmPressed) Advance();
                 break;
 
             case Mode.Shopping:
-                if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) Buy(PlayerItems.HealingPotion);
-                else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) Buy(PlayerItems.StaminaPotion);
-                else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame
-                         || kb[InteractPrompt.InteractKey].wasPressedThisFrame) EndAll();
+                int pad = PadInput.NumberPressed; // 手把十字鍵 ← ↑ → = 1 2 3，B / Y 離開
+                if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame || pad == 1) Buy(PlayerItems.HealingPotion);
+                else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame || pad == 2) Buy(PlayerItems.StaminaPotion);
+                else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame || pad == 3
+                         || InputBindings.Pressed(GameAction.Interact) || PadInput.CancelPressed) leaveNextFrame = true;
+                break;
+
+            case Mode.Choosing:
+                int padChoice = PadInput.NumberPressed;
+                for (int i = 0; i < choice.options.Length; i++)
+                    if (kb[Key.Digit1 + i].wasPressedThisFrame || kb[Key.Numpad1 + i].wasPressedThisFrame || padChoice == i + 1)
+                    {
+                        Pick(i);
+                        return;
+                    }
+                // 互動鍵 / 手把 B = 選最後一個（「先不用」這類的選項）
+                if (InputBindings.Pressed(GameAction.Interact) || PadInput.CancelPressed) Pick(choice.options.Length - 1);
                 break;
         }
     }
@@ -130,16 +189,48 @@ public class MerchantNPC : MonoBehaviour
     {
         inventory = player.GetComponent<PlayerInventory>();
         items = player.GetComponent<PlayerItems>();
-        lines = hasTalked || guideLines.Length == 0 ? repeatLines : guideLines;
+        var overrideLines = LinesOverride?.Invoke(this);
+        lines = overrideLines ?? (linesProvider != null ? linesProvider() : hasTalked || guideLines.Length == 0 ? repeatLines : guideLines);
+        choice = overrideLines != null ? null : choiceProvider != null ? choiceProvider() : null;
         hasTalked = true;
         guiding = false;
         lineIndex = 0;
         lineStartTime = Time.unscaledTime;
         mode = Mode.Talking;
         SetPlayerInput(false);
-        FacePlayer();
+        if (facePlayerOnTalk) FacePlayer();
         GameAudio.Play("SFX/RPG/bookOpen", transform.position, 0.7f, 1.1f, 0f, 0.3f);
-        if (lines == null || lines.Length == 0) OpenShop();
+        if (lines == null || lines.Length == 0) FinishLines();
+        else SpeakLine();
+    }
+
+    /// <summary>台詞開頭是 @：玩家說的</summary>
+    static bool IsPlayerLine(string line) => !string.IsNullOrEmpty(line) && line[0] == '@';
+    static string LineText(string line) => IsPlayerLine(line) ? line.Substring(1) : line;
+
+    /// <summary>英文配音：唸現在這句（沒有配音就不出聲）</summary>
+    void SpeakLine()
+    {
+        if (lines == null || lineIndex >= lines.Length) return;
+        bool p = IsPlayerLine(lines[lineIndex]);
+        DialogueVoice.Speak(lines[lineIndex], p && player != null ? player.position : transform.position);
+    }
+
+    /// <summary>選項變成玩家說的話：去掉括號裡的說明（「弓與小刀（箭 6 支）」→「弓與小刀」）</summary>
+    static string SpokenOption(string option)
+    {
+        if (string.IsNullOrEmpty(option)) return option;
+        int k = option.IndexOf('（');
+        if (k < 0) k = option.IndexOf('(');
+        return (k > 0 ? option.Substring(0, k) : option).Trim();
+    }
+
+    /// <summary>台詞講完：商人打開商店，村民直接結束對話</summary>
+    void FinishLines()
+    {
+        if (choice != null) OpenChoice();
+        else if (sellsGoods) OpenShop();
+        else EndAll();
     }
 
     void Advance()
@@ -153,7 +244,8 @@ public class MerchantNPC : MonoBehaviour
         lineIndex++;
         lineStartTime = Time.unscaledTime;
         GameAudio.Play("SFX/RPG/bookFlip1", transform.position, 0.5f, 1f, 0.1f, 0.3f);
-        if (lineIndex >= lines.Length) OpenShop();
+        if (lineIndex >= lines.Length) FinishLines();
+        else SpeakLine();
     }
 
     int VisibleChars() => Mathf.FloorToInt((Time.unscaledTime - lineStartTime) * charsPerSecond);
@@ -162,12 +254,64 @@ public class MerchantNPC : MonoBehaviour
     {
         mode = Mode.Shopping;
         shopLine = "想要什麼？";
+        DialogueVoice.Speak(shopLine, transform.position);
         lineStartTime = Time.unscaledTime;
-        // 鏡頭在滑鼠沒鎖定時點左鍵會重新鎖定，購物時先關掉，選項才點得到
+        UnlockPointer();
+    }
+
+    void OpenChoice()
+    {
+        mode = Mode.Choosing;
+        lineStartTime = Time.unscaledTime;
+        if (choice != null) DialogueVoice.Speak(choice.question, transform.position);
+        UnlockPointer();
+    }
+
+    /// <summary>選了第 index 個選項：講回覆的台詞，沒有台詞就結束對話</summary>
+    void Pick(int index)
+    {
+        var picked = choice;
+        choice = null;
+        string[] reply = picked.onPick?.Invoke(index);
+        RestorePointer();
+        GameAudio.Play("SFX/RPG/bookFlip1", transform.position, 0.5f, 1f, 0.1f, 0.3f);
+        if (reply == null || reply.Length == 0)
+        {
+            leaveNextFrame = true; // 等下一幀才解除動作鎖：同一顆鍵這一幀不會再觸發技能
+            return;
+        }
+        lines = reply;
+        // 玩家先把選的話說出來
+        if (playerSaysChoice && index >= 0 && index < picked.options.Length && !string.IsNullOrEmpty(picked.options[index]))
+        {
+            var withPlayer = new string[reply.Length + 1];
+            withPlayer[0] = "@" + SpokenOption(picked.options[index]);
+            System.Array.Copy(reply, 0, withPlayer, 1, reply.Length);
+            lines = withPlayer;
+        }
+        lineIndex = 0;
+        lineStartTime = Time.unscaledTime;
+        mode = Mode.Talking;
+        SpeakLine();
+    }
+
+    /// <summary>鏡頭在滑鼠沒鎖定時點左鍵會重新鎖定，要點選項時先關掉，選項才點得到</summary>
+    void UnlockPointer()
+    {
         cam = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
         if (cam != null) cam.enabled = false;
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
+        pointerUnlocked = true;
+    }
+
+    void RestorePointer()
+    {
+        if (!pointerUnlocked) return;
+        pointerUnlocked = false;
+        if (cam != null) cam.enabled = true;
+        Cursor.visible = false;
+        Cursor.lockState = CursorLockMode.Locked;
     }
 
     int Herbs => inventory != null ? inventory.GetResource(resourceName) : 0;
@@ -180,6 +324,7 @@ public class MerchantNPC : MonoBehaviour
         if (inventory == null || items == null || !inventory.ConsumeResource(resourceName, cost))
         {
             shopLine = $"{resourceDisplayName}不夠喔，{itemName}要 {cost} 株{resourceDisplayName}。";
+            DialogueVoice.Speak(shopLine, transform.position);
             GameAudio.Play("SFX/RPG/metalClick", transform.position, 0.6f, 0.7f, 0f, 0.3f);
         }
         else
@@ -189,21 +334,19 @@ public class MerchantNPC : MonoBehaviour
                 ? $"成交！治癒藥水一瓶。受傷時按 {items.potionKey} 喝下去，喝的時候會走得比較慢。倒下之後藥水會補回來。"
                 : $"成交！精力藥水一瓶。跑不動的時候按 {items.staminaPotionKey} 喝下去，精力馬上全滿。";
             GameAudio.Play("SFX/RPG/handleCoins", transform.position, 0.9f, 1f, 0.05f, 0.3f);
+            DialogueVoice.Speak(potion ? "成交！治癒藥水一瓶。" : "成交！精力藥水一瓶。", transform.position);
         }
         lineStartTime = Time.unscaledTime;
     }
 
     void EndAll()
     {
-        if (mode == Mode.Shopping)
-        {
-            if (cam != null) cam.enabled = true;
-            Cursor.visible = false;
-            Cursor.lockState = CursorLockMode.Locked;
-            GameAudio.Play("SFX/RPG/bookClose", transform.position, 0.6f, 1.1f, 0f, 0.3f);
-        }
+        if (mode == Mode.Shopping) GameAudio.Play("SFX/RPG/bookClose", transform.position, 0.6f, 1.1f, 0f, 0.3f);
+        RestorePointer();
         bool wasTalking = mode != Mode.Idle;
+        if (wasTalking) DialogueVoice.Stop();
         mode = Mode.Idle;
+        choice = null;
         if (wasTalking) SetPlayerInput(true);
     }
 
@@ -242,6 +385,8 @@ public class MerchantNPC : MonoBehaviour
     {
         if(!CalligraphyWorldIsolation.Allows(transform))return;
         if (GameUI.OverlayOpen) return;
+        // 對話框蓋在畫面下方的操作說明（-1100）上面，選項才不會被擋住；劇情對話（-1200）仍在最上層
+        GUI.depth = mode == Mode.Idle ? 0 : -1150;
         if (guiding && mode == Mode.Idle && !StoryDialogue.Active) DrawGuideMarker();
         switch (mode)
         {
@@ -249,30 +394,36 @@ public class MerchantNPC : MonoBehaviour
                 if (lines != null && lineIndex < lines.Length)
                 {
                     bool last = lineIndex == lines.Length - 1;
-                    var box = DrawBox(170f, lines[lineIndex]);
-                    bool done = VisibleChars() >= lines[lineIndex].Length;
+                    bool playerLine = IsPlayerLine(lines[lineIndex]);
+                    string text = LineText(lines[lineIndex]);
+                    var box = DrawBox(170f, text, playerLine);
+                    bool done = VisibleChars() >= text.Length;
                     float a = done ? 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 6f) : 0.4f;
-                    Hint(box, $"{lineIndex + 1}/{lines.Length}", "Space", last ? "看看商品" : "繼續", a);
+                    Hint(box, $"{lineIndex + 1}/{lines.Length}", "Space", !last ? "繼續" : choice != null ? "回答" : sellsGoods ? "看看商品" : "結束", a);
                 }
                 break;
 
             case Mode.Shopping:
                 DrawShop();
                 break;
+
+            case Mode.Choosing:
+                if (choice != null) DrawChoice();
+                break;
         }
         GUI.color = Color.white;
     }
 
     /// <summary>對話框：名字 + 逐字出現的文字，回傳框的位置</summary>
-    Rect DrawBox(float h, string line)
+    Rect DrawBox(float h, string line, bool playerSpeaks = false)
     {
         float w = Mathf.Min(900f, Screen.width - 80f);
         var box = new Rect((Screen.width - w) * 0.5f, Screen.height - h - 40f, w, h);
         // 左邊玩家、右邊商人的半身像（商人在說話）
-        StoryDialogue.DrawPortraits(box, player, transform, false, true);
-        GameUI.Panel(box);
-        GUI.color = GameUI.Accent;
-        GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), speakerName, new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold });
+        StoryDialogue.DrawPortraits(box, player, transform, playerSpeaks, !playerSpeaks);
+        GameUI.ScrollPanel(box); // 卷軸的上半截（下半截在畫面外）
+        GUI.color = playerSpeaks ? PlanetStory.PlayerColor : GameUI.Accent;
+        GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), playerSpeaks ? playerSpeakerName : speakerName, new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold });
 
         int n = Mathf.Clamp(VisibleChars(), 0, line.Length);
         GUI.color = GameUI.TextColor;
@@ -295,6 +446,25 @@ public class MerchantNPC : MonoBehaviour
         GUI.color = new Color(GameUI.MutedColor.r, GameUI.MutedColor.g, GameUI.MutedColor.b, alpha);
         GUI.Label(new Rect(x - keyW - 120f, y, 100f, 24f), left, right);
         GUI.color = Color.white;
+    }
+
+    void DrawChoice()
+    {
+        const float optionH = 42f, gap = 8f, top = 92f;
+        var box = DrawBox(top + choice.options.Length * (optionH + gap) + 8f, choice.question);
+        float oy = box.y + top;
+        int clicked = -1;
+        for (int i = 0; i < choice.options.Length; i++)
+        {
+            var r = new Rect(box.x + 24f, oy, box.width - 48f, optionH);
+            if (GameUI.Option(r)) clicked = i;
+            GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), (i + 1).ToString());
+            GUI.color = GameUI.TextColor;
+            GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), choice.options[i], OptionText);
+            GUI.color = Color.white;
+            oy += optionH + gap;
+        }
+        if (clicked >= 0) Pick(clicked);
     }
 
     void DrawShop()

@@ -8,6 +8,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     const int Rings=42,Sides=9;
     CalligraphyInkField ink;
     PlayerHealth player;
+    CalligraphyPaintingWorld paintingWorld;
     Mesh mesh;
     MeshRenderer body;
     LineRenderer warning;
@@ -37,9 +38,11 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     public float ThicknessMultiplier=>giant?2:1;
     public bool TelegraphVisible=>warning && warning.enabled;
     public bool IsDiving=>diving;
-    public void Initialize(CalligraphyInkField field,PlayerHealth victim,Vector3 from,Vector3 to,float size,float wait,bool large,float damageAmount=0,float diveSpeed=26,float blastRadius=6)
+    public float LegThicknessMultiplier=>paintingWorld?3:1;
+    public bool CanDamage=>!paintingWorld || paintingWorld.DragonsCanDamage;
+    public void Initialize(CalligraphyInkField field,PlayerHealth victim,Vector3 from,Vector3 to,float size,float wait,bool large,float damageAmount=0,float diveSpeed=26,float blastRadius=6,CalligraphyPaintingWorld paintingOwner=null)
     {
-        ink=field;player=victim;start=from;target=to;scale=size;delay=wait;giant=large;
+        ink=field;player=victim;start=from;target=to;scale=size;delay=wait;giant=large;paintingWorld=paintingOwner;
         damage=damageAmount>0?damageAmount:large?35:15;speed=large?Mathf.Max(.1f,diveSpeed):18;impactRadius=blastRadius;
         axis=(target-start).normalized;side=Vector3.Cross(axis,Vector3.up).normalized;if(side.sqrMagnitude<.01f)side=Vector3.right;
         flightDuration=Vector3.Distance(start,target)/speed;previous=from;
@@ -54,7 +57,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         for(int i=0;i<4;i++)
         {
             var limb=new GameObject("Articulated claw "+i);limb.transform.SetParent(transform,false);legs[i]=limb.transform;
-            feet[i]=CalligraphyGeometry.Line("Jointed shoulder elbow and palm",limb.transform,ink.sculptureMaterial,new Vector3[4],.19f);
+            feet[i]=CalligraphyGeometry.Line("Jointed shoulder elbow and palm",limb.transform,ink.sculptureMaterial,new Vector3[4],.19f*LegThicknessMultiplier);
             for(int k=0;k<3;k++)
             {
                 float f=k-1;
@@ -221,7 +224,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         {
             emitClock=.28f;ink.Emit(centers[18],-axis*2,.6f*scale,1.8f);
         }
-        if(diving && !damaged && player)
+        if(diving && !damaged && player && CanDamage)
         {
             Vector3 p=player.transform.position+Vector3.up;
             Vector3 segment=centers[0]-previous;
@@ -233,7 +236,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
         if(giant && diving && travel>=flightDuration && !Impacted)
         {
             Impacted=true;impactAge=age;ink.Burst(target,giant?2.8f:1.1f,26);
-            if(!damaged && player && Vector3.Distance(player.transform.position,target)<(giant?impactRadius:2))
+            if(!damaged && player && CanDamage && Vector3.Distance(player.transform.position,target)<(giant?impactRadius:2))
             {damaged=true;CalligraphyPlayerHitGate.Hit(player,damage,(player.transform.position-target).normalized*2,"被墨龍撞擊波擊倒",target,source:transform);}
         }
         if(Impacted && age-impactAge>Rings*bodyDelay*scale+.8f)Destroy(gameObject);

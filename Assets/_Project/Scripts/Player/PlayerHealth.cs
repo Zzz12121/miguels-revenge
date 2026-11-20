@@ -35,6 +35,28 @@ public class PlayerHealth : MonoBehaviour
     public event System.Action OnRespawned;
     /// <summary>受到傷害（參數是傷害量），模型動畫用</summary>
     public event System.Action<float> OnDamaged;
+    /// <summary>受擊姿勢決定好了（參數：姿勢、擊退的水平方向）。PlayerHitPose 用它擺姿勢</summary>
+    public event System.Action<PlayerHitReaction, Vector3> OnHitReaction;
+
+    [Header("受擊姿勢")]
+    [Tooltip("Auto 時：擊退往上的力道 >= 這個值就當成「被打飛」")]
+    public float autoKnockFlyUpForce = 6f;
+    [Tooltip("被打飛：最少往上飛多快 (m/s)、水平飛多快的倍率")]
+    public float knockFlyUpSpeed = 7.5f;
+    public float knockFlyHorizontalScale = 0.9f;
+    [Tooltip("被打飛落地後躺在地上多久、爬起來多久 (秒)；這段時間無敵")]
+    public float knockDownLieTime = 0.55f;
+    public float knockDownGetUpTime = 0.6f;
+    [Tooltip("吸到毒氣：摀住口鼻狂抖多久 (秒)，期間不能動")]
+    public float poisonGasStunTime = 1.6f;
+    [Tooltip("防禦姿勢：定在原地多久 (秒)。比骷髏接力的間隔短一點，玩家才有空檔翻滾逃出去")]
+    public float guardBraceStunTime = 0.35f;
+
+    /// <summary>正在被打飛（空中＋躺地＋爬起來）</summary>
+    public bool IsKnockedDown { get; private set; }
+    /// <summary>上一次受擊的姿勢</summary>
+    public PlayerHitReaction LastReaction { get; private set; } = PlayerHitReaction.Standard;
+    Coroutine knockDownRoutine;
 
     CharacterController cc;
     ThirdPersonController controller;
@@ -96,7 +118,8 @@ public class PlayerHealth : MonoBehaviour
     /// <param name="ignoreInvincibility">true = 持續傷害（例如光束），不受也不觸發受傷後的無敵時間</param>
     /// <param name="deathReason">這一下把玩家打死時，死亡畫面顯示的原因</param>
     public bool TakeDamage(float amount, Vector3 knockback = default, bool ignoreInvincibility = false,
-                           string deathReason = "被打倒了", bool applyHitStun = true)
+                           string deathReason = "被打倒了", bool applyHitStun = true,
+                           PlayerHitReaction reaction = PlayerHitReaction.Auto)
     {
         // Painting attacks use the explicit scoped hit gate; outside enemies cannot hit through it.
         if(CalligraphyPaintingWorld.BlocksTether && !CalligraphyPlayerHitGate.DeliveringPaintingDamage)return false;
@@ -127,18 +150,89 @@ public class PlayerHealth : MonoBehaviour
         lastFlashTime = Time.time;
         practiceProtection.RemoveWhere(owner => !owner);
         Health = Mathf.Max(practiceProtection.Count > 0 ? 1f : 0f, Health - amount);
-        controller.AddImpulse(knockback);
-        // 受擊僵直（持續傷害例如光束不算，不然會一直被定住）
-        if (applyHitStun && !ignoreInvincibility && hitStunTime > 0f && amount > 0f)
+        bool stunHit = applyHitStun && !ignoreInvincibility && amount > 0f;
+        PlayerHitReaction resolved = ResolveReaction(reaction, knockback, stunHit);
+        Vector3 flatKnock = new Vector3(knockback.x, 0f, knockback.z);
+        switch (resolved)
         {
-            controller.Stun(hitStunTime);
+            case PlayerHitReaction.KnockedFlying:
+                // 面向攻擊方、往後拋飛（姿勢由 PlayerHitPose 擺：蜷縮 → 張開 → 仰躺）
+                if (flatKnock.sqrMagnitude > 0.0001f) controller.FaceDirection(-flatKnock);
+                controller.Launch(flatKnock * knockFlyHorizontalScale + Vector3.up * Mathf.Max(knockFlyUpSpeed, knockback.y));
+                break;
+            case PlayerHitReaction.PoisonGas:
+            case PlayerHitReaction.GuardBrace:
+                controller.StopHorizontalMotion(); // 定在原地，不會被推著滑走
+                break;
+            default:
+                controller.AddImpulse(knockback);
+                break;
+        }
+        // 受擊僵直（持續傷害例如光束不算，不然會一直被定住）
+        if (stunHit)
+        {
+            float stun = resolved switch
+            {
+                PlayerHitReaction.PoisonGas => poisonGasStunTime,
+                PlayerHitReaction.GuardBrace => guardBraceStunTime,
+                PlayerHitReaction.KnockedFlying => 0.5f,
+                _ => hitStunTime,
+            };
+            if (stun > 0f) controller.Stun(stun);
             combat.CancelAttack();
+        }
+        if (resolved != PlayerHitReaction.Auto)
+        {
+            LastReaction = resolved;
+            if (resolved == PlayerHitReaction.KnockedFlying && Health > 0f)
+            {
+                if (knockDownRoutine != null) StopCoroutine(knockDownRoutine);
+                knockDownRoutine = StartCoroutine(KnockDownRoutine());
+            }
+            if (Health > 0f) OnHitReaction?.Invoke(resolved, flatKnock.sqrMagnitude > 0.0001f ? flatKnock.normalized : -transform.forward);
         }
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
         if (Health <= 0f) Die(deathReason);
         else OnDamaged?.Invoke(amount);
         return true;
+    }
+
+    /// <summary>
+    /// 決定這一下用哪種受擊姿勢。回傳 Auto = 不換姿勢（持續傷害、不會僵直的攻擊），照舊只推一下。
+    /// </summary>
+    PlayerHitReaction ResolveReaction(PlayerHitReaction requested, Vector3 knockback, bool stunHit)
+    {
+        if (!stunHit) return PlayerHitReaction.Auto;
+        if (IsKnockedDown) return PlayerHitReaction.Auto; // 飛在空中又被打到：不重新起飛，只扣血
+        if (requested != PlayerHitReaction.Auto) return requested;
+        return knockback.y >= autoKnockFlyUpForce ? PlayerHitReaction.KnockedFlying : PlayerHitReaction.Standard;
+    }
+
+    /// <summary>被打飛：空中一直僵直，落地後躺著＋爬起來的期間無敵、不能動</summary>
+    IEnumerator KnockDownRoutine()
+    {
+        IsKnockedDown = true;
+        float t = 0f;
+        // 起飛那幾幀還算在地上：至少等 0.15 秒再開始判斷落地
+        while (!IsDead && (t < 0.15f || !controller.IsGrounded) && t < 3f)
+        {
+            controller.Stun(0.1f);
+            t += Time.deltaTime;
+            yield return null;
+        }
+        if (!IsDead)
+        {
+            controller.StopHorizontalMotion();
+            SetSkillInvulnerability(this, true);
+            controller.Stun(knockDownLieTime + knockDownGetUpTime);
+            ThirdPersonCamera.ShakeMain(0.12f, 0.18f);
+            GameAudio.Play("SFX/rock_hit", transform.position, 0.35f, 0.7f, 0.05f, 0.4f, 30f);
+            yield return new WaitForSeconds(knockDownLieTime + knockDownGetUpTime);
+        }
+        SetSkillInvulnerability(this, false);
+        IsKnockedDown = false;
+        knockDownRoutine = null;
     }
 
     /// <summary>直接死亡（不受無敵、翻滾、盾牌影響），例如掉出步道、墜入山谷。走原本的死亡與重生流程。</summary>
@@ -183,6 +277,9 @@ public class PlayerHealth : MonoBehaviour
         IsDead = true;
         Health = 0f;
         deathReason = reason;
+        if (knockDownRoutine != null) { StopCoroutine(knockDownRoutine); knockDownRoutine = null; }
+        IsKnockedDown = false;
+        SetSkillInvulnerability(this, false);
         controller.inputEnabled = false;
         OnDied?.Invoke();
 
@@ -210,19 +307,25 @@ public class PlayerHealth : MonoBehaviour
         OnRespawned?.Invoke();
     }
 
+    /// <summary>VitalsHud（日式的血量 / 精力條）在畫的時候設成 true：這裡和 PlayerStamina 就不畫原本的長方形血條、精力條</summary>
+    public static bool SimpleBarHidden;
+
     // ---------- 簡易 HUD（之後可以換成正式 UI） ----------
     void OnGUI()
     {
         const float w = 260f, h = 18f, x = 20f, y = 20f;
-        GUI.color = new Color(0f, 0f, 0f, 0.6f);
-        GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
-        GUI.color = new Color(0.85f, 0.15f, 0.15f);
-        GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
+        if (!SimpleBarHidden)
+        {
+            GUI.color = new Color(0f, 0f, 0f, 0.6f);
+            GUI.DrawTexture(new Rect(x - 2, y - 2, w + 4, h + 4), Texture2D.whiteTexture);
+            GUI.color = new Color(0.85f, 0.15f, 0.15f);
+            GUI.DrawTexture(new Rect(x, y, w * (Health / maxHealth), h), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(x + 6, y, w, h), $"HP {Mathf.CeilToInt(Health)} / {maxHealth}");
+        }
 
         var gm = GameManager.Instance;
-        if (gm != null)
+        if (gm != null && !SimpleBarHidden) // VitalsHud 用血條旁的血滴表示剩下幾條命
         {
             GUI.color = new Color(1f, 0.55f, 0.55f);
             GUI.Label(new Rect(x + w + 12, y, 200, h + 4), $"生命 × {gm.Lives}");

@@ -33,7 +33,24 @@ public sealed class DojoElderEscape : MonoBehaviour
         Started=true;
         // The story transition also catches a single attack which crosses the threshold by a large amount.
         if(health.Health<health.maxHealth*.5f)health.SetHealth(health.maxHealth*.5f);
-        StartCoroutine(Escape());
+        StartCoroutine(EscapeWhenPlayerSkillEnds());
+    }
+    // 半血那一下常常是玩家的電影式技能（例如虛空裂斬）打出來的：技能還在接管角色與鏡頭時就開演，
+    // 演出結束會把玩家還原成「技能中」的狀態而卡住。先讓老頭停手、無敵，等技能放完再開始逃走演出。
+    IEnumerator EscapeWhenPlayerSkillEnds()
+    {
+        boss.SuspendForEscape();
+        Phase="Waiting for player skill to finish";
+        float until=Time.unscaledTime+10f;
+        while(Time.unscaledTime<until && PlayerSkillPlaying())yield return null;
+        yield return null;
+        yield return Escape();
+    }
+    static bool PlayerSkillPlaying()
+    {
+        foreach(var skill in FindObjectsByType<VoidRendSkillDemo>(FindObjectsInactive.Exclude))
+            if(skill.IsPlaying)return true;
+        return false;
     }
     IEnumerator Escape()
     {
@@ -69,7 +86,7 @@ public sealed class DojoElderEscape : MonoBehaviour
         if(flightPath!=null)for(int waypoint=0;waypoint<flightPath.Length;waypoint++)
         {
             var point=flightPath[waypoint];if(!point)continue;
-            var leg=navigation.Find(route[route.Count-1],point.position);AvoidanceCorners+=Mathf.Max(0,leg.Count-1);
+            var leg=SafeFind(navigation,route[route.Count-1],point.position);AvoidanceCorners+=Mathf.Max(0,leg.Count-1);
             foreach(var corner in leg){route.Add(corner);anchorIndices.Add(waypoint);}
         }
         Phase="Flying toward main house";float rearStarted=-1;
@@ -86,7 +103,7 @@ public sealed class DojoElderEscape : MonoBehaviour
                 float sway=indoors?indoorSway:outdoorSway;
                 float envelope=Mathf.Sin(q*Mathf.PI);
                 var desired=center+envelope*(Vector3.up*(Mathf.Sin(Time.time*4.3f)*.28f+Mathf.Sin(Time.time*9.1f)*.09f)+side*(Mathf.Sin(Time.time*2.8f)*sway+Mathf.Sin(Time.time*5.3f)*sway*.24f));
-                var at=navigation.Drift(center,desired,cloudRoot.transform.position);
+                var at=Drift(navigation,center,desired,cloudRoot.transform.position);
                 FlightSamples.Add(at);
                 cloudRoot.transform.SetPositionAndRotation(at,Quaternion.LookRotation(forward)*Quaternion.Euler(0,0,Mathf.Sin(Time.time*5)*20));
                 if(at.z<80 && rearStarted<0)Aim(at+new Vector3(5,2.4f,-7),at);
@@ -104,17 +121,17 @@ public sealed class DojoElderEscape : MonoBehaviour
                 }
                 yield return null;
             }
-            var endpoint=navigation.Drift(c,c,cloudRoot.transform.position);
+            var endpoint=Drift(navigation,c,c,cloudRoot.transform.position);
             cloudRoot.transform.position=endpoint;FlightSamples.Add(endpoint);
             if(i==anchorIndices.Count-1||anchorIndices[i+1]!=anchorIndices[i])ReachedWaypoint=anchorIndices[i];
         }
         Phase="Returning to player";
         Vector3 departing=cloudRoot.transform.position;
         Vector3 beyond=departureBeyondTorii?departureBeyondTorii.position:departing+cloudRoot.transform.forward*8;
-        var departureRoute=navigation.Find(departing,beyond);int departureIndex=0;
+        var departureRoute=SafeFind(navigation,departing,beyond);int departureIndex=0;
         if(follow)
         {
-            follow.enabled=oldCameraEnabled;follow.yaw=Quaternion.LookRotation(Vector3.ProjectOnPlane(route[route.Count-1]-player.transform.position,Vector3.up)).eulerAngles.y;
+            follow.enabled=true;follow.yaw=Quaternion.LookRotation(Vector3.ProjectOnPlane(route[route.Count-1]-player.transform.position,Vector3.up)).eulerAngles.y;
             follow.pitch=12;follow.SnapToTarget();
             var playerCam=follow.cinemachineCamera;var standby=playerCam.StandbyUpdate;playerCam.StandbyUpdate=CinemachineVirtualCameraBase.StandbyUpdateMode.Always;
             Vector3 from=camera.transform.position;Quaternion fromRot=camera.transform.rotation;yield return null;
@@ -125,7 +142,7 @@ public sealed class DojoElderEscape : MonoBehaviour
                 if(departureIndex<departureRoute.Count)
                 {
                     var target=departureRoute[departureIndex];var next=Vector3.MoveTowards(cloudRoot.transform.position,target,flightSpeed*Time.deltaTime);
-                    cloudRoot.transform.position=navigation.Drift(next,next,cloudRoot.transform.position);
+                    cloudRoot.transform.position=Drift(navigation,next,next,cloudRoot.transform.position);
                     if(Vector3.Distance(cloudRoot.transform.position,target)<.1f)departureIndex++;
                 }
                 yield return null;
@@ -141,11 +158,40 @@ public sealed class DojoElderEscape : MonoBehaviour
         health.ShowBar=false;Completed=true;Phase="Escaped";
         Destroy(cloudRoot);ReleasePlayer();
     }
+    // 防卡死：找不到避開障礙的飛行通道時（例如老頭半血時站在平台下方很低的地方），
+    // 不要丟例外讓演出停在一半（玩家會被鎖住、鏡頭回不來），改成先垂直升到目標高度再飛；還是不行就直線飛過去。
+    public bool UsedFallbackRoute{get;private set;}
+    bool ignoreObstacles;
+    List<Vector3> SafeFind(DojoInkFlightPath navigation,Vector3 from,Vector3 to)
+    {
+        try{return navigation.Find(from,to);}
+        catch(System.InvalidOperationException e){Debug.LogWarning("[DojoElderEscape] "+e.Message+"，改用備用路線。",this);}
+        UsedFallbackRoute=true;
+        Vector3 rise=new Vector3(from.x,Mathf.Max(from.y,to.y),from.z);
+        try
+        {
+            var path=navigation.Find(rise,to);
+            if(navigation.Clear(from,rise)){path.Insert(0,rise);return path;}
+        }
+        catch(System.InvalidOperationException){}
+        // 連升高都找不到：直線飛過去，飛行途中不再閃避障礙物（墨雲可能穿過牆，但演出一定會走完）
+        ignoreObstacles=true;
+        return new List<Vector3>{rise,to};
+    }
+    Vector3 Drift(DojoInkFlightPath navigation,Vector3 center,Vector3 desired,Vector3 previous)=>
+        ignoreObstacles?desired:navigation.Drift(center,desired,previous);
     void Aim(Vector3 at,Vector3 target){if(camera)camera.transform.SetPositionAndRotation(at,Quaternion.LookRotation(target-at));}
     void ReleasePlayer()
     {
-        if(ownsLock&&motor){motor.UnlockActions();motor.inputEnabled=oldInput&&!player.IsDead;motor.SuppressJump(.3f);ownsLock=false;}
-        if(follow)follow.enabled=oldCameraEnabled;
+        // 演出結束一律交還操作與跟隨鏡頭（不還原成演出開始時的狀態：那時玩家可能正在放技能，操作是暫時關閉的）
+        if(ownsLock&&motor)
+        {
+            motor.UnlockActions();
+            if(!motor.enabled)motor.enabled=true;
+            var body=motor.GetComponent<CharacterController>();if(body&&!body.enabled)body.enabled=true;
+            motor.inputEnabled=player&&!player.IsDead;motor.SuppressJump(.3f);ownsLock=false;
+        }
+        if(follow)follow.enabled=true;
     }
     void OnDisable()
     {

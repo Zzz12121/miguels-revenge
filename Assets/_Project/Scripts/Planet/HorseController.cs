@@ -105,8 +105,7 @@ public class HorseController : MonoBehaviour
         // -----------------------------------------------------
         // E：騎乘 / 下馬
         // -----------------------------------------------------
-        if (Keyboard.current != null &&
-            Keyboard.current.eKey.wasPressedThisFrame)
+        if (InputBindings.Pressed(GameAction.Interact))
         {
             if (isMounted)
             {
@@ -318,6 +317,11 @@ public class HorseController : MonoBehaviour
                 vertical -= 1f;
             }
         }
+
+        // 遊戲手把：左搖桿
+        Vector2 stick = PadInput.Move;
+        if (Mathf.Abs(stick.x) > Mathf.Abs(horizontal)) horizontal = stick.x;
+        if (Mathf.Abs(stick.y) > Mathf.Abs(vertical)) vertical = stick.y;
 
         // -----------------------------------------------------
         // 左右旋轉

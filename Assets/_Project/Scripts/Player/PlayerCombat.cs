@@ -5,8 +5,10 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 玩家的攻擊：
 /// - 滑鼠左鍵：近戰揮劍連擊（三段連擊），攻擊方向 = 鏡頭朝向
-/// - 滑鼠右鍵（按一下）：舉盾衝撞（盾擊）：往前頂一步，前方的敵人受到傷害並被大力撞開
-/// - 滑鼠右鍵（按住）：舉盾格擋。正面的攻擊完全擋下，但連續擋第 3 下會破防（那一下照樣扣血、盾牌放下一會兒）
+/// - 滑鼠右鍵（按一下）：舉盾 blockTapWindow 秒後自動放下，長按沒有額外效果。舉盾本身不會傷到敵人（盾擊衝撞預設關閉：shieldBashEnabled）。
+///   正面的攻擊完全擋下 → 盾反：把攻擊的敵人彈開（硬直），接著自動往前突刺，造成兩倍傷害。
+///   連續擋第 3 下會破防（那一下照樣扣血、盾牌放下一會兒）
+/// - shieldBashEnabled 打開時，右鍵按一下 = 舊的舉盾衝撞（盾擊）
 /// - 在船上（bowMode）：右鍵按住瞄準、左鍵射箭
 /// </summary>
 public class PlayerCombat : MeleeCombat
@@ -15,7 +17,9 @@ public class PlayerCombat : MeleeCombat
     [Tooltip("玩家攻擊力倍率")]
     public float damageMultiplier = 1f;
 
-    [Header("盾擊（右鍵，在陸地上）")]
+    [Header("盾擊（右鍵按一下，在陸地上）")]
+    [Tooltip("打開：右鍵按一下 = 往前頂的盾擊（會傷到敵人）。關閉（預設）：舉盾不會造成傷害，傷害只來自盾反突刺")]
+    public bool shieldBashEnabled = false;
     public float shieldBashDamage = 8f;
     [Tooltip("把敵人撞開的力道")]
     public float shieldBashKnockback = 10f;
@@ -32,7 +36,11 @@ public class PlayerCombat : MeleeCombat
     [Tooltip("判定球離角色中心往前多遠 / 半徑")]
     public float shieldBashReach = 1.1f, shieldBashRadius = 1.3f;
 
-    [Header("格擋（右鍵按住，在陸地上）")]
+    [Header("格擋（右鍵按一下，在陸地上）")]
+    [Tooltip("按一下右鍵後盾牌舉著多久 (秒)；長按不會延長，要再擋就要再按一次")]
+    public float blockTapWindow = 0.35f;
+    [Tooltip("盾牌放下後多久才能再按 (秒)，避免一直連點")]
+    public float blockTapCooldown = 0.25f;
     [Tooltip("連續擋幾下會破防：第幾下的攻擊會穿過盾牌扣血（3 = 擋兩下，第三下扣血）")]
     public int blockHitsBeforeBreak = 3;
     [Tooltip("舉盾時的移動速度倍率。格擋必須站穩，因此預設為 0。")]
@@ -42,12 +50,42 @@ public class PlayerCombat : MeleeCombat
     [Tooltip("攻擊要從正面多少範圍內來才擋得住（和面向的夾角餘弦，0.3 ≈ 前方 145 度）")]
     [Range(-1f, 1f)] public float blockFrontDot = 0.3f;
 
+    [Header("盾反（擋下攻擊 → 彈開敵人 → 突刺）")]
+    public bool parryEnabled = true;
+    [Tooltip("在擋下的那個方向多遠內找攻擊的敵人 (m)")]
+    public float parrySearchRadius = 3.6f;
+    [Tooltip("把敵人彈開的力道")]
+    public float parryKnockback = 9f;
+    [Tooltip("敵人被彈開後硬直幾秒（不扣血）")]
+    public float parryStagger = 0.75f;
+    [Tooltip("彈開之後隔多久出突刺 (秒)")]
+    public float counterDelay = 0.12f;
+    [Tooltip("突刺往前衝的力道")]
+    public float counterLunge = 10f;
+    [Tooltip("突刺有判定的時間 / 刺完收招的時間 (秒)")]
+    public float counterActive = 0.16f, counterRecovery = 0.32f;
+    [Tooltip("突刺判定：離角色多遠 / 半徑")]
+    public float counterReach = 1.7f, counterRadius = 0.9f;
+    [Tooltip("突刺傷害 = 第一段揮砍傷害 × 這個倍率（固定被打幾下就死的敵人：算這麼多下）")]
+    public float counterDamageMultiplier = 2f;
+
+    /// <summary>正在盾反突刺（彈開敵人後往前刺）</summary>
+    public bool IsShieldCountering { get; private set; }
+    /// <summary>盾反成功（盾牌上的位置、攻擊來的方向）：特效用</summary>
+    public event System.Action<Vector3, Vector3> OnShieldParry;
+    /// <summary>開始突刺（參數 = 突刺總長度秒數）：動畫用</summary>
+    public event System.Action<float> OnShieldCounter;
+    /// <summary>突刺目前的進度（0~1：0~delay 是準備、之後是刺出與收招）。姿勢用</summary>
+    public float CounterProgress { get; private set; }
+    Coroutine counterRoutine;
+    readonly Collider[] parryOverlap = new Collider[32];
+
     /// <summary>正在盾擊（舉著盾牌往前頂）</summary>
     public bool IsShieldBashing { get; private set; }
     /// <summary>正在按住右鍵舉盾格擋</summary>
     public bool IsBlocking { get; private set; }
     /// <summary>盾牌舉著（格擋或盾擊中）：正面攻擊會被擋下</summary>
-    public bool ShieldUp => IsBlocking || IsShieldBashing;
+    public bool ShieldUp => IsBlocking || IsShieldBashing || IsShieldCountering;
     /// <summary>這一輪連續擋了幾下（放下盾牌或破防就歸零）</summary>
     public int BlockStreak { get; private set; }
     /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
@@ -60,6 +98,7 @@ public class PlayerCombat : MeleeCombat
     public event System.Action<bool> OnBlockedHit;
     float nextBashTime, guardBrokenUntil = float.NegativeInfinity, lastBlockTime = float.NegativeInfinity;
     bool lastBlockBroke;
+    float blockWindowEnd = float.NegativeInfinity, nextBlockTapTime;
     Coroutine shieldBashRoutine;
 
     [Header("弓箭（在船上，VikingBoat 登船時打開）")]
@@ -70,6 +109,12 @@ public class PlayerCombat : MeleeCombat
     public float arrowCooldown = 0.55f;
     [Tooltip("沒有瞄準直接射時，箭的散佈角度（度）")]
     public float hipFireSpread = 2.5f;
+    [Tooltip("箭射中一般目標（IDamageable）時的傷害；0 = 只射得傷船員（船戰原本的規則）。鐵匠鋪換成弓時由 PlayerLoadout 設定")]
+    public float arrowDamage = 0f;
+    [Tooltip("瞄準中（右鍵按住）射箭時的散佈角度（度）；0 = 正中準心。鐵匠鋪的弓依蓄力的程度設定")]
+    public float aimedSpread = 0f;
+    /// <summary>剛射出一支箭（箭的 GameObject）：換箭的外觀用</summary>
+    public event System.Action<GameObject> OnArrowSpawned;
 
     /// <summary>正在按住右鍵瞄準</summary>
     public bool IsAimingBow { get; private set; }
@@ -100,6 +145,12 @@ public class PlayerCombat : MeleeCombat
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)
             gameObject.AddComponent<EnergyTetherSkill>();
+        // 跳躍、落地、揮刀、打中的音效（只加聲音）
+        if (GetComponent<PlayerSfx>() == null) gameObject.AddComponent<PlayerSfx>();
+        // 揮刀時上半身擺動更明顯（只疊在動作上面）
+        if (GetComponent<SwingBodyAccent>() == null) gameObject.AddComponent<SwingBodyAccent>();
+        // 拉弓瞄準時走路：腿輪流踏步，不會整個人在地上滑（只動腿）
+        if (GetComponent<BowAimFootwork>() == null) gameObject.AddComponent<BowAimFootwork>();
         // 幻影分身突進（空中側閃時按左鍵）/ 剪刀斬：自動補上
         phantom = GetComponent<PhantomStrike>();
         if (phantom == null) phantom = gameObject.AddComponent<PhantomStrike>();
@@ -118,28 +169,15 @@ public class PlayerCombat : MeleeCombat
         }
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        bool leftClick = false, rightClick = false, rightHeld = false;
-        var mouse = Mouse.current;
-        if (mouse != null)
-        {
-            leftClick = mouse.leftButton.wasPressedThisFrame;
-            rightClick = mouse.rightButton.wasPressedThisFrame;
-            rightHeld = mouse.rightButton.isPressed;
-        }
-#if ENABLE_LEGACY_INPUT_MANAGER
-        else
-        {
-            leftClick = Input.GetMouseButtonDown(0);
-            rightClick = Input.GetMouseButtonDown(1);
-            rightHeld = Input.GetMouseButton(1);
-        }
-#endif
+        // 攻擊 / 格擋的按鍵在暫停選單「設定」裡可以改（預設 滑鼠左鍵 / 右鍵，手把 X / LT）
+        bool leftClick = InputBindings.Pressed(GameAction.Attack);
+        bool rightClick = InputBindings.Pressed(GameAction.Block);
 
         // 受擊僵直中不能攻擊 / 舉盾
         if (controller.IsStunned)
         {
             attackQueued = false;
-            if (IsBlocking) SetBlocking(false, !rightHeld);
+            if (IsBlocking) SetBlocking(false, true);
             return;
         }
 
@@ -152,22 +190,28 @@ public class PlayerCombat : MeleeCombat
 
         // 右鍵按一下：舉盾衝撞（揮劍連擊中、破防中不能用）
         bool guardBroken = Time.time < guardBrokenUntil;
-        if (rightClick && !IsAttacking && !IsShieldBashing && !guardBroken && Time.time >= nextBashTime)
+        if (IsShieldCountering) return;   // 突刺中：交給盾反流程
+        if (shieldBashEnabled && rightClick && !IsAttacking && !IsShieldBashing && !guardBroken && Time.time >= nextBashTime)
         {
             if (IsBlocking) SetBlocking(false, false);
             shieldBashRoutine = StartCoroutine(ShieldBash());
             return;
         }
 
-        // 右鍵按住：舉盾格擋（盾擊結束時還按著就接著舉著）
-        bool wantBlock = rightHeld && !IsAttacking && !IsShieldBashing && !guardBroken;
-        if (wantBlock != IsBlocking) SetBlocking(wantBlock, !rightHeld);
+        // 右鍵按一下：舉盾 blockTapWindow 秒，時間到自動放下（長按沒有效果）
+        if (rightClick && !IsBlocking && !IsAttacking && !IsShieldBashing && !guardBroken && Time.time >= nextBlockTapTime)
+        {
+            blockWindowEnd = Time.time + blockTapWindow;
+            SetBlocking(true, false);
+        }
+        if (IsBlocking && (Time.time >= blockWindowEnd || IsAttacking || IsShieldBashing || guardBroken))
+            SetBlocking(false, true);
         if (IsBlocking) controller.FaceDirection(GetAimDirection());
 
         // 有「重擊」能力：沒在攻擊時按下左鍵先開始蓄力，放開才出手；按住超過 heavyHoldTime 就是重擊（舉盾時不能蓄力）
         if (heavyAttackEnabled && !IsAttacking && !ShieldUp)
         {
-            bool held = mouse != null && mouse.leftButton.isPressed;
+            bool held = InputBindings.Held(GameAction.Attack);
             if (leftClick) { charging = true; chargeStart = Time.time; chargeFull = false; }
             if (charging && !chargeFull && held && Time.time - chargeStart >= heavyHoldTime)
             {
@@ -213,6 +257,7 @@ public class PlayerCombat : MeleeCombat
             controller.lockRotation = false;
             controller.speedMultiplier = 1f;
             if (released) BlockStreak = 0;
+            nextBlockTapTime = Time.time + blockTapCooldown;
         }
         OnBlockChanged?.Invoke(on);
     }
@@ -247,11 +292,140 @@ public class PlayerCombat : MeleeCombat
         }
 
         lastBlockBroke = false;
+        if (parryEnabled && !IsShieldCountering && !IsShieldBashing)
+        {
+            Vector3 parryPoint = transform.position + Vector3.up * 1.1f + transform.forward * 0.7f;
+            var attacker = FindParryTarget(from.normalized);
+            GameAudio.Play("SFX/RPG/metalPot3", parryPoint, 1f, 0.85f, 0.05f, 1f, 35f);
+            OnShieldParry?.Invoke(parryPoint, from.normalized);
+            OnBlockedHit?.Invoke(false);
+            if (attacker != null)
+            {
+                ParryPush(attacker);
+                counterRoutine = StartCoroutine(ShieldCounter(attacker));
+            }
+            return 0f;
+        }
         GameAudio.Play("SFX/RPG/metalPot3", shieldPoint, 1f, 1.2f, 0.05f, 1f, 30f);
         CombatVFX.Impact(shieldPoint, new Color(1f, 0.95f, 0.7f));
         ThirdPersonCamera.ShakeMain(0.06f, 0.1f);
         OnBlockedHit?.Invoke(false);
         return 0f;
+    }
+
+    // ---------------- 盾反（擋下 → 彈開 → 突刺） ----------------
+
+    /// <summary>擋下的那個方向上，離盾牌最近的敵人（小怪 / Boss，任何 IDamageable）</summary>
+    Component FindParryTarget(Vector3 from)
+    {
+        Vector3 center = transform.position + Vector3.up + from * (parrySearchRadius * 0.5f);
+        int n = Physics.OverlapSphereNonAlloc(center, parrySearchRadius * 0.6f, parryOverlap, ~0, QueryTriggerInteraction.Ignore);
+        Component best = null; float bestD = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            var c = parryOverlap[i];
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            var target = c.GetComponentInParent<IDamageable>();
+            if (target == null || target.IsDead || !(target is Component comp)) continue;
+            Vector3 to = comp.transform.position - transform.position; to.y = 0f;
+            if (to.magnitude > parrySearchRadius || Vector3.Dot(to.normalized, from) < 0.2f) continue;
+            if (to.magnitude < bestD) { bestD = to.magnitude; best = comp; }
+        }
+        return best;
+    }
+
+    void ParryPush(Component attacker)
+    {
+        Vector3 push = attacker.transform.position - transform.position; push.y = 0f;
+        push = push.sqrMagnitude > 0.001f ? push.normalized : transform.forward;
+        var move = attacker.GetComponent<ThirdPersonController>();
+        if (move != null) move.AddImpulse(push * parryKnockback + Vector3.up * 2f);
+        var ai = attacker.GetComponent<EnemyAI>();
+        if (ai != null) ai.Parried(parryStagger);
+    }
+
+    System.Collections.IEnumerator ShieldCounter(Component target)
+    {
+        IsShieldCountering = true;
+        if (IsBlocking) SetBlocking(false, false);
+        controller.lockRotation = true;
+        controller.speedMultiplier = 0f;
+        float total = counterDelay + counterActive + counterRecovery;
+        OnShieldCounter?.Invoke(total);
+        float start = Time.time;
+        var presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
+        if (presenter != null) presenter.DrawForSeconds(total + 0.3f);
+
+        // 轉向被彈開的敵人，稍微蓄勢
+        while (Time.time - start < counterDelay)
+        {
+            FaceTarget(target);
+            CounterProgress = (Time.time - start) / total;
+            yield return null;
+        }
+
+        // 刺出：往前衝 + 判定（同一個敵人只算一次）
+        FaceTarget(target);
+        controller.AddImpulse(transform.forward * counterLunge);
+        GameAudio.Play("SFX/RPG/drawKnife2", transform.position + Vector3.up, 0.9f, 1.25f, 0.05f, 1f, 30f);
+        var hit = new HashSet<object>();
+        while (Time.time - start < counterDelay + counterActive)
+        {
+            CounterHitCheck(hit);
+            CounterProgress = (Time.time - start) / total;
+            yield return null;
+        }
+
+        // 收招
+        while (Time.time - start < total)
+        {
+            CounterProgress = (Time.time - start) / total;
+            yield return null;
+        }
+        EndCounter();
+    }
+
+    void FaceTarget(Component target)
+    {
+        if (target == null) return;
+        Vector3 d = target.transform.position - transform.position; d.y = 0f;
+        if (d.sqrMagnitude > 0.01f) controller.FaceDirection(d.normalized);
+    }
+
+    void CounterHitCheck(HashSet<object> alreadyHit)
+    {
+        Vector3 center = transform.position + Vector3.up * 1.1f + transform.forward * counterReach;
+        int n = Physics.OverlapSphereNonAlloc(center, counterRadius, parryOverlap, ~0, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < n; i++)
+        {
+            var c = parryOverlap[i];
+            if (!CalligraphyWorldIsolation.Allows(c.transform)) continue;
+            if (c.transform == transform || c.transform.IsChildOf(transform)) continue;
+            var target = c.GetComponentInParent<IDamageable>();
+            if (target == null || target.IsDead || alreadyHit.Contains(target)) continue;
+            alreadyHit.Add(target);
+
+            bool supportsClosest = c is BoxCollider || c is SphereCollider || c is CapsuleCollider || (c is MeshCollider mc && mc.convex);
+            Vector3 point = supportsClosest ? c.ClosestPoint(center) : c.bounds.ClosestPoint(center);
+            float baseDamage = comboDamage.Length > 0 ? comboDamage[0] : 12f;
+            float dealt = baseDamage * counterDamageMultiplier * DamageScale(false, target);
+            if (target is EnemyHealth eh) eh.TakeDamage(dealt, point, counterDamageMultiplier);
+            else target.TakeDamage(dealt, point);
+            AfterHit(dealt, target);
+            OnHitLanded?.Invoke(target, point, dealt, true);
+            GameAudio.Play("SFX/RPG/knifeSlice", point, 1f, 0.8f, 0.05f, 1f, 35f);
+            CombatVFX.Impact(point, new Color(1f, 0.75f, 0.3f));
+            ThirdPersonCamera.ShakeMain(0.18f, 0.14f);
+        }
+    }
+
+    void EndCounter()
+    {
+        if (counterRoutine != null) { StopCoroutine(counterRoutine); counterRoutine = null; }
+        if (!IsShieldCountering) return;
+        IsShieldCountering = false;
+        CounterProgress = 0f;
+        if (controller != null) { controller.speedMultiplier = 1f; controller.lockRotation = false; }
     }
 
     [Header("重擊（能力植物「重擊」會打開）")]
@@ -264,16 +438,23 @@ public class PlayerCombat : MeleeCombat
     bool charging, chargeFull, heavyChain, heavySwing;
     float chargeStart;
 
-    /// <summary>玩家造成傷害的總倍率：基本倍率 × 能力植物（低血量狂暴）</summary>
+    [Tooltip("手上武器的傷害倍率（鐵匠鋪換武器時由 PlayerLoadout 設定，不會跟著存檔 / 換關卡；大刀 = 1）")]
+    [System.NonSerialized] public float weaponDamageScale = 1f;
+
+    /// <summary>玩家造成傷害的總倍率：基本倍率 × 武器 × 能力植物（低血量狂暴）</summary>
     float DamageScale(bool heavy, IDamageable target)
     {
         if (perks == null) perks = GetComponent<PlayerPerks>();
-        return damageMultiplier * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScaleFor(target) : 1f);
+        return damageMultiplier * weaponDamageScale * (heavy ? heavyDamageScale : 1f) * (perks != null ? perks.DamageScaleFor(target) : 1f);
     }
+
+    /// <summary>打中東西的瞬間（近戰、盾擊、箭）：傷害、打中的目標（箭射中時是 null）。打擊回饋（震動）用</summary>
+    public event System.Action<float, IDamageable> OnDealtHit;
 
     void AfterHit(float dealt, IDamageable target)
     {
         if (perks != null) perks.OnDealtDamage(dealt, target);
+        OnDealtHit?.Invoke(dealt, target);
     }
 
     PlayerPerks perks;
@@ -290,6 +471,7 @@ public class PlayerCombat : MeleeCombat
     {
         CancelAttack();
         CancelShieldBash();
+        EndCounter();
         if (IsBlocking) SetBlocking(false, true);
         charging = false;
         chargeFull = false;
@@ -309,6 +491,7 @@ public class PlayerCombat : MeleeCombat
     {
         base.OnDisable();
         CancelShieldBash();
+        EndCounter();
         if (IsBlocking) SetBlocking(false, true);
         charging = false;
         attackQueued = false;
@@ -406,9 +589,8 @@ public class PlayerCombat : MeleeCombat
 
     void UpdateBow()
     {
-        var mouse = Mouse.current;
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        bool aim = locked && mouse != null && mouse.rightButton.isPressed;
+        bool aim = locked && InputBindings.Held(GameAction.Block);
         if (aim != IsAimingBow)
         {
             IsAimingBow = aim;
@@ -418,7 +600,7 @@ public class PlayerCombat : MeleeCombat
         }
         if (IsAimingBow) FaceCamera();
 
-        if (locked && mouse != null && mouse.leftButton.wasPressedThisFrame && Time.time >= nextArrowTime)
+        if (locked && InputBindings.Pressed(GameAction.Attack) && Time.time >= nextArrowTime)
             ShootArrow();
     }
 
@@ -442,10 +624,11 @@ public class PlayerCombat : MeleeCombat
         Vector3 target;
         // 往畫面正中央（準心）射：從鏡頭打一條線，找第一個不是自己 / 自己船的東西
         Ray ray = cam != null ? cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)) : new Ray(origin, transform.forward);
-        if (!IsAimingBow)
+        float spread = IsAimingBow ? aimedSpread : hipFireSpread;
+        if (spread > 0f)
         {
-            // 沒瞄準：準心附近隨機偏一點
-            ray.direction = Quaternion.Euler(Random.Range(-hipFireSpread, hipFireSpread), Random.Range(-hipFireSpread, hipFireSpread), 0f) * ray.direction;
+            // 沒瞄準（或沒蓄滿力）：準心附近隨機偏一點
+            ray.direction = Quaternion.Euler(Random.Range(-spread, spread), Random.Range(-spread, spread), 0f) * ray.direction;
         }
         target = ray.GetPoint(150f);
         float best = float.MaxValue;
@@ -466,6 +649,8 @@ public class PlayerCombat : MeleeCombat
         arrow.owner = transform;
         arrow.ownerBoat = boat;
         arrow.shooter = this;
+        arrow.damage = arrowDamage * damageMultiplier;
+        OnArrowSpawned?.Invoke(arrowObj);
 
         GameAudio.Play("SFX/RPG/drawKnife3", origin, 0.85f, 1.6f, 0.08f, 0.5f, 30f);
         CombatVFX.Puff(origin, dir, new Color(0.9f, 0.95f, 1f, 0.5f));
@@ -477,6 +662,7 @@ public class PlayerCombat : MeleeCombat
     {
         hitMarkerTime = Time.time;
         hitMarkerValid = valid;
+        if (valid) OnDealtHit?.Invoke(arrowDamage, null);
     }
 
     void OnGUI()

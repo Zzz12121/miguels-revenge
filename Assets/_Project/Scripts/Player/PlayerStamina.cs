@@ -69,6 +69,7 @@ public class PlayerStamina : MonoBehaviour
     void OnGUI()
     {
         if (GameUI.OverlayOpen || (health != null && health.IsDead)) return;
+        if (PlayerHealth.SimpleBarHidden) return; // VitalsHud 畫日式的精力條
 
         const float w = 260f, h = 10f, x = 20f, y = 44f;
         float denied = 1f - Mathf.Clamp01((Time.time - deniedTime) / 0.5f);
