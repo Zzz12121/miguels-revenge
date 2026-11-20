@@ -47,6 +47,9 @@ public class GameAudioHost : MonoBehaviour
         return s;
     }
 
+    /// <summary>現在在播的背景音樂（淡出中也算；沒在播 = null）</summary>
+    public AudioClip CurrentMusic => music != null && music.isPlaying && !stopWhenSilent ? music.clip : null;
+
     public void PlayMusic(AudioClip clip, float volume, float fadeIn)
     {
         if (music.clip != clip || !music.isPlaying)

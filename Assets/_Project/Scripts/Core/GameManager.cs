@@ -8,6 +8,8 @@ using UnityEngine.UI;
 /// 整個遊戲的關卡流程（跨場景存在，不會因為換場景被刪掉）：
 ///   - 主選單（MainMenu）按「開始遊戲」→ StartNewGame()，從第一關開始
 ///   - 記住關卡順序：星球 →（傳送門）→ 維京村莊 →（搭船）→ 地下城（Boss，最後一關）
+///   - 另一條主線（storyLevels）：漁村 ↔ 道場。跟上面一樣可以暫停（存檔 / 讀檔 / 設定 / 重新開始本關）、
+///     換場景時帶著玩家的狀態（血量、背包、錢、造型）、進場景時自動存檔；但不算進「下一關」的順序、沒有關卡標題和轉場動畫
 ///   - 傳送門 / 船抵達終點時呼叫 LoadNextLevel() 或 LoadLevel("場景名")
 ///   - 換場景時畫面淡出淡入，進入新關卡會顯示關卡名稱
 ///   - 換到下一關時玩家的血量、能力升級、背包會帶過去（PlayerState）；重新開始本關會回到進關時的狀態
@@ -40,6 +42,13 @@ public class GameManager : MonoBehaviour
         new Level { sceneName = "Planet",             title = "第一關　沙漠",     music = "Music/bgm_planet" },
         new Level { sceneName = "The_Viking_Village", title = "第二關　維京村莊", music = "Music/bgm_viking" },
         new Level { sceneName = "Floor02",            title = "第三關　地下城",   music = "Music/bgm_dungeon" },
+    };
+
+    [Tooltip("漁村這條主線的場景（不在上面的順序裡）：一樣可以暫停、存讀檔，換場景時帶著玩家的狀態")]
+    public Level[] storyLevels =
+    {
+        new Level { sceneName = "JapaneseVillage",               title = "漁村" },
+        new Level { sceneName = "DojoArena_ArchitecturePreview", title = "道場" },
     };
 
     [Header("背景音樂")]
@@ -80,6 +89,19 @@ public class GameManager : MonoBehaviour
     /// <summary>目前場景在關卡順序中的位置，不在清單裡就是 -1</summary>
     public int CurrentLevelIndex => IndexOf(SceneManager.GetActiveScene().name);
     public Level CurrentLevel => CurrentLevelIndex >= 0 ? levels[CurrentLevelIndex] : null;
+    /// <summary>目前場景是可以玩的關卡（上面的關卡順序，或漁村這條主線）：可以暫停、存讀檔</summary>
+    public bool InPlayableLevel => FindLevel(SceneManager.GetActiveScene().name) != null;
+
+    /// <summary>在兩條路線裡找這個場景（關卡順序先找，再找漁村主線）；都沒有回傳 null</summary>
+    public Level FindLevel(string sceneName)
+    {
+        int i = IndexOf(sceneName);
+        if (i >= 0) return levels[i];
+        if (storyLevels != null)
+            foreach (var l in storyLevels)
+                if (l != null && l.sceneName == sceneName) return l;
+        return null;
+    }
 
     /// <summary>剩下幾條命（包含現在這條）</summary>
     public int Lives { get; private set; }
@@ -127,7 +149,8 @@ public class GameManager : MonoBehaviour
         // 直接從某一關按 Play 也顯示關卡標題、播音樂，並記下進關時的狀態（重新開始本關用）
         ShowTitle();
         PlaySceneMusic();
-        if (CurrentLevelIndex >= 0) levelEntryState = PlayerState.Capture(PlayerState.FindPlayer());
+        if (InPlayableLevel) levelEntryState = PlayerState.Capture(PlayerState.FindPlayer());
+        if (SceneManager.GetActiveScene().name == StoryStartScene) storyStartState = levelEntryState;
     }
 
     void OnDestroy()
@@ -159,7 +182,7 @@ public class GameManager : MonoBehaviour
     /// <summary>存檔：目前這一關 + 命 + 時間 + 玩家現在的狀態</summary>
     public bool SaveGame()
     {
-        var level = CurrentLevel;
+        var level = FindLevel(SceneManager.GetActiveScene().name);
         if (level == null) return false;
         var state = PlayerState.Capture(PlayerState.FindPlayer()) ?? levelEntryState;
         return SaveSystem.Save(new SaveData
@@ -176,7 +199,7 @@ public class GameManager : MonoBehaviour
     {
         if (IsLoading) return false;
         var data = SaveSystem.Load();
-        if (data == null || IndexOf(data.sceneName) < 0) return false;
+        if (data == null || FindLevel(data.sceneName) == null) return false;
         Lives = Mathf.Max(1, data.lives);
         PlayTime = data.playTime;
         levelEntryState = data.player;
@@ -189,8 +212,8 @@ public class GameManager : MonoBehaviour
     {
         var data = SaveSystem.Load();
         if (data == null) return null;
-        int i = IndexOf(data.sceneName);
-        string title = i >= 0 ? levels[i].title : data.sceneName;
+        var level = FindLevel(data.sceneName);
+        string title = level != null ? level.title : data.sceneName;
         return $"{title}　{data.savedAt}";
     }
 
@@ -285,7 +308,7 @@ public class GameManager : MonoBehaviour
         pendingEnding = null;
 
         // 從一關走到另一關：記下玩家現在的血量 / 能力 / 背包，等一下套到新場景的玩家身上
-        if (carryPlayer && CurrentLevelIndex >= 0 && sceneName != SceneManager.GetActiveScene().name)
+        if (carryPlayer && InPlayableLevel && sceneName != SceneManager.GetActiveScene().name)
             levelEntryState = PlayerState.Capture(PlayerState.FindPlayer()) ?? levelEntryState;
 
         // 往後面的關卡前進（帶著玩家狀態）：載入時播轉場動畫，不是一片黑
@@ -324,11 +347,12 @@ public class GameManager : MonoBehaviour
         while (!op.isDone) yield return null;
         yield return null; // 等新場景的 Start 都跑完
 
-        if (IndexOf(sceneName) >= 0)
+        if (FindLevel(sceneName) != null)
         {
             var player = PlayerState.FindPlayer();
             if (levelEntryState != null) levelEntryState.Apply(player);
             else levelEntryState = PlayerState.Capture(player);
+            if (sceneName == StoryStartScene) storyStartState = PlayerState.Capture(player);
             if (autoSaveOnLevelStart) SaveGame();
         }
 
@@ -371,7 +395,7 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        if (CurrentLevelIndex >= 0 && !IsPaused && !IsGameOver && !IsGameWon) PlayTime += Time.deltaTime;
+        if (InPlayableLevel && !IsPaused && !IsGameOver && !IsGameWon) PlayTime += Time.deltaTime;
         if (IsLoading) return;
         var kb = Keyboard.current;
         bool pausePressed = (kb != null && kb.escapeKey.wasPressedThisFrame) || PadInput.PausePressed; // 手把 Start
@@ -380,7 +404,7 @@ public class GameManager : MonoBehaviour
         if (ControlsSettingsMenu.IsOpen || ControlsSettingsMenu.ClosedThisFrame) return;
 
         // Esc：暫停 / 繼續（別的選單把時間停住的時候不搶，例如能力植物三選一）
-        if (pausePressed && CurrentLevelIndex >= 0 && !IsGameOver && !IsGameWon)
+        if (pausePressed && InPlayableLevel && !IsGameOver && !IsGameWon)
         {
             if (SkillAimCancellation.CancelForEscape()) return;
             if (IsPaused) Resume();
@@ -390,9 +414,39 @@ public class GameManager : MonoBehaviour
 
     // ================= 暫停 / Game Over / 通關畫面（uGUI） =================
 
+    /// <summary>目前在漁村這條主線（漁村、道場）</summary>
+    public bool InStoryLevel => IndexOf(SceneManager.GetActiveScene().name) < 0 && InPlayableLevel;
+    /// <summary>漁村主線的起點（storyLevels 的第一個）</summary>
+    public string StoryStartScene => storyLevels != null && storyLevels.Length > 0 ? storyLevels[0].sceneName : null;
+    /// <summary>最近一次進漁村時玩家的狀態（漁村主線的「從漁村重新開始」用）</summary>
+    PlayerState storyStartState;
+
+    /// <summary>漁村主線的「重新開始」：不管在漁村還是道場，都回到漁村，帶著最近一次進漁村時的狀態</summary>
+    public void RestartStory()
+    {
+        if (IsLoading || string.IsNullOrEmpty(StoryStartScene)) return;
+        levelEntryState = storyStartState;
+        LoadScene(StoryStartScene, false);
+    }
+
     public void Pause()
     {
         if (IsOverlayOpen || IsLoading) return;
+        if (InStoryLevel)
+        {
+            // 漁村主線：掛軸風格的暫停選單；重新開始 = 回到漁村
+            UIKit.Washi = true;
+            OpenOverlay("暫　停", new Color(0.17f, 0.11f, 0.065f), FindLevel(SceneManager.GetActiveScene().name)?.title ?? "",
+                ("繼續遊戲", Resume),
+                ("存檔", OnSaveClicked),
+                ("讀取存檔", OnLoadClicked),
+                ("設定", OpenSettings),
+                ("從漁村重新開始", RestartStory),
+                ("回主選單", GoToMainMenu));
+            IsPaused = true;
+            return;
+        }
+        UIKit.Washi = false;
         OpenOverlay("PAUSED", new Color(0.85f, 0.9f, 1f), "遊戲暫停",
             ("繼續遊戲", Resume),
             ("存檔", OnSaveClicked),
@@ -474,10 +528,23 @@ public class GameManager : MonoBehaviour
 
         overlay = UIKit.CreateCanvas("GameFlowOverlay", 100, transform);
         var root = overlay.transform;
-        UIKit.Panel("Dim", root, new Color(0f, 0f, 0f, 0.7f)).raycastTarget = true;
-        UIKit.Label("Title", root, title, 110, titleColor, new Vector2(0f, 220f), new Vector2(1600f, 150f),
-                    TextAnchor.MiddleCenter, FontStyle.Bold);
-        UIKit.Label("Subtitle", root, subtitle, 36, Color.white, new Vector2(0f, 90f), new Vector2(1400f, 120f));
+        UIKit.Panel("Dim", root, UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.6f) : new Color(0f, 0f, 0f, 0.7f)).raycastTarget = true;
+        if (UIKit.Washi)
+        {
+            // 漁村風格：一幅掛軸，標題是墨色的大字、旁邊蓋一個朱印，下面寫在哪裡
+            float bottom = -((buttons.Length > 3 ? 0f : -40f) - (buttons.Length - 1) * (buttons.Length > 5 ? 88f : buttons.Length > 3 ? 98f : 110f)) + 70f;
+            float top = 330f;
+            UIKit.HangingScroll(root, new Vector2(0f, (top - bottom) * 0.5f), new Vector2(620f, top + bottom));
+            UIKit.Label("Title", root, title, 88, titleColor, new Vector2(0f, 192f), new Vector2(600f, 110f), TextAnchor.MiddleCenter, FontStyle.Bold);
+            UIKit.Seal(root, "休", new Vector2(172f, 210f), 44f);
+            UIKit.Label("Subtitle", root, subtitle, 30, new Color(0.42f, 0.31f, 0.2f), new Vector2(0f, 112f), new Vector2(560f, 46f));
+        }
+        else
+        {
+            UIKit.Label("Title", root, title, 110, titleColor, new Vector2(0f, 220f), new Vector2(1600f, 150f),
+                        TextAnchor.MiddleCenter, FontStyle.Bold);
+            UIKit.Label("Subtitle", root, subtitle, 36, Color.white, new Vector2(0f, 90f), new Vector2(1400f, 120f));
+        }
 
         Button first = null;
         // 按鈕多的時候（暫停選單）往上挪、間距縮小，才不會超出畫面
@@ -485,7 +552,7 @@ public class GameManager : MonoBehaviour
         for (int i = 0; i < buttons.Length; i++)
         {
             var b = UIKit.Button("Button_" + i, root, buttons[i].label, new Vector2(0f, startY - i * step),
-                                 new Vector2(440f, 84f), buttons[i].action, 36);
+                                 UIKit.Washi ? new Vector2(420f, 72f) : new Vector2(440f, 84f), buttons[i].action, UIKit.Washi ? 32 : 36);
             if (first == null) first = b;
         }
         if (first != null) first.Select(); // 可以直接按 Enter
@@ -496,6 +563,7 @@ public class GameManager : MonoBehaviour
         if (overlay != null) Destroy(overlay.gameObject);
         overlay = null;
         IsPaused = false;
+        UIKit.Washi = false;
         if (restoreGameplay)
         {
             Time.timeScale = overlayPrevTimeScale;

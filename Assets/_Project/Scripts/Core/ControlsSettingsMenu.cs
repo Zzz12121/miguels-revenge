@@ -36,8 +36,8 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
     Button keyboardTab, padTabButton, invertButton;
     Text lookValue, statusText;
 
-    static readonly Color Selected = new Color(0.85f, 0.62f, 0.2f, 1f);
-    static readonly Color Normal = new Color(0.16f, 0.2f, 0.28f, 0.92f);
+    static Color Selected => UIKit.TabOn;
+    static Color Normal => UIKit.TabOff;
 
     public static void Open(Transform parent, Action onClose)
     {
@@ -74,7 +74,8 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
 
         canvas = UIKit.CreateCanvas("ControlsSettingsCanvas", 110, transform);
         root = canvas.transform;
-        UIKit.Panel("Dim", root, new Color(0f, 0f, 0f, 0.82f)).raycastTarget = true;
+        UIKit.Panel("Dim", root, UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.65f) : new Color(0f, 0f, 0f, 0.82f)).raycastTarget = true;
+        if (UIKit.Washi) UIKit.HangingScroll(root, new Vector2(0f, 25f), new Vector2(1640f, 930f)); // 漁村風格：整個設定寫在一大幅掛軸上
         UIKit.Label("Title", root, "設定", 64, new Color(0.85f, 0.9f, 1f), new Vector2(0f, 425f), new Vector2(800f, 90f),
                     TextAnchor.MiddleCenter, FontStyle.Bold);
 

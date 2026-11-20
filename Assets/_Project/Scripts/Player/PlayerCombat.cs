@@ -669,6 +669,9 @@ public class PlayerCombat : MeleeCombat
         if (valid) OnDealtHit?.Invoke(arrowDamage, null);
     }
 
+    /// <summary>不顯示畫面下方船戰用的射箭說明（日式村莊的弓由 PlayerLoadout 打開這個）</summary>
+    [System.NonSerialized] public bool hideBowHint;
+
     void OnGUI()
     {
         if (health != null && health.IsDead) return;
@@ -699,9 +702,12 @@ public class PlayerCombat : MeleeCombat
             GUI.Label(new Rect(cx - 30f, cy - 30f, 60f, 60f), "✕", style);
         }
 
-        var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
-        GUI.color = new Color(1f, 1f, 1f, 0.75f);
-        GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        if (!hideBowHint)
+        {
+            var hint = new GUIStyle(GUI.skin.label) { fontSize = 18, alignment = TextAnchor.MiddleCenter };
+            GUI.color = new Color(1f, 1f, 1f, 0.75f);
+            GUI.Label(new Rect(0f, Screen.height - 70f, Screen.width, 30f), "右鍵按住瞄準　左鍵射箭　只有射中船上的弓箭手才有效", hint);
+        }
         GUI.color = Color.white;
     }
 
@@ -747,8 +753,12 @@ public class PlayerCombat : MeleeCombat
     [Tooltip("擴散時間（秒）")]
     public float strikeWaveTime = .28f, heavyWaveTime = .4f;
 
+    /// <summary>每一刀判定傷害的那一刻（判定球的中心、半徑）。幻影分身用這個跟著本尊一起砍</summary>
+    public event System.Action<Vector3, float> OnStrike;
+
     protected override void OnStrikeMoment(Vector3 center, float radius, int index, bool landing)
     {
+        OnStrike?.Invoke(center, radius);
         if (!strikeAirWave) return;
         bool big = landing || index == 2 || heavySwing;
         Vector3 at = center + Vector3.up * (landing ? -.3f : .2f); // 判定球中心大約在腰的高度；跳劈落地放低一點
@@ -783,7 +793,7 @@ public class PlayerCombat : MeleeCombat
         float dealt = damage * DamageScale(heavySwing, target);
         target.TakeDamage(dealt, hitPoint);
         AfterHit(dealt, target);
-        OnHitLanded?.Invoke(target, hitPoint, dealt, heavySwing);
+        OnHitLanded?.Invoke(target, hitPoint, dealt, heavySwing || IsDashSlash); // 幻影突進 / 剪刀斬：打中的手感算重擊（頓幀久一點）
         if (heavySwing) CombatVFX.Impact(hitPoint, new Color(1f, 0.6f, 0.2f));
         ThirdPersonCamera.ShakeMain(heavySwing ? 0.18f : 0.08f, 0.1f);
         return true;

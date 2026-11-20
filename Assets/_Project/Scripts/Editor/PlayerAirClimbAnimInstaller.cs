@@ -79,7 +79,7 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             // （不能用 Center of Mass：每段動畫以「自己第一格」的重心對齊，落地動畫第一格是蹲下的開頭，會整個往後偏約 5 公分，切回待機時腳往前滑）
             c.lockRootPositionXZ = true; c.keepOriginalPositionXZ = true;
             // CW_SwordAim / CW_SwordStep*：技能 1 蓄力時的舉刀站姿和小碎步（循環）
-            c.loopTime = n == "CW_Fall" || n.StartsWith("CW_Sword");
+            c.loopTime = n == "CW_Fall" || n.StartsWith("CW_Sword") || n == "CW_PhantomDash";
             c.loopPose = false;
         }
         imp.clipAnimations = clips;
@@ -228,6 +228,27 @@ public class PlayerAirClimbAnimInstaller : AssetPostprocessor
             Clear(st);
             if (idle != null) Add(st, idle, 0.24f, 0.99f);
             log.Add("AC_PlayerCatWarrior：加上 Slash" + i + "（第 " + i + " 刀）狀態");
+        }
+
+        // 幻影分身突進（跳 → 側閃 → 左鍵）的三段動畫（Art/PlayerCatWarrior/phantom_pose.py 在 Blender 手擺）：
+        // PhantomDash = 衝過去的姿勢；PhantomSlash = 到位的橫砍；PhantomScissor = 剪刀斬。後兩個跟地面連段一樣用 SlashTime 控制進度
+        if (clips.TryGetValue("CW_PhantomDash", out var phantomDashClip))
+        {
+            var st = Find("PhantomDash") ?? sm.AddState("PhantomDash", new Vector3(330, 860));
+            st.motion = phantomDashClip; st.speed = 1f; st.writeDefaultValues = true;
+            Clear(st); // 循環的定格姿勢，進出都由 PlayerVisualAnimator 用程式切（不加自動轉換，不然一下就跳去下落）
+            log.Add("AC_PlayerCatWarrior：加上 PhantomDash（幻影突進的姿勢）狀態");
+        }
+        foreach (var pair in new[] { ("CW_PhantomSlash", "PhantomSlash"), ("CW_PhantomScissor", "PhantomScissor") })
+        {
+            if (!clips.TryGetValue(pair.Item1, out var phantomClip)) continue;
+            EnsureFloat(ctrl, "SlashTime", 0f);
+            var st = Find(pair.Item2) ?? sm.AddState(pair.Item2, new Vector3(600, pair.Item2 == "PhantomSlash" ? 920 : 980));
+            st.motion = phantomClip; st.speed = 1f; st.writeDefaultValues = true;
+            st.timeParameterActive = true; st.timeParameter = "SlashTime";
+            Clear(st);
+            if (idle != null) Add(st, idle, 0.22f, 0.99f);
+            log.Add("AC_PlayerCatWarrior：加上 " + pair.Item2 + " 狀態");
         }
 
         // 技能 1（虛空裂斬）用的姿勢動畫：技能開始時 VoidRendSkillDemo 會把它們取樣存起來（技能期間 Animator 是關掉的），

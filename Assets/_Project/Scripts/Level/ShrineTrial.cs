@@ -251,7 +251,7 @@ public class ShrineTrial : MonoBehaviour
                 backDoor.Open();
                 return new[]
                 {
-                    $"後門開了。練拉索：按 {InputBindings.DisplayName(GameAction.Tether)} 瞄準，點左鍵鎖定木條，再把滾輪往上滾，就能把自己拉過去。掉進溝裡就從起點重來。",
+                    $"後門開了。練拉索：按 {InputBindings.DisplayName(GameAction.Tether)} 瞄準，點左鍵鎖定木條，再把滾輪往上滾，就會丟出鉤爪、把自己拉過去。每拉一次都要花精力，拉得越遠花越多，站在木板上可以喘口氣。掉進溝裡就從起點重來。",
                     "木頭人會用雙手推你，看到它把雙手往後收，就是要推了，趕快舉盾或翻滾。在院子裡你不會被打倒，儘管放手練。",
                 };
             },
@@ -293,7 +293,7 @@ public class ShrineTrial : MonoBehaviour
 
     DialogueChoice MonkChoice()
     {
-        if (monkSpar != null && monkSpar.Arrived && !monkSpar.Done && !monkSpar.Fighting)
+        if (monkSpar != null && monkSpar.Appeared && !monkSpar.Done && !monkSpar.Fighting)
             return new DialogueChoice
             {
                 question = "要跟僧侶過招嗎？",

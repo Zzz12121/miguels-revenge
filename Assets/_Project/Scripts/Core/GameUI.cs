@@ -60,13 +60,30 @@ public static class GameUI
 
     // ---------------------------------------------------------------- 卷軸（對話框）
 
-    static Texture2D scrollPaper, scrollBrocade, scrollRod, scrollKnob, scrollShade, scrollShadeV, scrollPainting;
+    /// <summary>卷軸紙上的字：深墨色（紙是淺色的牛皮紙，白字看不清楚）</summary>
+    public static readonly Color Ink = new Color(0.17f, 0.11f, 0.065f);
+    public static readonly Color InkMuted = new Color(0.42f, 0.31f, 0.2f);
+    /// <summary>朱紅：卷軸上預設的名字顏色、滑鼠移到選項上的框線</summary>
+    public static readonly Color Cinnabar = new Color(0.6f, 0.14f, 0.08f);
+    public static readonly Color InkGood = new Color(0.13f, 0.36f, 0.13f);
+    public static readonly Color InkBad = new Color(0.62f, 0.15f, 0.09f);
+
+    /// <summary>把亮色（例如名字的顏色）換成在牛皮紙上看得清楚的深色：色相不變，飽和度提高、明度壓低</summary>
+    public static Color OnPaper(Color c)
+    {
+        Color.RGBToHSV(c, out float h, out float s, out float v);
+        var o = Color.HSVToRGB(h, Mathf.Max(s, 0.7f), 0.36f);
+        o.a = c.a;
+        return o;
+    }
+
+    static Texture2D scrollPaper, scrollBrocade, scrollRod, scrollKnob, scrollShade, scrollShadeV;
 
     /// <summary>
     /// 對話框的背景：一幅卷軸的上半截，下半截在畫面外（紙一直延伸到畫面最下面）。
-    /// 最上面一根橫的木軸、兩端圓圓的軸頭，下面一條織錦的裱布（天）夾兩道金線，紙的左右兩邊也是窄窄的裱布；
-    /// 紙是一幅畫在舊絹上的水墨山水（遠山、霧、近山、松樹、月亮、幾隻飛鳥、金箔；整體偏暗），
-    /// 字的那一帶再壓暗一點，白色、金色的字都看得清楚。
+    /// 最上面一根橫的木軸、兩端圓圓的軸頭，下面一條素面的裱布（天）夾兩道金線，紙的左右兩邊也是窄窄的裱布；
+    /// 紙是素面的舊牛皮紙（像古畫的底：黃褐色、深淺不太均勻、細細的纖維，沒有任何圖案），
+    /// 邊緣微微發暗。紙是淺色的，上面的字要用 Ink / Cinnabar / OnPaper 這些深色。
     /// r = 原本對話框的範圍（字照原本的位置排）。
     /// </summary>
     public static void ScrollPanel(Rect r)
@@ -78,30 +95,26 @@ public static class GameUI
         var paper = new Rect(r.x, r.y, r.width, bottom - r.y);
 
         // 左右的裱布
-        GUI.color = new Color(1f, 1f, 1f, 0.97f);
+        GUI.color = Color.white;
         foreach (float x in new[] { paper.x - side, paper.xMax })
-            GUI.DrawTextureWithTexCoords(new Rect(x, paper.y, side, paper.height), scrollBrocade, new Rect(0f, 0f, side / 24f, paper.height / 24f));
-        // 紙：舊絹上的水墨山水（整張畫撐滿、裁掉多的部分）
-        GUI.color = new Color(1f, 1f, 1f, 0.97f);
-        GUI.DrawTexture(paper, scrollPainting, ScaleMode.ScaleAndCrop);
-        // 字的那一帶（上面）壓暗一點，字才看得清楚
-        GUI.color = new Color(0f, 0f, 0f, 0.34f);
-        GUI.DrawTexture(new Rect(paper.x, paper.y, paper.width, Mathf.Min(150f, paper.height)), scrollShadeV);
-        // 紙靠左右邊緣、上緣暗一點（微微捲起來的弧度、裱布的陰影）
-        GUI.color = new Color(0f, 0f, 0f, 0.35f);
-        GUI.DrawTexture(new Rect(paper.x, paper.y, 26f, paper.height), scrollShade);
-        GUI.DrawTextureWithTexCoords(new Rect(paper.xMax - 26f, paper.y, 26f, paper.height), scrollShade, new Rect(1f, 0f, -1f, 1f));
-        GUI.color = new Color(0f, 0f, 0f, 0.3f);
-        GUI.DrawTexture(new Rect(paper.x, paper.y, paper.width, 14f), scrollShadeV);
+            GUI.DrawTextureWithTexCoords(new Rect(x, paper.y, side, paper.height), scrollBrocade, new Rect(0f, 0f, side / 32f, paper.height / 32f));
+        // 紙：素面的舊牛皮紙（撐滿、裁掉多的部分）
+        GUI.DrawTexture(paper, scrollPaper, ScaleMode.ScaleAndCrop);
+        // 紙的左右邊緣、上緣暗一點（年代久的紙邊、微微捲起來的弧度、裱布的陰影）
+        GUI.color = new Color(0.28f, 0.16f, 0.06f, 0.4f);
+        GUI.DrawTexture(new Rect(paper.x, paper.y, 34f, paper.height), scrollShade);
+        GUI.DrawTextureWithTexCoords(new Rect(paper.xMax - 34f, paper.y, 34f, paper.height), scrollShade, new Rect(1f, 0f, -1f, 1f));
+        GUI.color = new Color(0.28f, 0.16f, 0.06f, 0.35f);
+        GUI.DrawTexture(new Rect(paper.x, paper.y, paper.width, 16f), scrollShadeV);
         // 金色的細線：紙和裱布的交界
         GUI.color = new Color(Accent.r, Accent.g, Accent.b, 0.55f);
         GUI.DrawTexture(new Rect(paper.x - 1f, paper.y, 1f, paper.height), Texture2D.whiteTexture);
         GUI.DrawTexture(new Rect(paper.xMax, paper.y, 1f, paper.height), Texture2D.whiteTexture);
 
-        // 上面的裱布（天）：織錦 + 上下兩道金線
+        // 上面的裱布（天）：素面 + 上下兩道金線
         var top = new Rect(r.x - side, r.y - band, r.width + side * 2f, band);
         GUI.color = Color.white;
-        GUI.DrawTextureWithTexCoords(top, scrollBrocade, new Rect(0f, 0f, top.width / 24f, top.height / 24f));
+        GUI.DrawTextureWithTexCoords(top, scrollBrocade, new Rect(0f, 0f, top.width / 32f, top.height / 32f));
         GUI.color = new Color(Accent.r, Accent.g, Accent.b, 0.85f);
         GUI.DrawTexture(new Rect(top.x, top.yMax - 1.5f, top.width, 1.5f), Texture2D.whiteTexture);
         GUI.DrawTexture(new Rect(top.x, top.y + 2f, top.width, 1f), Texture2D.whiteTexture);
@@ -117,34 +130,23 @@ public static class GameUI
         GUI.color = prev;
     }
 
+    /// <summary>卷軸的貼圖（對話框用的那一套），uGUI 的漁村風格選單也用（UIKit.Washi）</summary>
+    public static Texture2D KraftPaper { get { EnsureScrollTextures(); return scrollPaper; } }
+    public static Texture2D ScrollSilk { get { EnsureScrollTextures(); return scrollBrocade; } }
+    public static Texture2D ScrollRod { get { EnsureScrollTextures(); return scrollRod; } }
+    public static Texture2D ScrollKnob { get { EnsureScrollTextures(); return scrollKnob; } }
+
     static void EnsureScrollTextures()
     {
-        if (scrollPaper != null && scrollBrocade != null && scrollRod != null && scrollKnob != null && scrollShade != null && scrollShadeV != null && scrollPainting != null) return;
-        scrollPainting = PaintLandscape(640, 192);
-        // 紙：灰階的纖維紋路（橫的細絲 + 一點點斑點），乘上 GUI.color 的顏色
-        scrollPaper = NewTex(256, 128, TextureWrapMode.Repeat);
-        var rnd = new System.Random(11);
-        for (int y = 0; y < 128; y++)
-            for (int x = 0; x < 256; x++)
+        if (scrollPaper != null && scrollBrocade != null && scrollRod != null && scrollKnob != null && scrollShade != null && scrollShadeV != null) return;
+        scrollPaper = PaintKraft(512, 160);
+        // 裱布：素面的深紅褐色絹，只有很淡的織紋（不畫花紋）
+        scrollBrocade = NewTex(32, 32, TextureWrapMode.Repeat);
+        for (int y = 0; y < 32; y++)
+            for (int x = 0; x < 32; x++)
             {
-                float fiber = Mathf.PerlinNoise(x * 0.012f, y * 0.35f) * 0.6f + Mathf.PerlinNoise(x * 0.05f + 7f, y * 0.9f) * 0.25f;
-                float speck = rnd.NextDouble() < 0.004 ? 0.25f : 0f;
-                float v = Mathf.Clamp01(0.78f + fiber * 0.32f - speck);
-                scrollPaper.SetPixel(x, y, new Color(v, v, v, 1f));
-            }
-        scrollPaper.Apply();
-        // 織錦：深紅底、金色的小菱形花紋（24 px 一格）
-        scrollBrocade = NewTex(24, 24, TextureWrapMode.Repeat);
-        for (int y = 0; y < 24; y++)
-            for (int x = 0; x < 24; x++)
-            {
-                int dx = Mathf.Abs(x - 12), dy = Mathf.Abs(y - 12);
-                bool diamond = dx + dy == 8 || dx + dy == 9;
-                bool dot = dx + dy <= 1;
-                Color c = new Color(0.34f, 0.08f, 0.07f, 1f);
-                if (diamond) c = new Color(0.62f, 0.45f, 0.2f, 1f);
-                else if (dot) c = new Color(0.7f, 0.52f, 0.25f, 1f);
-                else c *= 0.9f + 0.1f * Mathf.PerlinNoise(x * 0.3f, y * 0.3f);
+                float weave = 0.93f + 0.05f * ((x + y) % 2) + 0.04f * Mathf.PerlinNoise(x * 0.2f, y * 0.2f);
+                Color c = new Color(0.32f, 0.11f, 0.08f, 1f) * weave;
                 c.a = 1f;
                 scrollBrocade.SetPixel(x, y, c);
             }
@@ -187,89 +189,23 @@ public static class GameUI
     }
 
     /// <summary>
-    /// 一幅原創的水墨山水（程式畫的，深色的舊絹底）：
-    ///   天空是舊絹的顏色（越上面越亮一點、細細的纖維），右上角一輪淡淡的月亮和幾隻飛鳥；
-    ///   遠山一層淡墨、山腳化進一條橫的霧；中景的山濃一點，有乾筆的直紋；左下角近處的山坡最黑，上面幾棵松樹；
-    ///   零星的金箔。v = 0 是下面
+    /// 素面的舊牛皮紙（程式畫的，沒有任何圖案）：黃褐色，大片淡淡的深淺不均（放久了顏色不均勻），
+    /// 細細的橫向纖維，零星幾個小斑點。
     /// </summary>
-    static Texture2D PaintLandscape(int w, int h)
+    static Texture2D PaintKraft(int w, int h)
     {
         var tex = NewTex(w, h, TextureWrapMode.Clamp);
         var px = new Color[w * h];
-        float aspect = (float)w / h;
-        float Fbm(float x, float seed)
-        {
-            float a = 0.5f, f = 1f, sum = 0f, norm = 0f;
-            for (int o = 0; o < 4; o++) { sum += a * Mathf.PerlinNoise(x * f, seed + o * 17.3f); norm += a; a *= 0.5f; f *= 2.1f; }
-            return sum / norm;
-        }
-        // 松樹：在近山的山坡上（u 位置、高度）
-        var pines = new[] { (0.05f, 0.2f), (0.11f, 0.26f), (0.17f, 0.17f), (0.24f, 0.13f) };
-        // 飛鳥：右上角、月亮旁邊（u, v, 大小）
-        var birds = new[] { (0.66f, 0.8f, 0.012f), (0.69f, 0.84f, 0.009f), (0.715f, 0.79f, 0.01f), (0.62f, 0.86f, 0.008f) };
-        var rnd = new System.Random(5);
-        Color silkLo = new Color(0.2f, 0.152f, 0.11f), silkHi = new Color(0.31f, 0.245f, 0.175f);
-        Color far = new Color(0.2f, 0.165f, 0.13f), mist = new Color(0.33f, 0.28f, 0.21f), mid = new Color(0.1f, 0.08f, 0.065f), near = new Color(0.055f, 0.042f, 0.034f);
-        Color moonCol = new Color(0.56f, 0.5f, 0.38f), gold = new Color(0.62f, 0.48f, 0.24f);
+        var rnd = new System.Random(7);
+        Color dark = new Color(0.63f, 0.48f, 0.31f), light = new Color(0.8f, 0.66f, 0.46f);
         for (int y = 0; y < h; y++)
             for (int x = 0; x < w; x++)
             {
-                float u = (float)x / (w - 1), v = (float)y / (h - 1);
-                float fiber = 0.92f + 0.09f * Mathf.PerlinNoise(x * 0.012f, y * 0.4f) + 0.05f * Mathf.PerlinNoise(x * 0.09f + 5f, y * 0.9f);
-                Color c = Color.Lerp(silkLo, silkHi, Mathf.SmoothStep(0f, 1f, v)) * fiber;
-
-                // 月亮（右上）：淡淡的光暈 + 月面
-                float md = new Vector2((u - 0.8f) * aspect, v - 0.74f).magnitude;
-                c = Color.Lerp(c, moonCol, Mathf.Clamp01(1f - md / 0.32f) * 0.12f);
-                if (md < 0.1f) c = Color.Lerp(c, moonCol * (0.95f + 0.08f * Mathf.PerlinNoise(u * 60f, v * 60f)), 0.75f * Mathf.Clamp01((0.1f - md) * 60f));
-
-                // 遠山：淡墨的山稜，山腳慢慢化掉
-                float rf = 0.5f + 0.22f * (Fbm(u * 2.6f + 1.3f, 3.1f) - 0.5f) * 2f;
-                if (v < rf) c = Color.Lerp(c, far, 0.6f * Mathf.SmoothStep(rf - 0.3f, rf - 0.01f, v));
-                // 橫的一條霧
-                c = Color.Lerp(c, mist, 0.42f * Mathf.Exp(-Mathf.Pow((v - 0.32f) / 0.07f, 2f)) * (0.7f + 0.3f * Mathf.PerlinNoise(u * 6f, 1.7f)));
-
-                // 中景的山：右邊高、乾筆的直紋，山腳也化進霧裡
-                float rm = 0.27f + 0.3f * Fbm(u * 1.9f + 7f, 8.4f) * Mathf.SmoothStep(0.15f, 0.75f, u);
-                if (v < rm)
-                {
-                    float brush = 0.65f + 0.35f * Mathf.PerlinNoise(u * 55f, v * 5f);
-                    float k = Mathf.SmoothStep(rm - 0.24f, rm - 0.01f, v) * brush;
-                    c = Color.Lerp(c, mid, 0.85f * k);
-                }
-
-                // 左下角近處的山坡（最黑）
-                float rn = 0.24f + 0.08f * Fbm(u * 3.5f + 3f, 1.1f) - 0.42f * u;
-                if (v < rn) c = Color.Lerp(c, near, 0.9f * Mathf.Clamp01((rn - v) * 40f));
-
-                // 松樹：直的樹幹 + 一層層往上變小的橫向樹冠
-                foreach (var (pu, ph) in pines)
-                {
-                    float baseV = 0.24f + 0.08f * Fbm(pu * 3.5f + 3f, 1.1f) - 0.42f * pu - 0.01f;
-                    float du = (u - pu) * aspect;
-                    if (v > baseV && v < baseV + ph && Mathf.Abs(du) < 0.006f) c = Color.Lerp(c, near, 0.9f);
-                    // 松枝：一層層扁扁寬寬、往上越短，邊緣不規則（像一團團的松針）
-                    for (int tier = 0; tier < 5; tier++)
-                    {
-                        float tv = baseV + ph * (0.3f + tier * 0.16f);
-                        float tw = 0.075f * (1f - tier * 0.16f) * (0.8f + 0.4f * Mathf.PerlinNoise(pu * 9f, tier));
-                        float shift = (tier % 2 == 0 ? 1f : -1f) * 0.012f;                        // 左右交錯
-                        float ragged = 0.75f + 0.5f * Mathf.PerlinNoise(u * 90f, tier * 3.1f);   // 不規則的邊
-                        float e = Mathf.Pow((du - shift) / (tw * ragged), 2f) + Mathf.Pow((v - tv) / 0.02f, 2f);
-                        if (e < 1f) c = Color.Lerp(c, near, 0.92f * Mathf.Clamp01((1f - e) * 4f) * (0.75f + 0.25f * Mathf.PerlinNoise(u * 120f, v * 40f)));
-                    }
-                }
-
-                // 飛鳥：兩筆往上翹的短線（「く」倒過來）
-                foreach (var (bu, bv, bs) in birds)
-                {
-                    float du = (u - bu) * aspect, dv = v - bv;
-                    float wing = Mathf.Abs(du);
-                    if (wing < bs && Mathf.Abs(dv - wing * 0.6f) < 0.0045f) c = Color.Lerp(c, mid, 0.85f);
-                }
-
-                // 零星的金箔
-                if (rnd.NextDouble() < 0.0004) c = Color.Lerp(c, gold, 0.4f);
+                float mottle = Mathf.PerlinNoise(x * 0.007f + 3f, y * 0.011f + 1f) * 0.65f + Mathf.PerlinNoise(x * 0.024f + 11f, y * 0.03f + 5f) * 0.35f;
+                Color c = Color.Lerp(dark, light, 0.3f + 0.55f * mottle);
+                float fiber = 0.965f + 0.045f * Mathf.PerlinNoise(x * 0.015f, y * 0.45f) + 0.025f * Mathf.PerlinNoise(x * 0.11f + 9f, y * 1.3f);
+                c *= fiber;
+                if (rnd.NextDouble() < 0.0012) c *= 0.88f; // 小斑點
                 c.a = 1f;
                 px[y * w + x] = c;
             }
@@ -285,16 +221,18 @@ public static class GameUI
     /// 選項卡片（取代 GUI.Button）：背景、滑鼠移上去的高亮、文字顏色全部自己畫，點擊用透明按鈕判斷。
     /// 不用 GUI.skin.button 的外觀：它的背景圖有時候還沒載入，第一次打開選單時按鈕會變成透明、字變暗。
     /// 回傳 true = 這一下被點到了。enabled = false 時畫成半透明（仍然可以點，由呼叫的人決定要不要理）。
+    /// onPaper = 畫在卷軸的牛皮紙上：底和框改用墨色，滑鼠移上去變朱紅。
     /// </summary>
-    public static bool Option(Rect r, bool enabled = true)
+    public static bool Option(Rect r, bool enabled = true, bool onPaper = false, bool selected = false)
     {
         var prev = GUI.color;
-        bool hover = r.Contains(Event.current.mousePosition);
+        bool hover = selected || r.Contains(Event.current.mousePosition); // selected = 手把的游標停在這一格
         float a = enabled ? 1f : 0.5f;
-        GUI.color = new Color(1f, 1f, 1f, (hover ? 0.16f : 0.07f) * a);
+        Color tint = onPaper ? Ink : Color.white, hi = onPaper ? Cinnabar : Accent;
+        GUI.color = new Color(tint.r, tint.g, tint.b, (onPaper ? (hover ? 0.13f : 0.05f) : (hover ? 0.16f : 0.07f)) * a);
         GUI.DrawTexture(r, Texture2D.whiteTexture);
-        // 外框：平常淡淡的，滑鼠移上去變金色
-        GUI.color = hover ? new Color(Accent.r, Accent.g, Accent.b, a) : new Color(1f, 1f, 1f, 0.18f * a);
+        // 外框：平常淡淡的，滑鼠移上去變金色（紙上：朱紅）
+        GUI.color = hover ? new Color(hi.r, hi.g, hi.b, a) : new Color(tint.r, tint.g, tint.b, (onPaper ? 0.3f : 0.18f) * a);
         GUI.DrawTexture(new Rect(r.x, r.y, r.width, 1f), Texture2D.whiteTexture);
         GUI.DrawTexture(new Rect(r.x, r.yMax - 1f, r.width, 1f), Texture2D.whiteTexture);
         GUI.DrawTexture(new Rect(r.x, r.y, 1f, r.height), Texture2D.whiteTexture);
@@ -303,10 +241,15 @@ public static class GameUI
         return GUI.Button(r, GUIContent.none, GUIStyle.none);
     }
 
-    /// <summary>按鍵框：金底黑字的小方塊</summary>
-    public static void Key(Rect r, string key, float alpha = 1f)
+    /// <summary>按鍵框：金底黑字的小方塊。onPaper = 畫在卷軸的牛皮紙上，外面多一圈墨色的細框才看得清楚</summary>
+    public static void Key(Rect r, string key, float alpha = 1f, bool onPaper = false)
     {
         var prev = GUI.color;
+        if (onPaper)
+        {
+            GUI.color = new Color(Ink.r, Ink.g, Ink.b, 0.8f * alpha);
+            GUI.DrawTexture(new Rect(r.x - 1f, r.y - 1f, r.width + 2f, r.height + 2f), Texture2D.whiteTexture);
+        }
         GUI.color = new Color(Accent.r, Accent.g, Accent.b, alpha);
         GUI.DrawTexture(r, Texture2D.whiteTexture);
         GUI.color = new Color(1f, 1f, 1f, alpha);

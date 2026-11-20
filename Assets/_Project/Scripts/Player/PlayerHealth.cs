@@ -147,6 +147,16 @@ public class PlayerHealth : MonoBehaviour
         if (perks == null) perks = GetComponent<PlayerPerks>();
         if (perks != null && perks.TryNegateHit()) return false;
         if (perks != null) amount *= perks.IncomingDamageScale;
+        // 茶屋甜點的護盾：先吃掉傷害，整下吃完就不扣血（SweetShield）
+        if (amount > 0f && SweetShield.Amount > 0f)
+        {
+            amount = SweetShield.Absorb(amount, transform);
+            if (amount <= 0f)
+            {
+                controller.AddImpulse(knockback * 0.5f);
+                return true;
+            }
+        }
         lastFlashTime = Time.time;
         practiceProtection.RemoveWhere(owner => !owner);
         Health = Mathf.Max(practiceProtection.Count > 0 ? 1f : 0f, Health - amount);

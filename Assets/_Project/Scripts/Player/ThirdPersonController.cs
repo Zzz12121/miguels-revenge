@@ -74,6 +74,8 @@ public class ThirdPersonController : MonoBehaviour
     [Tooltip("翻滾總共前進幾公尺（原本 5.2；平均速度 = 距離 / 時間，跟跑步速度差越多看起來越突兀）")]
     [Min(0.5f)] public float rollDistance = 3.8f;
     [Min(0f)] public float rollCooldown = 0.18f;
+    [Tooltip("沒按方向鍵時翻滾：往鏡頭看的方向翻（關掉 = 往角色面向的方向）")]
+    public bool rollTowardCameraWhenIdle = true;
     [Tooltip("翻滾結束時還按著方向鍵：保留多少走路速度直接接著跑（0 = 滾完停下來）")]
     [Range(0f, 1.2f)] public float rollExitSpeed = 0.9f;
     public bool IsRolling { get; private set; }
@@ -642,9 +644,18 @@ public class ThirdPersonController : MonoBehaviour
             (GetComponent<PlayerHealth>()?.IsDead??false) || Time.unscaledTime < nextRollTime) return;
         // Affordability first; payment is committed only after the controller really moves.
         if (Stamina != null && !Stamina.CanAffordRoll){Stamina.TrySpendRoll();return;}
+        // 攻擊到一半也能翻：先把攻擊整個取消（歸零攻擊幀、移動速度還原），下面的速度才不會用到攻擊時被壓低的速度
+        GetComponent<PlayerCombat>()?.CancelTransientActions();
         requestedDirection.y = 0f;
         bool hasInput = requestedDirection.sqrMagnitude > .001f;
-        rollDirection = hasInput ? requestedDirection.normalized : transform.forward;
+        // 沒按方向：往鏡頭看的方向翻（rollTowardCameraWhenIdle 關掉 = 原本的往角色正面翻）
+        Vector3 idleDir = transform.forward;
+        if (rollTowardCameraWhenIdle && cameraTransform != null)
+        {
+            Vector3 camFwd = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up);
+            if (camFwd.sqrMagnitude > .001f) idleDir = camFwd.normalized;
+        }
+        rollDirection = hasInput ? requestedDirection.normalized : idleDir;
         FaceDirection(rollDirection);
         // 速度曲線：從原本跑的速度接上去，一開始最快、之後慢慢減速，結束時剛好是走路速度（還按著方向鍵）→ 直接接著跑，不會停一下再起步
         rollEntrySpeed = Mathf.Max(0f, Vector3.Dot(horizontalVelocity, rollDirection));

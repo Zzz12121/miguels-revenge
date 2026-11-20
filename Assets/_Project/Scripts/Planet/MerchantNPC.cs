@@ -9,6 +9,38 @@ public sealed class DialogueChoice
     public System.Func<int, string[]> onPick;
 }
 
+/// <summary>對話框商店的一個選項：左邊是名稱、右邊是價錢或狀態（「30 文」「裝備中」）</summary>
+public struct ShopEntry
+{
+    public string label, detail;
+    /// <summary>買得起 / 可以選（false = 畫成淡的、價錢變紅，仍然可以點，由商店決定怎麼回）</summary>
+    public bool enabled;
+    public ShopEntry(string label, string detail, bool enabled) { this.label = label; this.detail = detail; this.enabled = enabled; }
+}
+
+/// <summary>
+/// 在對話框裡開的商店（取代 MerchantNPC 原本的「草藥換藥水」）：漁村的賣魚、茶屋甜點、行商的造型都用這個。
+/// 台詞講完後打開；數字鍵 1 ~ Count 選商品，最後一個選項（或互動鍵 / 手把 B）是離開或返回上一頁。
+/// </summary>
+public interface IDialogueShop
+{
+    /// <summary>台詞講完時右下角的提示（「看看商品」「賣魚」）</summary>
+    string HintLabel { get; }
+    /// <summary>打開商店時老闆說的話</summary>
+    string Open();
+    /// <summary>身上有多少錢：畫面右上角的金幣旁邊顯示（-1 = 不顯示）</summary>
+    int Wallet { get; }
+    /// <summary>這一頁有幾個選項（不含最後的離開 / 返回）</summary>
+    int Count { get; }
+    ShopEntry Entry(int index);
+    /// <summary>選了第 index 個：回傳老闆接著說的話（null = 不變）</summary>
+    string Select(int index);
+    /// <summary>最後一個選項的文字（「離開」「返回」）</summary>
+    string LeaveLabel { get; }
+    /// <summary>按了離開 / 返回：回傳老闆說的話 = 回到上一頁，null = 結束對話</summary>
+    string Back();
+}
+
 /// <summary>
 /// 商人：玩家走近時顯示「[E] 與流浪商人對話」，按下後開始引導式對話（畫面下方的對話框，文字逐字出現），
 /// 每按一次空白鍵繼續下一句（文字還沒跑完時先直接顯示整句）。
@@ -16,7 +48,8 @@ public sealed class DialogueChoice
 ///   1. 治癒藥水：回復 30% 血量，草藥 ×4（之後按 Q 使用）
 ///   2. 精力藥水：喝下後精力全滿，草藥 ×3（之後按 G 使用）
 ///   3. 離開（或按 E）
-/// 用數字鍵或滑鼠點選。第一次對話是完整的新手引導，之後再來只講幾句招呼。
+/// 用數字鍵或滑鼠點選；用手把時十字鍵 ↑ ↓ 或左搖桿上下移動游標（亮起來的那一格）、A 選、B / Y 離開。
+/// 第一次對話是完整的新手引導，之後再來只講幾句招呼。
 /// 對話期間角色不能移動、跳躍、攻擊；關掉對話框的那一下空白鍵也不會跳起來。
 /// </summary>
 public class MerchantNPC : MonoBehaviour
@@ -74,7 +107,10 @@ public class MerchantNPC : MonoBehaviour
 
     const Key ContinueKey = Key.Space;
 
-    enum Mode { Idle, Talking, Shopping, Choosing }
+    enum Mode { Idle, Talking, Shopping, Choosing, CustomShop }
+
+    /// <summary>有設定的話，台詞講完打開這個商店（取代草藥換藥水；sellsGoods 不用打開）</summary>
+    [System.NonSerialized] public IDialogueShop customShop;
 
     /// <summary>有設定的話，每次開始對話時用它決定台詞（取代 guideLines / repeatLines，任務進度用）</summary>
     [System.NonSerialized] public System.Func<string[]> linesProvider;
@@ -87,6 +123,26 @@ public class MerchantNPC : MonoBehaviour
     public static System.Func<MerchantNPC, string[]> LinesOverride;
     DialogueChoice choice;
     bool pointerUnlocked;
+    // 手把的游標：選項 / 商店裡亮起來的那一格（A 選它）
+    int cursor, navDir;
+    float navRepeat;
+
+    /// <summary>手把上下移動游標（count = 一共幾格，含最後的離開），回傳 true = 這一幀按了 A</summary>
+    bool PadCursor(int count)
+    {
+        if (count <= 0) return false;
+        int d = PadInput.NavigatePressed(ref navDir, ref navRepeat);
+        if (d != 0)
+        {
+            cursor = (cursor + d + count) % count;
+            GameAudio.Play("SFX/RPG/bookFlip2", transform.position, 0.3f, 1.3f, 0.05f, 0.3f);
+        }
+        cursor = Mathf.Clamp(cursor, 0, count - 1);
+        return PadInput.ConfirmPressed;
+    }
+
+    /// <summary>這一格要不要畫成被選到（最近用的是手把，游標停在這裡）</summary>
+    bool PadSelected(int i) => PadInput.UsingPadRecently && cursor == i;
 
     Transform player;
     PlayerHealth playerHealth;
@@ -164,7 +220,8 @@ public class MerchantNPC : MonoBehaviour
                 break;
 
             case Mode.Shopping:
-                int pad = PadInput.NumberPressed; // 手把十字鍵 ← ↑ → = 1 2 3，B / Y 離開
+                // 手把：十字鍵 ↑ ↓ / 左搖桿移動游標、A 選，B / Y 離開
+                int pad = PadCursor(3) ? cursor + 1 : 0;
                 if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame || pad == 1) Buy(PlayerItems.HealingPotion);
                 else if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame || pad == 2) Buy(PlayerItems.StaminaPotion);
                 else if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame || pad == 3
@@ -172,7 +229,7 @@ public class MerchantNPC : MonoBehaviour
                 break;
 
             case Mode.Choosing:
-                int padChoice = PadInput.NumberPressed;
+                int padChoice = PadCursor(choice.options.Length) ? cursor + 1 : 0;
                 for (int i = 0; i < choice.options.Length; i++)
                     if (kb[Key.Digit1 + i].wasPressedThisFrame || kb[Key.Numpad1 + i].wasPressedThisFrame || padChoice == i + 1)
                     {
@@ -181,6 +238,19 @@ public class MerchantNPC : MonoBehaviour
                     }
                 // 互動鍵 / 手把 B = 選最後一個（「先不用」這類的選項）
                 if (InputBindings.Pressed(GameAction.Interact) || PadInput.CancelPressed) Pick(choice.options.Length - 1);
+                break;
+
+            case Mode.CustomShop:
+                int count = customShop.Count;
+                int padShop = PadCursor(count + 1) ? cursor + 1 : 0;
+                for (int i = 0; i <= count && i < 9; i++)
+                    if (kb[Key.Digit1 + i].wasPressedThisFrame || kb[Key.Numpad1 + i].wasPressedThisFrame || padShop == i + 1)
+                    {
+                        if (i < count) ShopSelect(i);
+                        else ShopBack();
+                        return;
+                    }
+                if (InputBindings.Pressed(GameAction.Interact) || PadInput.CancelPressed) ShopBack();
                 break;
         }
     }
@@ -229,8 +299,46 @@ public class MerchantNPC : MonoBehaviour
     void FinishLines()
     {
         if (choice != null) OpenChoice();
+        else if (customShop != null) OpenCustomShop();
         else if (sellsGoods) OpenShop();
         else EndAll();
+    }
+
+    void OpenCustomShop()
+    {
+        cursor = 0;
+        mode = Mode.CustomShop;
+        SetShopLine(customShop.Open());
+        UnlockPointer();
+    }
+
+    void SetShopLine(string line)
+    {
+        if (line == null) return;
+        shopLine = line;
+        lineStartTime = Time.unscaledTime;
+        DialogueVoice.Speak(shopLine, transform.position);
+    }
+
+    void ShopSelect(int index)
+    {
+        if (customShop == null) return;
+        string leaveBefore = customShop.LeaveLabel;
+        SetShopLine(customShop.Select(index));
+        if (customShop.LeaveLabel != leaveBefore) cursor = 0; // 換了一頁（例如選了「帽子」）
+    }
+
+    void ShopBack()
+    {
+        if (customShop == null) { leaveNextFrame = true; return; }
+        string line = customShop.Back();
+        if (line == null) leaveNextFrame = true; // 等下一幀才解除動作鎖：同一顆鍵這一幀不會再觸發技能
+        else
+        {
+            GameAudio.Play("SFX/RPG/bookFlip1", transform.position, 0.5f, 1f, 0.1f, 0.3f);
+            SetShopLine(line);
+            cursor = 0;
+        }
     }
 
     void Advance()
@@ -252,6 +360,7 @@ public class MerchantNPC : MonoBehaviour
 
     void OpenShop()
     {
+        cursor = 0;
         mode = Mode.Shopping;
         shopLine = "想要什麼？";
         DialogueVoice.Speak(shopLine, transform.position);
@@ -261,6 +370,7 @@ public class MerchantNPC : MonoBehaviour
 
     void OpenChoice()
     {
+        cursor = 0;
         mode = Mode.Choosing;
         lineStartTime = Time.unscaledTime;
         if (choice != null) DialogueVoice.Speak(choice.question, transform.position);
@@ -341,7 +451,7 @@ public class MerchantNPC : MonoBehaviour
 
     void EndAll()
     {
-        if (mode == Mode.Shopping) GameAudio.Play("SFX/RPG/bookClose", transform.position, 0.6f, 1.1f, 0f, 0.3f);
+        if (mode == Mode.Shopping || mode == Mode.CustomShop) GameAudio.Play("SFX/RPG/bookClose", transform.position, 0.6f, 1.1f, 0f, 0.3f);
         RestorePointer();
         bool wasTalking = mode != Mode.Idle;
         if (wasTalking) DialogueVoice.Stop();
@@ -399,7 +509,8 @@ public class MerchantNPC : MonoBehaviour
                     var box = DrawBox(170f, text, playerLine);
                     bool done = VisibleChars() >= text.Length;
                     float a = done ? 0.6f + 0.4f * Mathf.Sin(Time.unscaledTime * 6f) : 0.4f;
-                    Hint(box, $"{lineIndex + 1}/{lines.Length}", "Space", !last ? "繼續" : choice != null ? "回答" : sellsGoods ? "看看商品" : "結束", a);
+                    Hint(box, $"{lineIndex + 1}/{lines.Length}", "Space", !last ? "繼續" : choice != null ? "回答"
+                         : customShop != null ? customShop.HintLabel : sellsGoods ? "看看商品" : "結束", a);
                 }
                 break;
 
@@ -410,8 +521,42 @@ public class MerchantNPC : MonoBehaviour
             case Mode.Choosing:
                 if (choice != null) DrawChoice();
                 break;
+
+            case Mode.CustomShop:
+                if (customShop != null) DrawCustomShop();
+                break;
         }
         GUI.color = Color.white;
+    }
+
+    /// <summary>對話框商店：老闆的話、右上角的錢、一排商品（數字鍵），最後一個是離開 / 返回</summary>
+    void DrawCustomShop()
+    {
+        int count = customShop.Count;
+        float oh = count > 4 ? 38f : 42f, gap = count > 4 ? 6f : 8f;
+        var box = DrawBox(104f + (count + 1) * (oh + gap) + 12f, shopLine ?? "");
+        if (customShop.Wallet >= 0) CoinHud.Draw(customShop.Wallet); // 畫面右上角：小判金幣 + 錢
+        float ox = box.x + 24f, ow = box.width - 48f, oy = box.y + 104f;
+        int clicked = -1;
+        for (int i = 0; i <= count; i++)
+        {
+            var r = new Rect(ox, oy, ow, oh);
+            bool leave = i == count;
+            var e = leave ? new ShopEntry($"{customShop.LeaveLabel}（或按 {InteractPrompt.KeyName}）", null, true) : customShop.Entry(i);
+            if (GameUI.Option(r, e.enabled, true, PadSelected(i))) clicked = i;
+            GameUI.Key(new Rect(r.x + 10f, r.y + (oh - 24f) * 0.5f, 24f, 24f), (i + 1).ToString(), e.enabled ? 1f : 0.55f, true);
+            GUI.color = e.enabled ? GameUI.Ink : GameUI.InkMuted;
+            GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), e.label, OptionText);
+            if (!string.IsNullOrEmpty(e.detail))
+            {
+                GUI.color = e.enabled ? GameUI.InkGood : GameUI.InkBad;
+                GUI.Label(new Rect(r.x, r.y, r.width - 14f, r.height), e.detail, new GUIStyle(GameUI.SmallRight) { fontStyle = FontStyle.Bold });
+            }
+            GUI.color = Color.white;
+            oy += oh + gap;
+        }
+        if (clicked >= 0 && clicked < count) ShopSelect(clicked);
+        else if (clicked == count) ShopBack();
     }
 
     /// <summary>對話框：名字 + 逐字出現的文字，回傳框的位置</summary>
@@ -422,11 +567,11 @@ public class MerchantNPC : MonoBehaviour
         // 左邊玩家、右邊商人的半身像（商人在說話）
         StoryDialogue.DrawPortraits(box, player, transform, playerSpeaks, !playerSpeaks);
         GameUI.ScrollPanel(box); // 卷軸的上半截（下半截在畫面外）
-        GUI.color = playerSpeaks ? PlanetStory.PlayerColor : GameUI.Accent;
+        GUI.color = GameUI.OnPaper(playerSpeaks ? PlanetStory.PlayerColor : GameUI.Accent); // 紙是淺色的：名字、字都用深色
         GUI.Label(new Rect(box.x + 24f, box.y + 12f, box.width - 48f, 30f), playerSpeaks ? playerSpeakerName : speakerName, new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold });
 
         int n = Mathf.Clamp(VisibleChars(), 0, line.Length);
-        GUI.color = GameUI.TextColor;
+        GUI.color = GameUI.Ink;
         GUI.Label(new Rect(box.x + 24f, box.y + 46f, box.width - 48f, 60f), line.Substring(0, n), GameUI.Body);
         GUI.color = Color.white;
         return box;
@@ -440,10 +585,10 @@ public class MerchantNPC : MonoBehaviour
         float actionW = right.CalcSize(new GUIContent(action)).x;
         float keyW = 58f;
         float x = box.xMax - 24f - actionW;
-        GUI.color = new Color(1f, 1f, 1f, alpha);
+        GUI.color = new Color(GameUI.Ink.r, GameUI.Ink.g, GameUI.Ink.b, alpha);
         GUI.Label(new Rect(x, y, actionW, 24f), action, right);
-        GameUI.Key(new Rect(x - keyW - 6f, y, keyW, 24f), key, alpha);
-        GUI.color = new Color(GameUI.MutedColor.r, GameUI.MutedColor.g, GameUI.MutedColor.b, alpha);
+        GameUI.Key(new Rect(x - keyW - 6f, y, keyW, 24f), key, alpha, true);
+        GUI.color = new Color(GameUI.InkMuted.r, GameUI.InkMuted.g, GameUI.InkMuted.b, alpha);
         GUI.Label(new Rect(x - keyW - 120f, y, 100f, 24f), left, right);
         GUI.color = Color.white;
     }
@@ -457,9 +602,9 @@ public class MerchantNPC : MonoBehaviour
         for (int i = 0; i < choice.options.Length; i++)
         {
             var r = new Rect(box.x + 24f, oy, box.width - 48f, optionH);
-            if (GameUI.Option(r)) clicked = i;
-            GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), (i + 1).ToString());
-            GUI.color = GameUI.TextColor;
+            if (GameUI.Option(r, true, true, PadSelected(i))) clicked = i;
+            GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), (i + 1).ToString(), 1f, true);
+            GUI.color = GameUI.Ink;
             GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), choice.options[i], OptionText);
             GUI.color = Color.white;
             oy += optionH + gap;
@@ -472,25 +617,25 @@ public class MerchantNPC : MonoBehaviour
         var box = DrawBox(290f, shopLine);
 
         // 右上角：身上的草藥
-        GUI.color = GameUI.Good;
+        GUI.color = GameUI.InkGood;
         GUI.Label(new Rect(box.x, box.y + 12f, box.width - 24f, 30f), $"{resourceDisplayName}：{Herbs}",
                   new GUIStyle(GameUI.SmallRight) { fontSize = 18, fontStyle = FontStyle.Bold });
 
         float ox = box.x + 24f, ow = box.width - 48f, oh = 42f;
         float oy = box.y + 104f;
         if (Option(new Rect(ox, oy, ow, oh), "1", "治癒藥水　回復 30% 血量",
-                   potionCost, items != null ? items.Count(PlayerItems.HealingPotion) : 0))
+                   potionCost, items != null ? items.Count(PlayerItems.HealingPotion) : 0, PadSelected(0)))
             Buy(PlayerItems.HealingPotion);
         oy += oh + 8f;
         if (Option(new Rect(ox, oy, ow, oh), "2", "精力藥水　喝下後精力全滿",
-                   staminaPotionCost, items != null ? items.Count(PlayerItems.StaminaPotion) : 0))
+                   staminaPotionCost, items != null ? items.Count(PlayerItems.StaminaPotion) : 0, PadSelected(1)))
             Buy(PlayerItems.StaminaPotion);
         oy += oh + 8f;
         GUI.color = Color.white;
         var leave = new Rect(ox, oy, ow, oh);
-        bool leaveClicked = GameUI.Option(leave);
-        GameUI.Key(new Rect(leave.x + 10f, leave.y + 9f, 24f, 24f), "3");
-        GUI.color = GameUI.TextColor;
+        bool leaveClicked = GameUI.Option(leave, true, true, PadSelected(2));
+        GameUI.Key(new Rect(leave.x + 10f, leave.y + 9f, 24f, 24f), "3", 1f, true);
+        GUI.color = GameUI.Ink;
         GUI.Label(new Rect(leave.x + 44f, leave.y, leave.width - 52f, leave.height), $"離開（或按 {InteractPrompt.KeyName}）", OptionText);
         GUI.color = Color.white;
         if (leaveClicked) EndAll();
@@ -529,14 +674,14 @@ public class MerchantNPC : MonoBehaviour
         GameUI.Shadowed(new Rect(x - 60f, y + 10f + bob, 120f, 22f), $"{dist:0} m", GameUI.Center, PlanetStory.MerchantColor);
     }
 
-    bool Option(Rect r, string key, string text, int cost, int owned)
+    bool Option(Rect r, string key, string text, int cost, int owned, bool selected)
     {
         bool afford = Herbs >= cost;
-        bool clicked = GameUI.Option(r, afford);
-        GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), key, afford ? 1f : 0.55f);
-        GUI.color = afford ? GameUI.TextColor : GameUI.MutedColor;
+        bool clicked = GameUI.Option(r, afford, true, selected);
+        GameUI.Key(new Rect(r.x + 10f, r.y + 9f, 24f, 24f), key, afford ? 1f : 0.55f, true);
+        GUI.color = afford ? GameUI.Ink : GameUI.InkMuted;
         GUI.Label(new Rect(r.x + 44f, r.y, r.width - 52f, r.height), text, OptionText);
-        GUI.color = afford ? GameUI.Good : GameUI.Bad;
+        GUI.color = afford ? GameUI.InkGood : GameUI.InkBad;
         GUI.Label(new Rect(r.x, r.y, r.width - 14f, r.height), $"持有 {owned}　{resourceDisplayName} ×{cost}",
                   new GUIStyle(GameUI.SmallRight) { fontStyle = FontStyle.Bold });
         return clicked;
