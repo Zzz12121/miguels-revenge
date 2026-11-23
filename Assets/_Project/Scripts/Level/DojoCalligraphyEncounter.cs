@@ -78,8 +78,10 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
         {
             flask.SetParent(transients,true);Vector3 from=flask.position;Quaternion rotation=flask.rotation;
             Vector3 to=transform.position+transform.right*3+transform.forward*1.5f;
+            CalligraphyAudio.FlaskThrow(from);
             for(float t=0;t<.55f;t+=Time.deltaTime)
             {float q=t/.55f;flask.position=Vector3.Lerp(from,to,q)+Vector3.up*(Mathf.Sin(q*Mathf.PI)*1.1f);flask.rotation=rotation*Quaternion.Euler(q*420,q*180,0);yield return null;}
+            CalligraphyAudio.FlaskLand(to);
             Destroy(flask.gameObject);
         }
         Phase="Opening arms";PrepareForm();
@@ -98,6 +100,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
         Form.brush.brushPivot.gameObject.SetActive(true);
         Vector3 brushScale=Form.brush.brushPivot.localScale;
         var manifestation=DojoBrushManifestation.Begin(Form.brush.brushPivot,brushAssemblyMaterial);
+        CalligraphyAudio.BrushReveal(revealRightHand.position,brushAssemblySeconds);
         for(float t=0;t<brushAssemblySeconds;t+=Time.deltaTime)
         {
             float q=Mathf.SmoothStep(0,1,t/brushAssemblySeconds);
@@ -113,6 +116,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
             Form.ink.Mist(Form.brush.brushPivot.TransformPoint(0,0,q*manifestation.Reach),Vector3.up*.15f,.16f,.4f);yield return null;
         }
         manifestation.SetProgress(1);manifestation.Complete();
+        CalligraphyAudio.BrushComplete(Form.brush.brushPivot.position);
         Form.brush.brushPivot.localScale=brushScale;
         yield return new WaitForSeconds(.3f);
         revealingArms=false;Form.brush.enabled=true;
@@ -253,6 +257,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
         LastTeleportFrom=Form.transform.position;LastTeleportTo=dest;Teleports++;
         DojoInkSilhouette.Create(Form.brush,Form.ink.originalEchoMaterial,transients,afterimageLifetime);
         Form.ink.Burst(LastTeleportFrom+Vector3.up,1.1f,16);
+        CalligraphyAudio.Teleport(LastTeleportFrom);
         foreach(var c in formColliders)c.enabled=false;
         Form.transform.SetPositionAndRotation(dest,Quaternion.LookRotation(Flat(p-dest).normalized));
         Phase="Ink teleport materializing";Form.ink.Burst(dest+Vector3.up*.5f,1.2f,16);

@@ -76,6 +76,7 @@ public sealed class DojoElderEscape : MonoBehaviour
         form.brush.enabled=false;form.brush.animator.enabled=false;
         foreach(var collider in form.GetComponentsInChildren<Collider>())collider.enabled=false;
         Vector3 initial=root.position+root.forward*6+Vector3.up*3;
+        CalligraphyAudio.EscapeTwist(root.position+Vector3.up);
         for(float t=0;t<twistSeconds;t+=Time.deltaTime)
         {
             float q=Mathf.Clamp01(t/twistSeconds);float e=Mathf.SmoothStep(0,1,q);
@@ -86,6 +87,9 @@ public sealed class DojoElderEscape : MonoBehaviour
         }
         foreach(var renderer in form.GetComponentsInChildren<Renderer>())renderer.enabled=false;
         form.brush.brushPivot.gameObject.SetActive(false);cloudRoot.transform.localScale=Vector3.one;
+        // 化成墨雲飛走：墨炸開一聲，墨雲身上掛一個一直循環的風聲（墨雲關掉 / 刪掉時自動停）
+        CalligraphyAudio.EscapeBurst(cloudRoot.transform.position);
+        CalligraphyAudio.AttachLoop(cloudRoot,"SFX/Ink/ink_flight_loop",.55f,1f,1f,60f);
         var route=new List<Vector3>{cloudRoot.transform.position};var anchorIndices=new List<int>();
         var navigation=new DojoInkFlightPath(transform);
         if(flightPath!=null)for(int waypoint=0;waypoint<flightPath.Length;waypoint++)

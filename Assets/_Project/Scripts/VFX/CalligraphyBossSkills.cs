@@ -55,7 +55,7 @@ public sealed partial class CalligraphyBossCombat
             Vector3 origin=BeamOrigin();aim=BeamAim(origin);
             beamDirection=(aim-origin).normalized;
             skillEffect.transform.SetPositionAndRotation(origin,Quaternion.LookRotation(-beamDirection)*Quaternion.Euler(inkBeam.vfxEuler));
-            if(skillEffect.Age>=3)beamFired=true;
+            if(skillEffect.Age>=3){beamFired=true;CalligraphyAudio.BeamFire(origin);}
         }
         // Only the live beam meshes can deal damage. Charge particles cannot extend the hit volume.
         if(skillEffect && beamFired)
@@ -96,6 +96,7 @@ public sealed partial class CalligraphyBossCombat
             leapForward=d.sqrMagnitude>.001f?d.normalized:transform.forward;
             transform.rotation=Quaternion.LookRotation(leapForward);brush.SetAimPoint(destination);
             leapGround=CalligraphyGeometry.Ground(leapStart+d-leapForward*1.4f,transform);leaping=true;
+            CalligraphyAudio.LeapJump(leapStart);
         }
         float t=Mathf.Clamp01((phase-.2f)/.54f);
         transform.position=Vector3.Lerp(leapStart,leapGround,Mathf.SmoothStep(0,1,t))+Vector3.up*(Mathf.Sin(t*Mathf.PI)*leapSlam.jumpHeight);
@@ -108,6 +109,7 @@ public sealed partial class CalligraphyBossCombat
         {
             impactDone=true;leaping=false;transform.position=leapGround;
             Vector3 at=brush.brushTip.position;
+            CalligraphyAudio.LeapImpact(at);
             bool direct=CalligraphyPlayerHitGate.Touches(player,at,at+Vector3.up*.8f,leapSlam.directHitRadius);
             if(direct)CalligraphyPlayerHitGate.Hit(player,slamDamage,leapForward,"被巨筆重砸擊倒",at+Vector3.up*.8f,CalligraphyPlayerControl.Reaction.StrongLaunch,leapSlam.wave.controlSeconds,new Vector2(leapSlam.wave.knockbackSpeed,leapSlam.wave.launchSpeed));
             CalligraphySkillSequence.Wave(player,at,Quaternion.Euler(0,leapSlam.forwardYawOffset,0)*leapForward,false,direct,effectsRoot,leapSlam.wave);

@@ -160,7 +160,9 @@ public sealed class PhantomStrike : MonoBehaviour
 
         health?.GrantDodgeInvulnerability(dashTime + .45f);
         decoy = PhantomDecoy.Create(transform, enemy, normal, ghostColor);
-        GameAudio.Play("SFX/RPG/cloth3", transform.position, .8f, 1.7f, .05f, .3f);
+        // 分身出現 + 爆衝
+        GameAudio.Play("SFX/Magic/clone_appear", transform.position, .7f, 1.1f, .05f, .3f);
+        GameAudio.Play("SFX/Magic/dash_burst", transform.position, .7f, 1.15f, .05f, .3f);
         CombatVFX.Puff(transform.position, -approach, new Color(ghostColor.r, ghostColor.g, ghostColor.b, .7f), true);
 
         // 短蓄勢：原地先壓成突進的姿勢（PlayerVisualAnimator 看到 ScriptedMoveDirection 就會切過去）、面向敵人
@@ -242,7 +244,9 @@ public sealed class PhantomStrike : MonoBehaviour
 
         decoy.SetMirror(mid, normal); // 分身 = 本尊對中垂面的鏡像 → 一起衝、在交叉點擦身而過
         health?.GrantDodgeInvulnerability(scissorDashTime + .4f);
-        GameAudio.Play("SFX/RPG/cloth3", transform.position, .9f, 1.5f, .05f, .3f);
+        // 剪刀斬：兩邊一起爆衝
+        GameAudio.Play("SFX/Magic/dash_burst", transform.position, .85f, 1f, .05f, .3f);
+        GameAudio.Play("SFX/Gen/swing_whoosh_3", transform.position, .7f, 1.2f, .05f, .3f);
 
         // 拔刀斬的節奏：全速衝到交叉點（剛好是砍中的那一刻），砍過去之後帶著速度滑行、慢慢煞住（殘心）
         combat.BeginDashSlash(scissorDashTime + .06f, dir, scissorDamageScale, 1);

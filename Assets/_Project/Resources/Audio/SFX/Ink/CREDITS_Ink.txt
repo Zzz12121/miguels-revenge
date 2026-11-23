@@ -1,0 +1,16 @@
+SFX/Ink 的音效來源：Unity Asset Store「100 Retro Magic Sound Effects」（組員提供的素材包，依 Asset Store EULA 用在本專案）。
+已剪短、淡入淡出、轉單聲道、峰值正規化。_loop 結尾的是做成可以無縫循環的版本。對照：
+ink_flick           ← 21_Water_01（0～0.5 秒）      飛墨一筆、近戰筆刷甩墨
+ink_splash_s        ← 22_Water_02（0～0.7 秒）      小團墨水炸開、被墨打中、落印砸地
+ink_splash_l        ← 24_Water_04（0～1.6 秒）      大團墨水炸開、墨龍砸地、逃走化成墨
+ink_wave            ← 23_Water_03（0～1.3 秒）      連環墨浪
+ink_gather          ← 36_Absorb_01（0～2.8 秒）     墨光蓄力、墨龍召喚、巨筆成形、畫中世界、逃走扭轉
+ink_beam            ← 32_Light_01（0～3 秒）        墨光射出
+ink_rune            ← 23_Debuff_03（0～1.2 秒）     落印預警、畫中世界脈動
+ink_shimmer         ← 33_Light_02（0.1～1.9 秒）    巨筆完成、離開畫中世界
+ink_rumble          ← 31_Earth_03（0～2.5 秒）      墨相鎮海出現 / 升空、墨浪低頻
+ink_flight_loop     ← 28_Wind_04（循環 1.5 秒）     老頭化成墨雲飛走
+tether_zap          ← 17_Thunder_01（0～0.8 秒）    能量牽引鎖定、拉
+tether_crackle_loop ← 42_Paralysis_02（循環 2 秒）  牽引電光線持續的電流聲
+tether_slow         ← 50_Speed_down_02（0～1.2 秒） 進入牽引瞄準（時間變慢）
+tether_throw        ← 19_Thunder_03（0～1 秒）      牽引甩出

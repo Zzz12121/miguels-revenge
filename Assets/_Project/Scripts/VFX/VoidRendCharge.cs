@@ -37,6 +37,7 @@ public sealed partial class VoidRendSkillDemo
     float chargeStart, nextChargeSpark, chargeAnimSpeed = 1f;
     int chargeSpeedLease;
     TargetSelection chargeSelection;
+    AudioSource chargeAudio; // 蓄力中的聲音（取消 / 出招時停掉）
     // 蓄力時暫時換掉的鏡頭瞄準設定（等鏡頭完全拉回來才還原，不然拉回的途中會跳）
     float savedAimDistance, savedAimShoulder, savedAimFov, savedAimBlendSpeed;
     Vector3 savedAimOffset;
@@ -56,6 +57,7 @@ public sealed partial class VoidRendSkillDemo
         chargeStart = Time.time; nextChargeSpark = 0f;
         chargeSelection = default;
         Stage = "Charging VoidRend";
+        chargeAudio = GameAudio.Play("SFX/Magic/charge_hold", caster.position, .5f, 1f, 0f, .3f);
 
         // 移動：可以走但變慢；不能跳 / 翻滾 / 普攻（左鍵留給出招）；面向鏡頭方向
         practiceController.LockActions();
@@ -99,6 +101,7 @@ public sealed partial class VoidRendSkillDemo
         if (p >= 1f && !chargeFull)
         {
             chargeFull = true;
+            GameAudio.Play("SFX/Magic/charge_full", caster.position, .55f, 1f, 0f, .3f);
             Vector3 tip = ChargeTipPosition();
             SpawnRing(tip, .05f, .7f, .03f, .35f, pale);
             SpawnParticles(tip, 24, .45f, 2.6f, .012f, .04f, pale);
@@ -174,6 +177,7 @@ public sealed partial class VoidRendSkillDemo
     {
         if (!charging) return;
         charging = false;
+        if (chargeAudio != null) { chargeAudio.Stop(); chargeAudio = null; }
         SkillAimCancellation.Release(CancelCharge);
         if (practiceController != null)
         {

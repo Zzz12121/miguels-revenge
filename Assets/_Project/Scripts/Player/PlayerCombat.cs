@@ -139,14 +139,20 @@ public class PlayerCombat : MeleeCombat
         {
             CombatVFX.Impact(p + transform.forward * hitForwardOffset + Vector3.up * .1f, new Color(1f, .85f, .55f));
             ThirdPersonCamera.ShakeMain(.28f, .22f);
-            GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), p, soundVolume, .7f, 1f, 30f);
+            GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), p, soundVolume, .85f, .05f, 1f, 30f);
+            GameAudio.Play("SFX/Gen/jump_land_heavy", p, soundVolume * .6f, .9f, .05f, 1f, 30f);
         };
         // 所有場景都共用同一個玩家物件；缺少時自動補上雙極牽引技能，
         // 靶場與正式關卡不需要各自維護一份技能 Prefab。
         if (GetComponent<EnergyTetherSkill>() == null)
             gameObject.AddComponent<EnergyTetherSkill>();
         // 跳躍、落地、揮刀、打中的音效（只加聲音）
-        if (GetComponent<PlayerSfx>() == null) gameObject.AddComponent<PlayerSfx>();
+        var sfx = GetComponent<PlayerSfx>();
+        if (sfx == null) sfx = gameObject.AddComponent<PlayerSfx>();
+        // 揮刀聲只留刀真的劃出去那一下（MeleeCombat 播的短咻）；PlayerSfx 在起手時那一下會變成「嘩嘩」兩聲，關掉
+        sfx.swingVolume = 0f;
+        // 落地只由 PlayerSfx 播一次，並調小（原本 0.7 太震）
+        sfx.landVolume = 0.4f;
         // 揮刀時上半身擺動更明顯（只疊在動作上面）
         if (GetComponent<SwingBodyAccent>() == null) gameObject.AddComponent<SwingBodyAccent>();
         // 拉弓瞄準時走路：腿輪流踏步，不會整個人在地上滑（只動腿）
@@ -216,7 +222,7 @@ public class PlayerCombat : MeleeCombat
             if (charging && !chargeFull && held && Time.time - chargeStart >= heavyHoldTime)
             {
                 chargeFull = true;
-                GameAudio.Play("SFX/RPG/metalLatch", transform.position, 0.7f, 1.5f, 0f, 0.3f);
+                GameAudio.Play("SFX/Magic/charge_full", transform.position, 0.45f, 1.1f, 0f, 0.3f);
                 CombatVFX.Impact(transform.position + Vector3.up, new Color(1f, 0.6f, 0.2f));
             }
             if (charging && !held)
@@ -367,7 +373,7 @@ public class PlayerCombat : MeleeCombat
         // 刺出：往前衝 + 判定（同一個敵人只算一次）
         FaceTarget(target);
         controller.AddImpulse(transform.forward * counterLunge);
-        GameAudio.Play("SFX/RPG/drawKnife2", transform.position + Vector3.up, 0.9f, 1.25f, 0.05f, 1f, 30f);
+        GameAudio.Play("SFX/Gen/swing_short_" + Random.Range(1, 4), transform.position + Vector3.up, 0.9f, 1.15f, 0.05f, 1f, 30f);
         var hit = new HashSet<object>();
         while (Time.time - start < counterDelay + counterActive)
         {
@@ -413,7 +419,8 @@ public class PlayerCombat : MeleeCombat
             else target.TakeDamage(dealt, point);
             AfterHit(dealt, target);
             OnHitLanded?.Invoke(target, point, dealt, true);
-            GameAudio.Play("SFX/RPG/knifeSlice", point, 1f, 0.8f, 0.05f, 1f, 35f);
+            GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), point, 1f, 1f, 0.05f, 1f, 35f);
+            GameAudio.Play("SFX/RPG/knifeSlice2", point, 0.45f, 1.1f, 0.05f, 1f, 35f);
             CombatVFX.Impact(point, new Color(1f, 0.75f, 0.3f));
             ThirdPersonCamera.ShakeMain(0.18f, 0.14f);
         }
@@ -579,7 +586,8 @@ public class PlayerCombat : MeleeCombat
                 enemyMove.AddImpulse(push.normalized * shieldBashKnockback + Vector3.up * 2.5f);
             }
 
-            GameAudio.Play("SFX/RPG/metalPot2", point, 1f, 0.7f, 0.05f, 1f, 35f);
+            GameAudio.Play("SFX/RPG/metalPot2", point, 0.6f, 0.7f, 0.05f, 1f, 35f);
+            GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), point, 0.9f, 0.9f, 0.05f, 1f, 35f);
             CombatVFX.Impact(point, new Color(0.85f, 0.9f, 1f));
             ThirdPersonCamera.ShakeMain(0.15f, 0.15f);
         }
@@ -769,6 +777,15 @@ public class PlayerCombat : MeleeCombat
     }
 
     protected override bool WantsNextHit() => attackQueued;
+
+    // ---------------- 音效 ----------------
+    // 揮刀：俐落的短「咻」（SFX/Gen/swing_short，swing_whoosh 剪掉前面的空白、只留一半長度）
+    protected override string[] DefaultSwingSounds => new[] { "SFX/Gen/swing_short_1", "SFX/Gen/swing_short_2", "SFX/Gen/swing_short_3" };
+    // 命中的悶響由 PlayerSfx 播（它會分輕重），這裡不再重複播，只疊下面那層刀刃聲
+    protected override string[] DefaultHitSounds => new string[0];
+    // 再疊一層小聲的刀刃劃過聲（只有悶響的話像在出拳）
+    protected override void PlayHitLayer(Vector3 point) =>
+        GameAudio.Play("SFX/RPG/knifeSlice2", point, 0.3f, 1.25f, 0.1f, 1f, 30f);
 
     protected override Vector3 GetAimDirection()
     {

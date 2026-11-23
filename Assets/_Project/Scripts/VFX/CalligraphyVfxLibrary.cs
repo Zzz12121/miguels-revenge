@@ -14,6 +14,8 @@ public sealed class CalligraphyVfxLibrary : ScriptableObject
         if(!prefab)return null;
         var go=Instantiate(prefab,position,rotation,parent);go.name=prefab.name+" [combat]";
         go.transform.localScale=Vector3.one*scale;
-        var fx=go.AddComponent<CalligraphyPackageEffect>();fx.Initialize(speed,skip);return fx;
+        var fx=go.AddComponent<CalligraphyPackageEffect>();fx.Initialize(speed,skip);
+        CalligraphyAudio.OnVfx(Current,prefab,position,scale); // 依特效種類播音效（只加聲音）
+        return fx;
     }
 }

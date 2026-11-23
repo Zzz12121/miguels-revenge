@@ -159,7 +159,7 @@ public sealed class PhantomDecoy : MonoBehaviour
         CombatVFX.Puff(c + Vector3.down * .3f, Vector3.up, glow, true);
         CombatVFX.Puff(c + Vector3.up * .3f, Vector3.up, new Color(color.r, color.g, color.b, .6f), true);
         CombatVFX.Impact(c + Vector3.up * .2f, glow);
-        GameAudio.Play("SFX/RPG/cloth3", c, .55f, 1.9f, .05f, .3f);
+        GameAudio.Play("SFX/Magic/wind_short", c, .45f, 1.3f, .05f, .3f); // 分身消散
     }
 
     /// <summary>把玩家現在的姿勢烘下來，算出鏡射後要畫的位置</summary>

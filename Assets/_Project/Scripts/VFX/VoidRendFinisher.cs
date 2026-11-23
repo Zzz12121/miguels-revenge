@@ -335,6 +335,9 @@ public sealed partial class VoidRendSkillDemo
         caster.rotation = drawFacing;
         SetStage("ApproachRun");
         nextDrawGhostTime = 0f;
+        // 音效：蹬地爆衝
+        GameAudio.Play("SFX/Magic/dash_burst", caster.position, .9f, .95f, .03f, .4f);
+        GameAudio.Play("SFX/Gen/jump_land_heavy", caster.position, .45f, 1.2f, .03f, .4f);
         SpawnRing(approachStart + Vector3.up * .06f, .15f, 1.6f, .06f, .45f, pale);   // 蹬地的衝擊
         PunchCamera(.22f, 5f);
         if (approachDistance > .05f)
@@ -366,6 +369,10 @@ public sealed partial class VoidRendSkillDemo
         yield return Wait(.11f);
         LaunchNearbyVictims();
         BeginVictimLimp(1f);
+        // 音效：上撈的拔刀斬打中（重擊 + 刀刃 + 揮刀風切）
+        GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), victimHome + Vector3.up, 1f, .95f, .03f, .4f);
+        GameAudio.Play("SFX/RPG/knifeSlice2", victimHome + Vector3.up, .6f, 1.05f, .03f, .4f);
+        GameAudio.Play("SFX/Gen/swing_whoosh_3", caster.position + Vector3.up, .8f, .9f, .03f, .4f);
         Vector3 launchHit = victimHome + Vector3.up * 1.1f;
         SpawnArc(victimHome + Vector3.up * .9f, Quaternion.LookRotation(openForward, Vector3.up) * Quaternion.Euler(0f, 0f, 90f), 2.4f, -100f, 100f, .16f, .5f, pale);
         SpawnSlashPair(launchHit, (openForward + Vector3.up * 1.6f).normalized, 4.5f, .09f, .4f, pale);
@@ -395,6 +402,8 @@ public sealed partial class VoidRendSkillDemo
         // 慢動作：整個世界變慢，敵人慢慢升到最高點、翻滾、四肢無力甩動；鏡頭慢慢繞一點
         Time.timeScale = airSlowTimeScale;
         Time.fixedDeltaTime = fixedDeltaStart * airSlowTimeScale;
+        // 音效：慢動作時一路往上堆的蓄能聲（接 22 段斬）
+        GameAudio.Play("SFX/Magic/sword_spin_swell", victimHeld, .55f, 1f, 0f, .3f);
         SetVictimLimpSlow(airSlowTimeScale);
         float nextAirSpark = 0f;
         for (float t = 0; t < airSlowSeconds; t += Time.unscaledDeltaTime)
@@ -436,6 +445,9 @@ public sealed partial class VoidRendSkillDemo
             KickVictimLimbs(next - last, 5f);
             victimTumbleDegrees += 7f;
             CreateAfterimage(); poseSide = (i%2 == 0 ? 1 : -1);
+            // 音效：每一斬的風切 + 小聲的命中（音調每次稍微不一樣，連續 22 下才不會像同一個聲音在重播）
+            GameAudio.Play("SFX/Gen/swing_whoosh_" + (1 + i % 3), next, .55f, Random.Range(1.1f, 1.35f), 0f, .4f);
+            if (i % 2 == 0) GameAudio.Play("SFX/Gen/hit_impact_" + Random.Range(1, 5), victimHeld, .35f, Random.Range(1f, 1.2f), 0f, .4f);
             // Geometry is emitted from the exact swept character path, with a advancing head.
             const float dashDuration = .15f;
             Vector3 previous = last + Vector3.up*.9f;
@@ -536,6 +548,10 @@ public sealed partial class VoidRendSkillDemo
         cameraFrameAngles=FrameAnglesFor(finisherCharacterScreenPos,cinematicFov);
         victimHeld=victimLanding+Vector3.up*launchHeight;
         SetStage("FinalBreak");
+        // 音效：收刀入鞘的「喀」→ 虛空爆開
+        GameAudio.Play("SFX/RPG/metalClick", caster.position + Vector3.up, .8f, .8f, 0f, .3f);
+        GameAudio.Play("SFX/Magic/void_burst", center, 1f, .9f, 0f, .2f);
+        GameAudio.Play("SFX/Magic/void_explosion", center, .9f, .85f, 0f, .2f);
         ReleaseDashLines(.4f);
         onFinisherImpact.Invoke();
         UpdateLiftedVictims();

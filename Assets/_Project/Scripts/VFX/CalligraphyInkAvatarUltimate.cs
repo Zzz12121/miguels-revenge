@@ -128,12 +128,12 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
         if(activeTrail)activeTrail.emitting=false;activeTrail=null;
         switch(phase)
         {
-            case Phase.Roar:Shake(s.roarShake);break;
-            case Phase.FirstSweep:BeginTrail();Shake(s.firstSweepShake);break;
-            case Phase.SecondSweep:BeginTrail();Shake(s.secondSweepShake);break;
+            case Phase.Roar:Shake(s.roarShake);CalligraphyAudio.AvatarRoar(boss.transform.position);break;
+            case Phase.FirstSweep:BeginTrail();Shake(s.firstSweepShake);CalligraphyAudio.AvatarSweep(boss.transform.position);break;
+            case Phase.SecondSweep:BeginTrail();Shake(s.secondSweepShake);CalligraphyAudio.AvatarSweep(boss.transform.position);break;
             case Phase.BrushSlam:boss.brush.SetCombatPose(18,0);break;
-            case Phase.AirCombat:Shake(s.risingShake);break;
-            case Phase.Dissolve:if(avatar)avatar.SetCombatPose(18,.86f);break;
+            case Phase.AirCombat:Shake(s.risingShake);CalligraphyAudio.AvatarRise(ImpactPoint);break;
+            case Phase.Dissolve:if(avatar)avatar.SetCombatPose(18,.86f);CalligraphyAudio.AvatarDissolve(boss.transform.position);break;
         }
     }
     void Shake(CalligraphyBossCombat.AvatarShakeSettings setting){if(shake)shake.Pulse(setting);}
@@ -240,6 +240,7 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
         offset.z=Mathf.Clamp(offset.z,-Mathf.Abs(s.pillars.spawnRange.z),Mathf.Abs(s.pillars.spawnRange.z));
         var fx=CalligraphyVfxLibrary.Play(s.pillars.prefab,boss.transform.position+offset,Quaternion.identity,Mathf.Max(.1f,s.pillars.scale),1,0,transform);
         if(!fx)return;
+        CalligraphyAudio.Pillar(fx.transform.position);
         fx.StopAfter(Mathf.Max(.1f,s.pillars.duration),.35f);
         fx.KeepAliveFor(s.pillars.duration+.5f);
         foreach(var ps in fx.Systems)
@@ -346,7 +347,7 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
         impacted=true;airClock=0;
         Vector3 point=avatar && avatar.brushTip?avatar.brushTip.position:entryBoss+forward*s.slam.forwardDistance;
         point.y=groundY+.06f;ImpactPoint=point;
-        Shake(s.slamShake);boss.ink.Burst(point,6,28);
+        Shake(s.slamShake);CalligraphyAudio.AvatarSlam(point);boss.ink.Burst(point,6,28);
         var lib=CalligraphyVfxLibrary.Current;
         if(lib)CalligraphyVfxLibrary.Play(lib.frontal,point,entryBossRotation,.9f,1.3f,0,transform);
         MakeSea();MakePlatforms();

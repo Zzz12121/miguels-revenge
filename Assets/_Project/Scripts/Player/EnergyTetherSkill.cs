@@ -159,6 +159,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
                 if (!ValidPoint(hovered)) { Notify("請瞄準實際物件，不能鎖定空氣"); return; }
                 locked = hovered;
                 selectionLocked = true;
+                CalligraphyAudio.TetherLock(transform.position);
                 aimingStartedAt = Time.unscaledTime;
                 // First click only selects. Its hold/release must never count as a throw.
                 dragging = false;
@@ -210,6 +211,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
                 // the pointer to remain over the locked target. Gravity handles landing.
                 Vector3 direction=(dragCameraRight*gesture.x + dragCameraUp*gesture.y).normalized;
                 EndAiming(false);
+                CalligraphyAudio.TetherThrow(transform.position);
                 StartCoroutine(ThrowTarget(thrownPoint,direction*force));
                 return;
             }
@@ -226,6 +228,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (scroll < 0 && IsStaticAnchor(chosen)) { Notify("無法拖動此目標"); return; }
         bool pullSelf = scroll > 0f;
         EndAiming(false);
+        CalligraphyAudio.TetherPull(transform.position);
         StartCoroutine(pullSelf ? PullPlayer(chosen) : PullTarget(chosen));
     }
 
@@ -253,6 +256,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         PadInput.CenterPointer();
+        CalligraphyAudio.TetherAim(transform.position);
     }
 
     void EndAiming(bool restoreHeldChunk)
@@ -437,6 +441,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         Vector3 direction = (destination - origin).normalized;
         float speed = heldChunkMarker != null ? heldChunkMarker.throwSpeed : 24f;
         ReleaseHeldChunk(true, direction * speed);
+        CalligraphyAudio.TetherThrow(transform.position);
         ThirdPersonCamera.ShakeMain(.18f, .18f);
         nextUseTime = Time.unscaledTime + skillCooldown;
     }
@@ -556,6 +561,19 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     void SetBeams(bool enabled)
     {
         foreach (LineRenderer beam in beams) if (beam != null) beam.enabled = enabled;
+        BeamHum(enabled);
+    }
+
+    // 電光牽引線出現時，一直有劈哩啪啦的電流聲（線消失就停）
+    AudioSource beamHum;
+    void BeamHum(bool on)
+    {
+        if (on)
+        {
+            if (beamHum == null) { beamHum = CalligraphyAudio.AttachLoop(gameObject, "SFX/Ink/tether_crackle_loop", .3f, 1f, .3f, 40f); return; }
+            if (!beamHum.isPlaying) beamHum.Play();
+        }
+        else if (beamHum != null && beamHum.isPlaying) beamHum.Stop();
     }
 
     void UpdateBeams(Vector3 targetPoint)
@@ -616,7 +634,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     }
 
     void OnDisable()
-    { CancelForExternalTransition(); }
+    { CancelForExternalTransition(); BeamHum(false); }
 
     public void CancelForExternalTransition()
     {

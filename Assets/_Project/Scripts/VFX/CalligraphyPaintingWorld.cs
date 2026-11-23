@@ -45,6 +45,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     {
         PlayerSkillAvailability.CancelActive(target);
         boss=owner;player=target;entryPosition=player.transform.position;
+        CalligraphyAudio.PaintingEnter(entryPosition);
         transform.position=CalligraphyGeometry.Ground(player.transform.position,player.transform);
         // World pigment has its own lifetime and remains visible while the outside boss is hidden.
         var pool=new GameObject("Painting pigment pool");pool.SetActive(false);pool.transform.SetParent(transform,false);
@@ -436,6 +437,7 @@ public sealed class CalligraphyPaintingWorld : MonoBehaviour
     void ReturnToEntry()
     {
         if(returned || !player)return;returned=true;
+        CalligraphyAudio.PaintingExit(entryPosition);
         Vector3 delta=entryPosition-player.transform.position;
         var motor=player.GetComponent<ThirdPersonController>();
         var body=player.GetComponent<CharacterController>();bool enabled=body && body.enabled;

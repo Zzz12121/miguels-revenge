@@ -100,7 +100,7 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
         // This original prefab's ground impact ring is delayed until the falling beam lands.
         // Observe the actual burst, so changing playback speed cannot desynchronise damage.
         while(fall && !fall.HasLiveParticles("Ring_Halo_faded_add_soft"))yield return null;
-        if(fall)ImpactAt=Time.time;
+        if(fall){ImpactAt=Time.time;CalligraphyAudio.RuneImpact(transform.position);}
         if(fall && player && CalligraphyPlayerHitGate.Touches(player,transform.position,transform.position+Vector3.up*1.7f,settings.hitRadius*(settings.scale/.45f)))
         {
             Vector3 delta=player.transform.position-transform.position;

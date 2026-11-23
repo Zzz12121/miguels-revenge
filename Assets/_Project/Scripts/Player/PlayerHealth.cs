@@ -197,7 +197,7 @@ public class PlayerHealth : MonoBehaviour
             if (Health > 0f) OnHitReaction?.Invoke(resolved, flatKnock.sqrMagnitude > 0.0001f ? flatKnock.normalized : -transform.forward);
         }
         ThirdPersonCamera.ShakeMain(0.15f, 0.2f);
-        GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 0.8f, 0.08f, 0.3f);
+        GameAudio.Play("SFX/Gen/hit_impact_" + Random.Range(1, 5), transform.position + Vector3.up, 0.8f, 0.85f, 0.08f, 0.3f);
         if (Health <= 0f) Die(deathReason);
         else OnDamaged?.Invoke(amount);
         return true;
@@ -232,7 +232,8 @@ public class PlayerHealth : MonoBehaviour
             SetSkillInvulnerability(this, true);
             controller.Stun(knockDownLieTime + knockDownGetUpTime);
             ThirdPersonCamera.ShakeMain(0.12f, 0.18f);
-            GameAudio.Play("SFX/rock_hit", transform.position, 0.35f, 0.7f, 0.05f, 0.4f, 30f);
+            GameAudio.Play("SFX/Gen/jump_land_heavy", transform.position, 0.7f, 0.85f, 0.05f, 0.4f, 30f);
+            GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), transform.position + Vector3.up * .5f, 0.6f, 0.8f, 0.05f, 0.4f, 30f);
             yield return new WaitForSeconds(knockDownLieTime + knockDownGetUpTime);
         }
         SetSkillInvulnerability(this, false);

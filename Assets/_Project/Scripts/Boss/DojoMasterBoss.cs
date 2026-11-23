@@ -169,6 +169,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
 
     void Update()
     {
+        UpdateFootsteps();
         if (dead || !armed || FightActive) return;
         // 玩家重生之後：回到庭院裡待滿 startDelay 秒就重新開打
         if (PlayerAlive && Flat(player.transform.position - arenaCenter).magnitude <= arenaRadius)
@@ -250,7 +251,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
 
         // 出掌：一邊往前滑步、一邊把手推出去
         SetStance(rightHand ? Stance.StrikeRight : Stance.StrikeLeft, 28f);
-        GameAudio.Play("SFX/RPG/knifeSlice2", transform.position + Vector3.up, 0.8f, Random.Range(0.75f, 0.85f));
+        GameAudio.Play("SFX/Gen/swing_whoosh_" + Random.Range(1, 4), transform.position + Vector3.up, 0.9f, Random.Range(0.68f, 0.78f));
         Vector3 dir = transform.forward;
         float lunge = palmLunge;
         if (PlayerAlive) lunge = Mathf.Clamp(DistanceToPlayer() - 0.9f, 0f, palmLunge); // 不撞進玩家身體
@@ -303,7 +304,8 @@ public sealed class DojoMasterBoss : MonoBehaviour
         // 雙掌拍地：震波往外擴散
         SetStance(Stance.Slam, 30f);
         yield return Wait(0.08f);
-        GameAudio.Play("SFX/roar_rock_crumble", transform.position, 0.9f, Random.Range(1.1f, 1.25f));
+        GameAudio.Play("SFX/Magic/earth_slam", transform.position, 1f, Random.Range(0.85f, 0.95f));
+        GameAudio.Play("SFX/Gen/hit_heavy_2", transform.position, 0.9f, 0.7f);
         ThirdPersonCamera.ShakeMain(0.35f, 0.5f);
         Vector3 center = transform.position;
         CombatVFX.Ring(center, DustColor, shockRadius * 0.6f);
@@ -355,7 +357,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         MoveTo(dest, true);
         transform.rotation = Quaternion.LookRotation(Flat(p - dest).sqrMagnitude > 0.01f ? Flat(p - dest) : transform.forward);
         CombatVFX.Puff(transform.position + Vector3.up * 0.9f, Vector3.up, DustColor);
-        GameAudio.Play("SFX/RPG/knifeSlice", transform.position + Vector3.up, 0.7f, 0.7f);
+        GameAudio.Play("SFX/Magic/wind_short", transform.position + Vector3.up, 0.75f, 0.85f);
         SetStance(Stance.Guard, 12f);
     }
 
@@ -364,7 +366,8 @@ public sealed class DojoMasterBoss : MonoBehaviour
         phase2 = true;
         StopWalking();
         SetStance(Stance.Raise, 4f);
-        GameAudio.Play("SFX/roar_rock_crumble", transform.position, 1f, 0.8f);
+        GameAudio.Play("SFX/Magic/power_up", transform.position, 0.9f, 0.85f);
+        GameAudio.Play("SFX/Magic/dark_aura", transform.position, 0.6f, 0.75f);
         ThirdPersonCamera.ShakeMain(0.3f, 1f);
         CombatVFX.Ring(transform.position, new Color(1f, 0.6f, 0.3f, 0.9f), 4f);
         yield return Wait(1f);
@@ -386,7 +389,11 @@ public sealed class DojoMasterBoss : MonoBehaviour
     {
         pushDir.y = 0f;
         Vector3 knock = (pushDir.sqrMagnitude > 0.001f ? pushDir.normalized : transform.forward) * knockback + Vector3.up * knockUp;
-        if(player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+        if(player.TakeDamage(damage, knock, false, reason))
+        {
+            ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+            GameAudio.Play("SFX/Gen/hit_heavy_" + Random.Range(1, 3), player.transform.position + Vector3.up, 0.85f, Random.Range(0.85f, 0.95f), 0.05f, 1f, 35f);
+        }
     }
     public void DeliverBrushHit(float damage,Vector3 direction,Vector3 point)
     {
@@ -466,6 +473,33 @@ public sealed class DojoMasterBoss : MonoBehaviour
     }
 
     // ===================== 移動 / 動畫 =====================
+
+    // 走路的腳步聲：跟玩家同一組 Kenney 腳步，低一點、小聲一點（老人家的步伐）
+    Vector3 lastStepPos;
+    float stepTravel;
+    FootPlantDetector feet;
+    bool feetSearched;
+
+    void UpdateFootsteps()
+    {
+        Vector3 p = transform.position;
+        if (!walkingAnim || dead) { lastStepPos = p; stepTravel = 0f; feet?.Reset(); return; }
+        float moved = Vector3.ProjectOnPlane(p - lastStepPos, Vector3.up).magnitude;
+        lastStepPos = p;
+        if (!feetSearched) { feetSearched = true; feet = FootPlantDetector.Find(transform, anim); }
+        if (feet != null)
+        {
+            // 看動畫裡腳踩到地的那一刻才出聲（跟腳步對得上）；原地踏步（沒在移動）不出聲
+            if (feet.Step(Time.deltaTime, out Vector3 at) && moved > 0.0005f)
+                GameAudio.Play("SFX/RPG/footstep0" + Random.Range(0, 10), at, 0.3f, Random.Range(0.8f, 0.88f), 0f, 1f, 25f);
+            return;
+        }
+        // 找不到腳的骨頭：退回每走 1.5 公尺一步
+        stepTravel += moved;
+        if (stepTravel < 1.5f) return;
+        stepTravel = 0f;
+        GameAudio.Play("SFX/RPG/footstep0" + Random.Range(0, 10), p, 0.3f, Random.Range(0.8f, 0.88f), 0f, 1f, 25f);
+    }
 
     void StartWalking()
     {

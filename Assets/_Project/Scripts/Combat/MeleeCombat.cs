@@ -126,6 +126,13 @@ public abstract class MeleeCombat : MonoBehaviour
     public AudioClip[] swingSounds;
     [Tooltip("打中的聲音（不填 = chop）")]
     public AudioClip hitSound;
+    /// <summary>沒在 Inspector 指定揮刀聲時用的預設（Resources/Audio 底下的路徑）。PlayerCombat 換成揮刀的「咻」聲</summary>
+    protected virtual string[] DefaultSwingSounds => new[] { "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2" };
+    /// <summary>沒在 Inspector 指定命中聲時用的預設。PlayerCombat 換成打到身體的悶響</summary>
+    protected virtual string[] DefaultHitSounds => new[] { "SFX/RPG/chop" };
+    /// <summary>命中聲之外再疊一層（例如刀刃劃過的聲音）。預設不疊</summary>
+    protected virtual void PlayHitLayer(Vector3 point) { }
+    AudioClip PickHitSound() => hitSound != null ? hitSound : GameAudio.RandomClip(DefaultHitSounds);
     [Range(0f, 1f)] public float soundVolume = 0.7f;
     [Tooltip("音高（小怪預設比較低沉）")]
     public float soundPitch = 1f;
@@ -197,8 +204,9 @@ public abstract class MeleeCombat : MonoBehaviour
             if (TryDamage(c, damage, hitPoint, hitSet))
             {
                 hits++;
-                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), hitPoint, soundVolume,
+                GameAudio.PlayAt(PickHitSound(), hitPoint, soundVolume,
                                  soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
+                PlayHitLayer(hitPoint);
             }
         }
         return hits;
@@ -218,7 +226,7 @@ public abstract class MeleeCombat : MonoBehaviour
         Vector3 from = new Vector3(10f, 120f, 0f), to = new Vector3(10f, -120f, 0f);
         float prep = Mathf.Min(.06f, duration * .2f), cut = Mathf.Max(.08f, duration * .7f);
         yield return RotateWeapon(weaponPivot.localEulerAngles, from, prep);
-        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, DefaultSwingSounds),
                          transform.position + Vector3.up, soundVolume * 0.8f,
                          soundPitch * PitchScale * Random.Range(1.1f, 1.25f), 1f, 30f);
         hitThisSwing.Clear();
@@ -341,7 +349,7 @@ public abstract class MeleeCombat : MonoBehaviour
         weaponPivot.localRotation = Quaternion.Euler(from);
 
         // 揮下去 + 往前踏步 + 判定
-        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, DefaultSwingSounds),
                          transform.position + Vector3.up, soundVolume * 0.8f,
                          soundPitch * PitchScale * Random.Range(0.92f, 1.08f) * (index % 3 == 2 ? 0.85f : 1f), 1f, 30f);
         hitThisSwing.Clear();
@@ -397,7 +405,7 @@ public abstract class MeleeCombat : MonoBehaviour
         Vector3 from = new Vector3(-70f, 10f, 0f), to = new Vector3(70f, -10f, 0f);
         yield return RotateWeapon(weaponPivot.localEulerAngles, from, airSlashWindup);
 
-        GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
+        GameAudio.PlayAt(GameAudio.Pick(swingSounds, DefaultSwingSounds),
                          transform.position + Vector3.up, soundVolume * 0.6f,
                          soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
         hitThisSwing.Clear();
@@ -428,8 +436,11 @@ public abstract class MeleeCombat : MonoBehaviour
                 || (c is MeshCollider meshCollider && meshCollider.convex);
             Vector3 hitPoint = supportsClosestPoint ? c.ClosestPoint(center) : c.bounds.ClosestPoint(center);
             if (TryDamage(c, damage, hitPoint, hitThisSwing))
-                GameAudio.PlayAt(GameAudio.Pick(hitSound, "SFX/RPG/chop"), hitPoint, soundVolume,
+            {
+                GameAudio.PlayAt(PickHitSound(), hitPoint, soundVolume,
                                  soundPitch * PitchScale * Random.Range(0.9f, 1.1f), 1f, 30f);
+                PlayHitLayer(hitPoint);
+            }
         }
     }
 

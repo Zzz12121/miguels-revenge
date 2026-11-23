@@ -169,7 +169,7 @@ public class PlayerPerks : MonoBehaviour
         if (Has(Perk.Shield) && !shieldReady && Time.time >= shieldReadyAt)
         {
             shieldReady = true;
-            GameAudio.Play("SFX/RPG/metalLatch", transform.position, 0.5f, 1.4f, 0f, 0.3f);
+            GameAudio.Play("SFX/Magic/shield_absorb", transform.position, 0.3f, 1.25f, 0f, 0.3f);
         }
 
         bool alive = health != null && !health.IsDead;
@@ -217,7 +217,7 @@ public class PlayerPerks : MonoBehaviour
             demonGlow.range = 5f;
         }
         CombatVFX.Ring(transform.position + Vector3.up * 0.1f, new Color(1f, 0.2f, 0.1f), 2.5f);
-        GameAudio.Play("SFX/RPG/metalPot3", transform.position, 1f, 0.5f, 0.05f, 0.3f);
+        GameAudio.Play("SFX/Magic/dark_aura", transform.position, 0.8f, 0.85f, 0.05f, 0.3f);
         Popup("惡魔型態！");
     }
 
@@ -251,7 +251,7 @@ public class PlayerPerks : MonoBehaviour
         if (Has(Perk.Dodge) && Random.value < dodgeChance)
         {
             Popup("閃避！");
-            GameAudio.Play("SFX/RPG/clothBelt", transform.position, 0.8f, 1.4f, 0.05f, 0.3f);
+            GameAudio.Play("SFX/Magic/wind_short", transform.position, 0.6f, 1.2f, 0.05f, 0.3f);
             return true;
         }
         if (Has(Perk.Shield) && shieldReady)
@@ -259,7 +259,7 @@ public class PlayerPerks : MonoBehaviour
             shieldReady = false;
             shieldReadyAt = Time.time + shieldInterval;
             Popup("護盾抵擋");
-            GameAudio.Play("SFX/RPG/metalPot3", transform.position + Vector3.up, 1f, 1.3f, 0.05f, 0.3f);
+            GameAudio.Play("SFX/Magic/shield_absorb", transform.position + Vector3.up, 0.7f, 1f, 0.05f, 0.3f);
             CombatVFX.Impact(transform.position + Vector3.up, new Color(0.5f, 0.85f, 1f));
             return true;
         }

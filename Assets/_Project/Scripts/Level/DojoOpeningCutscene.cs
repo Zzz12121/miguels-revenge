@@ -410,6 +410,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     {
         // 門的轉動在 DojoCourtyardGate.Update 裡；這裡在它之後蓋掉，讓門跟著手
         if (doorPhase >= 0) DriveDoor(Time.deltaTime);
+        if (masterWalking) MasterFootsteps();
         if (drinking) UpdateCupVisibility();
         if (drinking) DrinkSound();
         if(exploring && playerAnim && playerAnim.isHuman)
@@ -519,6 +520,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     IEnumerator ExploreCourtyard()
     {
         Phase="Exploring courtyard";exploring=true;ExplorationElapsed=0;
+        StartCoroutine(CourtyardAmbience());
         TeleportPlayer(new Vector3(explorationStop.x,explorationStop.y,14),meetForward);
         playerRoute.Clear();playerRoute.Add(explorationStop);StartPlayerWalk();
         float oldInput=playerWalkInput;playerWalkInput=scenicWalkInput;
@@ -537,6 +539,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             yield return null;
         }
         ExplorationElapsed=explorationSeconds;playerWalkInput=oldInput;StopPlayerWalk();exploring=false;
+        BoostBirds(false);
         if(skip)TeleportPlayer(explorationStop,meetForward);
         playerStop=PlayerFeet();playerArrived=true;Phase="Watching elder";
     }
@@ -638,6 +641,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
     void Finish()
     {
         exploring=false;Phase="Finished";
+        BoostBirds(false);
         StopPlayerWalk();
         FinishDoorNow();
         CloseGateForStory();
@@ -814,6 +818,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         pushMax = 0f; doorClock = 0f; doorAngle = 0f;
         doorPhase = gate != null ? (hasPush ? 0 : 2) : -1;
         releaseAngle = 0f; contactAt = lastGrowAt = 0f;
+        if (doorPhase == 2) DoorSound(2);
     }
 
     void DriveDoor(float dt)
@@ -823,8 +828,8 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         switch (doorPhase)
         {
             case 0: // 等手碰到門
-                if (HandPenetration(out _) >= 0f) { doorPhase = 1; contactAt = lastGrowAt = doorClock; }
-                else if (doorClock > 1.6f) { doorPhase = 2; doorClock = 0f; releaseAngle = 0f; } // 一直沒碰到：直接盪開
+                if (HandPenetration(out _) >= 0f) { doorPhase = 1; contactAt = lastGrowAt = doorClock; DoorSound(1); }
+                else if (doorClock > 1.6f) { doorPhase = 2; doorClock = 0f; releaseAngle = 0f; DoorSound(2); } // 一直沒碰到：直接盪開
                 break;
             case 1: // 手往前推多少，門就轉多少（門板剛好貼著手）
             {
@@ -834,6 +839,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
                 if ((doorClock - lastGrowAt > 0.15f && pushMax > 0.01f) || doorClock - contactAt > 1.8f)
                 {
                     doorPhase = 2; releaseAngle = doorAngle; doorClock = 0f;
+                    DoorSound(2);
                     // 手推到底：不播動畫後面一直按著門的那段，直接把手收回待機
                     if (playerAnim != null && playerAnim.HasState(0, IdleState)) playerAnim.CrossFadeInFixedTime(IdleState, pushReleaseBlend, 0, 0f);
                 }
@@ -841,7 +847,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             }
             case 2: // 手推完：門自己盪到全開
                 doorAngle = Mathf.Lerp(releaseAngle, gate.openDegrees, Mathf.SmoothStep(0f, 1f, doorClock / doorCoastSeconds));
-                if (doorClock >= doorCoastSeconds) { doorPhase = 3; doorAngle = gate.openDegrees; }
+                if (doorClock >= doorCoastSeconds) { doorPhase = 3; doorAngle = gate.openDegrees; DoorSound(3); }
                 break;
             case 3: // 全開：門自己的轉動還沒跑完就一直蓋掉（停在全開）
                 doorAngle = gate.openDegrees;
@@ -864,7 +870,12 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         if(gate == null || gate.CloseBlocked) return;
         // Release the hand-driven opening before the gate's own closing animation.
         doorPhase = -1;
-        if(gate.TryClose()) gate.enabled = true;
+        if(gate.TryClose())
+        {
+            gate.enabled = true;
+            if (isActiveAndEnabled) StartCoroutine(GateCloseSound());
+            else GameAudio.Play("SFX/RPG/doorClose_4", GateSoundPos, 0.8f, 0.55f, 0.03f, 1f, 50f);
+        }
     }
 
     void ApplyDoor(float angle)
@@ -907,6 +918,108 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         Vector3 f = Flat(gate.transform.forward).normalized;
         if (f.sqrMagnitude < 0.01f) f = Vector3.forward;
         return gate.transform.InverseTransformPoint(player.transform.position).z >= 0f ? f : -f;
+    }
+
+    // ---------------- 音效（只加聲音，不改演出） ----------------
+    // 都是專案裡原本就有的音效：RPG（Kenney 門 / 木頭 / 腳步）、Gen（鳥叫）、Magic（風）
+
+    FootPlantDetector masterFeet;
+    bool masterHurrying, masterMoved;
+    BirdAmbience[] boostedBirds;
+    Vector2[] birdIntervals;
+    float[] birdVolumes;
+
+    Vector3 GateSoundPos => gate != null ? gate.transform.position + Vector3.up * 1.5f : transform.position;
+
+    /// <summary>推門：1 = 手碰到門（木門被推動）、2 = 門自己盪開（長長的吱呀 + 一陣風吹進來，鳥被驚動）、3 = 開到底輕輕一碰</summary>
+    void DoorSound(int phase)
+    {
+        if (gate == null) return;
+        Vector3 at = GateSoundPos;
+        switch (phase)
+        {
+            case 1:
+                GameAudio.Play("SFX/RPG/doorOpen_2", at, 0.9f, 0.62f, 0.03f, 1f, 45f);
+                break;
+            case 2:
+                GameAudio.Play("SFX/RPG/creak1", at, 0.75f, 0.5f, 0.04f, 1f, 45f);
+                GameAudio.Play("SFX/Magic/wind_short", at - outward * 2f, 0.28f, 0.55f, 0.05f, 0.7f, 40f);
+                StartCoroutine(BirdsStartled());
+                break;
+            case 3:
+                GameAudio.Play("SFX/RPG/doorClose_1", at, 0.3f, 0.5f, 0.04f, 1f, 35f);
+                break;
+        }
+    }
+
+    IEnumerator BirdsStartled()
+    {
+        Vector3 inward = -outward;
+        yield return new WaitForSeconds(0.5f);
+        GameAudio.Play("SFX/Gen/bird_sparrow_" + Random.Range(1, 4), GateSoundPos + inward * 10f + Vector3.up * 4f, 0.45f, 1.05f, 0.05f, 1f, 45f);
+        yield return new WaitForSeconds(0.35f);
+        GameAudio.Play("SFX/Gen/bird_trill_" + Random.Range(1, 3), GateSoundPos + inward * 14f + Vector3.right * 6f + Vector3.up * 5f, 0.4f, 1f, 0.05f, 1f, 45f);
+    }
+
+    /// <summary>關門：先吱呀，關到底再「碰」一聲</summary>
+    IEnumerator GateCloseSound()
+    {
+        GameAudio.Play("SFX/RPG/creak3", GateSoundPos, 0.6f, 0.55f, 0.05f, 1f, 45f);
+        yield return null;
+        for (float t = 0f; t < 4f && gate != null && gate.IsMoving; t += Time.deltaTime) yield return null;
+        if (gate != null) GameAudio.Play("SFX/RPG/doorClose_4", GateSoundPos, 0.8f, 0.55f, 0.03f, 1f, 50f);
+    }
+
+    /// <summary>玩家走進庭院、抬頭看四周：場景原本的鳥叫（BirdAmbience）叫得勤一點、大聲一點，再來一聲樹鶯；走完就還原</summary>
+    IEnumerator CourtyardAmbience()
+    {
+        BoostBirds(true);
+        yield return new WaitForSeconds(0.8f);
+        if (!exploring || player == null) yield break;
+        Vector3 p = player.transform.position;
+        GameAudio.Play("SFX/Gen/bird_uguisu_1", p + meetForward * 12f + Vector3.right * 7f + Vector3.up * 5f, 0.5f, 1f, 0.02f, 1f, 45f);
+        yield return new WaitForSeconds(2.2f);
+        if (!exploring || player == null) yield break;
+        p = player.transform.position;
+        GameAudio.Play("SFX/Gen/bird_whistle_" + Random.Range(1, 3), p + meetForward * 8f - Vector3.right * 8f + Vector3.up * 4f, 0.4f, 1.02f, 0.05f, 1f, 45f);
+    }
+
+    void BoostBirds(bool on)
+    {
+        if (on)
+        {
+            if (boostedBirds != null) return;
+            boostedBirds = FindObjectsByType<BirdAmbience>(FindObjectsSortMode.None);
+            birdIntervals = new Vector2[boostedBirds.Length];
+            birdVolumes = new float[boostedBirds.Length];
+            for (int i = 0; i < boostedBirds.Length; i++)
+            {
+                var b = boostedBirds[i];
+                birdIntervals[i] = b.interval; birdVolumes[i] = b.volume;
+                b.interval = new Vector2(0.7f, 2f);
+                b.volume = Mathf.Min(1f, b.volume * 1.25f);
+            }
+            return;
+        }
+        if (boostedBirds == null) return;
+        for (int i = 0; i < boostedBirds.Length; i++)
+            if (boostedBirds[i] != null) { boostedBirds[i].interval = birdIntervals[i]; boostedBirds[i].volume = birdVolumes[i]; }
+        boostedBirds = null;
+    }
+
+    /// <summary>
+    /// 老師父走路的腳步聲（Boss 戰時的腳步由 DojoMasterBoss 自己播）：看動畫裡腳踩到地的那一刻才出聲，跟腳步對得上。
+    /// 低沉、小聲；高空鏡頭也聽得到。看不到他、快轉趕路的時候不出聲（不然腳步會像在跑）。
+    /// </summary>
+    void MasterFootsteps()
+    {
+        if (master == null) return;
+        if (masterFeet == null) masterFeet = FootPlantDetector.Find(master, masterAnim);
+        if (masterFeet == null) return;
+        bool planted = masterFeet.Step(Time.deltaTime, out Vector3 at);
+        bool moving = masterMoved; masterMoved = false;
+        if (!planted || !moving || masterHurrying) return;
+        GameAudio.Play("SFX/RPG/footstep0" + Random.Range(0, 10), at, 0.35f, Random.Range(0.8f, 0.88f), 0f, 0.5f, 60f);
     }
 
     // ---------------- 路線 ----------------
@@ -966,6 +1079,13 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         if (masterWalking) return;
         masterWalking = true;
         PutCupDown();
+        // 起身：袍子摩擦 + 木地板輕輕一聲
+        if (master != null)
+        {
+            GameAudio.Play("SFX/RPG/cloth3", master.position + Vector3.up, 0.6f, 0.85f, 0.05f, 0.6f, 40f);
+            GameAudio.Play("SFX/RPG/creak2", master.position, 0.3f, 0.75f, 0.05f, 0.6f, 40f);
+        }
+        masterFeet?.Reset();
         // 起身的過程由鏡頭切換帶過：下一個鏡頭裡他已經站著在走了
         if (masterColliders != null) foreach (var c in masterColliders) if (c != null) c.enabled = false;
         if (masterAnim != null)
@@ -986,6 +1106,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         }
         float next=Mathf.Min(limit,dist+walkSpeed*walkAnimSpeed*multiplier*Time.deltaTime);
         if(multiplier>1)HiddenWalkMeters+=next-dist;
+        masterHurrying=multiplier>1;masterMoved=next>dist;
         dist=next;if(masterAnim)masterAnim.speed=walkAnimSpeed*multiplier;
         PlaceMaster(false);
     }
@@ -1133,6 +1254,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         var oldStandby = playerCam.StandbyUpdate;
         playerCam.StandbyUpdate = CinemachineVirtualCameraBase.StandbyUpdateMode.Always; // 還沒輪到它時也每幀算位置
         flying = true;
+        GameAudio.Play("SFX/Magic/wind_short", player.transform.position + Vector3.up * 2f, 0.22f, 0.7f, 0.05f, 0f); // 鏡頭從高空飛下來：一陣輕風
         Vector3 fromPos = camPos;
         Quaternion fromRot = camRot;
         float fromFov = vcam.Lens.FieldOfView, toFov = playerCam.Lens.FieldOfView;

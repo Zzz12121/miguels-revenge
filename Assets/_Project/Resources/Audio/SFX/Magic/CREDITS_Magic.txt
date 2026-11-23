@@ -1,0 +1,14 @@
+SFX/Magic 的音效來源：Unity Asset Store「100 Retro Magic Sound Effects」（組員提供的素材包，依 Asset Store EULA 用在本專案）。
+已剪短、淡入淡出、轉單聲道、峰值正規化到 -3 dBFS。對照：
+charge_hold        ← 41_Charge_01（0～0.95 秒）    技能 1 按住蓄力
+charge_full        ← 13_Atk_buff_01（0.05～0.65 秒） 技能 1 蓄滿、重攻擊蓄滿
+dash_burst         ← 25_Wind_01（0～0.5 秒）       技能 1 爆衝、空中側閃、分身突進
+wind_short         ← 26_Wind_02（0～0.45 秒）      老頭瞬步、閃避天賦、分身消散
+sword_spin_swell   ← 44_Charge_04（0～3.3 秒）     技能 1 慢動作蓄能
+power_up           ← 44_Charge_04（0～1.8 秒）     老頭進二階段
+void_burst         ← 35_Dark_01（0～2.2 秒）       技能 1 最後爆炸
+void_explosion     ← 05_Fire_explosion_05_large（0～2 秒） 技能 1 最後爆炸
+earth_slam         ← 29_Earth_01（0～1.6 秒）      老頭雙掌拍地
+clone_appear       ← 36_Dark_02（0～0.9 秒）       分身出現
+shield_absorb      ← 34_Shell_02（0～0.75 秒）     護盾天賦
+dark_aura          ← 35_Dark_01（0～1.2 秒）       惡魔化天賦、老頭二階段

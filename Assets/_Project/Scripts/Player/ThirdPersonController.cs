@@ -190,12 +190,27 @@ public class ThirdPersonController : MonoBehaviour
         "SFX/RPG/footstep05", "SFX/RPG/footstep06", "SFX/RPG/footstep07", "SFX/RPG/footstep08", "SFX/RPG/footstep09",
     };
 
+    // 玩家走路 / 跑步各用一半的 Kenney 腳步：走路用比較悶、柔的那幾個，跑步用比較清脆、有力的那幾個
+    static readonly string[] WalkSteps = { "SFX/RPG/footstep02", "SFX/RPG/footstep04", "SFX/RPG/footstep05", "SFX/RPG/footstep06", "SFX/RPG/footstep09" };
+    static readonly string[] RunSteps  = { "SFX/RPG/footstep00", "SFX/RPG/footstep01", "SFX/RPG/footstep03", "SFX/RPG/footstep07", "SFX/RPG/footstep08" };
+
     void Footstep(float volume)
     {
-        // 小怪的腳步聲小一點、低一點，不然一群小怪會很吵
-        float v = volume * (aiControlled ? aiFootstepScale : 1f);
-        float pitch = (aiControlled ? 0.85f : 1f) * Random.Range(0.9f, 1.1f);
-        GameAudio.PlayAt(GameAudio.Pick(footstepSounds, DefaultSteps), transform.position, v, pitch, 1f, 25f);
+        // 小怪的腳步聲小一點、低一點，不然一群小怪會很吵（演出中玩家被 AI 帶著走也算玩家，不要變成小怪的聲音）
+        bool npc = aiControlled && GetComponent<PlayerHealth>() == null;
+        float v = volume * (npc ? aiFootstepScale : 1f);
+        float pitch = (npc ? 0.85f : 1f) * Random.Range(0.94f, 1.06f);
+        string[] pool = DefaultSteps;
+        if (!npc)
+        {
+            // 玩家：走路＝低一點、輕一點、比較悶；跑步＝高一點、重一點、比較脆。聲音同一類，只是聽得出快慢
+            float run = Mathf.InverseLerp(walkSpeed * .6f, sprintSpeed, horizontalVelocity.magnitude);
+            bool running = run > .5f; // 走路 4.5 m/s 約 0.34、衝刺 8 m/s 是 1
+            v *= running ? 1.2f : .8f;
+            pitch *= running ? 1.1f : .92f;
+            pool = running ? RunSteps : WalkSteps;
+        }
+        GameAudio.PlayAt(GameAudio.Pick(footstepSounds, pool), transform.position, v, pitch, 1f, 25f);
     }
 
     void UpdateFootsteps(float dt)
@@ -203,7 +218,11 @@ public class ThirdPersonController : MonoBehaviour
         bool grounded = controller.isGrounded;
         if (grounded)
         {
-            if (!wasGrounded && fallSpeed < -6f) Footstep(footstepVolume * 1.4f); // 落地
+            if (!wasGrounded && fallSpeed < -6f) // 落地
+            {
+                // 玩家落地的「咚」由 PlayerSfx 播（這裡再播一次會疊成兩倍大聲），這裡只留腳踩地的聲音
+                Footstep(footstepVolume * (aiControlled ? 1.4f : 0.8f));
+            }
             stepTravel += horizontalVelocity.magnitude * dt;
             if (stepTravel >= stepDistance)
             {
@@ -530,8 +549,7 @@ public class ThirdPersonController : MonoBehaviour
             lastJumpPressedTime = float.NegativeInfinity;
             airJumpUsed = true;
             CombatVFX.Puff(transform.position + Vector3.down * 0.6f, Vector3.down, new Color(0.9f, 0.85f, 0.7f, 0.6f));
-            GameAudio.Play("SFX/RPG/cloth3", transform.position, 0.7f, 1.3f, 0.08f, 0.3f);
-            OnDoubleJump?.Invoke();
+            OnDoubleJump?.Invoke(); // 起跳 / 二段跳的風聲由 PlayerSfx 播
         }
         if (controller.isGrounded && verticalVelocity <= 0f) { airJumpUsed = false; airDashUsed = false; }
 
@@ -681,7 +699,7 @@ public class ThirdPersonController : MonoBehaviour
         verticalVelocity = 0f;
         GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(airDashDuration + .05f);
         CombatVFX.Puff(transform.position, -AirDashDirection, new Color(.85f, .9f, 1f, .55f));
-        GameAudio.Play("SFX/RPG/cloth3", transform.position, .8f, 1.5f, .05f, .3f);
+        GameAudio.Play("SFX/Magic/dash_burst", transform.position, .7f, 1.1f, .05f, .3f);
         OnAirDashStarted?.Invoke();
         return true;
     }
@@ -727,6 +745,11 @@ public class ThirdPersonController : MonoBehaviour
             {
                 if(Stamina!=null && !Stamina.TrySpendRoll()){EndRoll();return;}
                 rollCommitted=true;rollPending=false;IsRolling=true;nextRollTime=rollStartedAt+rollDuration+rollCooldown;
+                if(!aiControlled)
+                {
+                    GameAudio.Play("SFX/RPG/cloth"+Random.Range(1,5),transform.position,.6f,Random.Range(.9f,1.05f),0f,.3f);
+                    GameAudio.Play("SFX/Gen/jump_whoosh_"+Random.Range(1,3),transform.position,.35f,.75f,.05f,.3f);
+                }
                 GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(Mathf.Max(0,rollDuration*(1-u))+.08f);
                 OnRollStarted?.Invoke();
             }

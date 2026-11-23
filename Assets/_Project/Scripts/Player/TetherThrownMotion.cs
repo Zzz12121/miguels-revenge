@@ -65,6 +65,7 @@ public sealed class TetherThrownMotion : MonoBehaviour
                 if (bounce)
                 {
                     bounce=false;
+                    CalligraphyAudio.TetherLand(transform.position);
                     velocity=Vector3.ProjectOnPlane(velocity,Vector3.up)*.12f+Vector3.up*Mathf.Clamp(Mathf.Abs(velocity.y)*.12f,1.6f,3.2f);
                     ThirdPersonCamera.ShakeMain(.15f,.12f);
                 }

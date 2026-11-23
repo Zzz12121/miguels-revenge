@@ -103,6 +103,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
         clones.Add(decoy);evadeFrom=transform.position;evadeTo=evadeFrom-transform.forward*dodgeDistance;
         if(Physics.SphereCast(evadeFrom+Vector3.up,.4f,-transform.forward,out var obstruction,dodgeDistance,~0,QueryTriggerInteraction.Ignore) && !obstruction.transform.IsChildOf(transform))
             evadeTo=evadeFrom-transform.forward*Mathf.Max(0,obstruction.distance-.1f);
+        CalligraphyAudio.Evade(evadeFrom);
         evadeClock=0;return true;
     }
     void Update()

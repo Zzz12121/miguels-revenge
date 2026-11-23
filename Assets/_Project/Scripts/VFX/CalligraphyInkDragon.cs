@@ -102,6 +102,7 @@ public sealed class CalligraphyInkDragon : MonoBehaviour
     public void Dive()
     {
         if(diving)return;
+        CalligraphyAudio.DragonDive(transform.position,giant);
         // Lock once at the downward brush strike, not at the start of the wind-up.
         if(giant && player)
         {

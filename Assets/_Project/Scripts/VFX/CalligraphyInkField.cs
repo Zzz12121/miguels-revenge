@@ -79,6 +79,7 @@ public sealed class CalligraphyInkField : MonoBehaviour
     }
     public void Burst(Vector3 at,float strength=1,int count=14)
     {
+        CalligraphyAudio.OnBurst(at,strength); // 墨水炸開的潑濺聲（只加聲音）
         // Thin filaments carry the ink; avoid stacking opaque smoke clouds at every hit.
         for(int i=0;i<Mathf.Min(count,28);i++)
             Emit(at,Random.onUnitSphere*Random.Range(.6f,2.8f)*strength,Random.Range(.5f,1.3f)*strength,Random.Range(1.4f,3.2f),Random.value<whiteRatio);
