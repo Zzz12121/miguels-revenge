@@ -10,6 +10,10 @@ using UnityEngine.Rendering;
 /// 2. 擋在中間的大東西（地形、整面牆、建築）：鏡頭最多只拉近到 fullViewMinDistance（拍得到整個角色的距離），
 ///    還不夠就把鏡頭往上抬（最多 maxAutoRaise 度），從上方越過障礙物；擋住的東西走開後慢慢降回原本的角度
 /// 3. 角色（敵人、NPC）擋在中間不隱藏、也不拉近
+/// 4. 建築物的零件（屋頂、屋簷、牆、柱子、走廊屋頂…）不隱藏、當成大東西處理：
+///    建築是很多個小於 hideOccluderMaxSize 的零件拼起來的，藏掉一塊就會看到天空 / 屋子內部（破圖）。
+///    判斷方式：物件或它的上層名字有建築關鍵字（buildingKeywords）、上層掛了 CameraNeverHide、
+///    或整個物件在角色頭頂上方（屋頂、屋簷、橫樑這種從下面看擋住天空的東西）
 /// 瞄準中不自動抬鏡頭（不然準心會跑掉），只隱藏擋住的東西。
 /// </summary>
 public partial class ThirdPersonCamera
@@ -23,6 +27,15 @@ public partial class ThirdPersonCamera
     [Range(0f, 80f)] public float maxAutoRaise = 50f;
     [Tooltip("比這個尺寸小的東西（樹、石頭、擺設）擋在鏡頭和角色中間時直接隱藏 (m)")]
     public float hideOccluderMaxSize = 9f;
+    [Tooltip("物件或它上層物件的名字含有這些字（不分大小寫）就當成建築，不會被隱藏")]
+    public string[] buildingKeywords =
+    {
+        "roof", "eave", "ceiling", "wall", "house", "building", "architecture", "maindojo", "veranda", "walkway",
+        "pillar", "column", "beam", "rafter", "gate", "torii", "shrine", "temple", "hall", "shoji", "stair",
+        "bridge", "structure", "jv_house", "annex", "corridor", "屋", "牆", "柱",
+    };
+    [Tooltip("整個物件的底部比角色頭頂高（屋頂、屋簷、橫樑）就不隱藏")]
+    public bool neverHideOverhead = true;
     [Tooltip("鏡頭往上抬 / 降回去的平滑時間 (秒)")]
     public float autoRaiseSmooth = 0.1f, autoLowerSmooth = 0.45f;
 
@@ -33,6 +46,32 @@ public partial class ThirdPersonCamera
     readonly List<Renderer> restoreBuffer = new List<Renderer>();
 
     enum Occluder { Ignore, Hide, Solid }
+    readonly Dictionary<Collider, bool> buildingCache = new Dictionary<Collider, bool>();
+
+    /// <summary>這個碰撞體是不是建築的一部分（結果存起來，每個碰撞體只判斷一次）</summary>
+    bool IsBuildingPart(Collider c)
+    {
+        if (buildingCache.TryGetValue(c, out bool cached)) return cached;
+        bool building = false;
+        for (Transform t = c.transform; t != null && !building; t = t.parent)
+        {
+            if (t.GetComponent<CameraNeverHide>() != null) { building = true; break; }
+            string n = t.name.ToLowerInvariant();
+            if (buildingKeywords != null)
+                foreach (var k in buildingKeywords)
+                    if (!string.IsNullOrEmpty(k) && n.Contains(k.ToLowerInvariant())) { building = true; break; }
+        }
+        buildingCache[c] = building;
+        return building;
+    }
+
+    /// <summary>整個物件都在角色頭頂上方（屋頂、屋簷、橫樑）：藏掉的話從下面看會直接看到天空</summary>
+    bool IsOverhead(Collider c)
+    {
+        if (!neverHideOverhead || target == null) return false;
+        float head = target.position.y + FeetOffset() + 1.6f;
+        return c.bounds.min.y > head;
+    }
 
     Occluder Classify(Collider c)
     {
@@ -44,7 +83,10 @@ public partial class ThirdPersonCamera
         if (rb != null && !rb.isKinematic) return Occluder.Ignore;   // 會動的東西（被打飛的木桶、布娃娃）
         if (c.GetComponentInParent<IDamageable>() != null || c.GetComponentInParent<Animator>() != null) return Occluder.Ignore;   // 角色
         var size = c.bounds.size;
-        return Mathf.Max(size.x, size.y, size.z) <= hideOccluderMaxSize ? Occluder.Hide : Occluder.Solid;
+        if (Mathf.Max(size.x, size.y, size.z) > hideOccluderMaxSize) return Occluder.Solid;
+        // 建築零件、頭頂上的東西：不隱藏（藏掉會破圖），當成大東西讓鏡頭拉近 / 抬高
+        if (IsBuildingPart(c) || IsOverhead(c)) return Occluder.Solid;
+        return Occluder.Hide;
     }
 
     /// <summary>從注視點往後（pitch, yaw 的反方向）最遠能放鏡頭的距離：只算「大東西」</summary>

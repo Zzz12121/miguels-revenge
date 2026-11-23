@@ -212,7 +212,7 @@ public sealed partial class VoidRendSkillDemo
         target = selection.marker.transform;
         PrepareSkillOrigin();
         SuspendPracticeControlsForSkill();
-        StartCoroutine(PlaySequence());
+        StartCoroutine(GuardedSequence(PlaySequence()));
     }
 
     /// <summary>每幀：鏡頭完全拉回來之後才把瞄準設定還原（弓箭模式用的是原本的設定）</summary>
