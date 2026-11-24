@@ -33,6 +33,16 @@ public sealed class DojoEscapeInkCloud : MonoBehaviour
         previousPosition=transform.position;
         detachedTail=new GameObject("Detached original Ying Yang tail").transform;detachedTail.SetParent(transform.parent,true);
     }
+    public void RelocateWhileHidden(Vector3 position,Quaternion rotation)
+    {
+        // Keep the local orbit alive and leave the old detached trail to fade on its own.
+        foreach(var ps in GetComponentsInChildren<ParticleSystem>())
+            if(ps.main.simulationSpace==ParticleSystemSimulationSpace.World)
+                ps.Stop(false,ParticleSystemStopBehavior.StopEmittingAndClear);
+        transform.SetPositionAndRotation(position,rotation);
+        previousPosition=position;
+        tailAt=Time.time+.06f;
+    }
     void AddOrbit(GameObject prefab,bool inverse,float scale)
     {
         var effect=Spawn(prefab,inverse,scale,true);if(!effect)return;

@@ -220,7 +220,7 @@ public sealed partial class VoidRendSkillDemo
 
             switch (selectedSkill)
             {
-                case PreviewSkill.VoidRend: StartCoroutine(PlaySequence()); break;
+                case PreviewSkill.VoidRend: StartCoroutine(GuardedSequence(PlaySequence())); break;
                 case PreviewSkill.CatPounce: StartCoroutine(PlayCatPounce()); break;
                 case PreviewSkill.CrescentDash: StartCoroutine(PlayCrescentDash()); break;
                 case PreviewSkill.SkyfallCross: StartCoroutine(PlaySkyfallCross()); break;

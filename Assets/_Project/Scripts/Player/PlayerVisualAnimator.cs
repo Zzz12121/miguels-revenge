@@ -36,6 +36,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     static readonly string[] HitStates = { "Hit", "hit_to_body_02", "hit_to_head", "hit_to_side", "hit_to_stomach" };
 
     float previousHealth;
+    // 受擊：受擊動畫播完之前不能移動（不然會拖著受擊動畫在地上滑）
+    [Header("受擊")]
+    [Tooltip("被打中之後最多鎖住移動幾秒（受擊動畫比這個長的話，到這裡就可以動了）")]
+    [Range(0f, 2f)] public float hitMoveLockMax = .9f;
+    [Tooltip("受擊動畫播到幾成就可以動（1 = 整段播完）")]
+    [Range(.3f, 1f)] public float hitMoveLockFraction = 1f;
+    int hitLockPendingFrames;
+    float hitLockUntil;
     float nextIdleChange;
     int idleIndex;
     int hitIndex;
@@ -361,6 +369,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         bool overriding = shieldBow != null && shieldBow.Overriding;
         bool onBoat = controller != null && !controller.isActiveAndEnabled;
         bool rollingNow = controller != null && controller.IsRolling;
+        UpdateHitMoveLock();
         if (!overriding && !onBoat && !rollingNow && slashClipIndex < 0) ForceLocomotionWhenMoving(normalizedSpeed, grounded);
         UpdateSprintJumpFeedback(grounded);
         if (!overriding) UpdateIdleCycle(normalizedSpeed, grounded);
@@ -377,7 +386,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     void ForceLocomotionWhenMoving(float speed, bool grounded)
     {
         AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
-        bool extendedIdle = current.IsName("Idle") || current.IsName("wait") || current.IsName("look_around");
+        // 受擊動畫：鎖住移動的時間過了之後，一移動就直接切去走 / 跑（跟待機一樣處理），不會拖著受擊動畫滑
+        bool hitDone = Time.time >= hitLockUntil && hitLockPendingFrames <= 0 && IsHitState(current);
+        bool extendedIdle = current.IsName("Idle") || current.IsName("wait") || current.IsName("look_around") || hitDone;
         bool alreadyLeavingIdle = false;
         if (animator.IsInTransition(0))
         {
@@ -1494,6 +1505,29 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         string state = HitStates[hitIndex++ % HitStates.Length];
         animator.CrossFadeInFixedTime(state, 0.07f, 0, 0f);
         ScheduleNextIdle(1.5f);
+        // 一般受擊才鎖移動（持續傷害、被打飛、毒氣、架擋有自己的處理）；下一幀 Animator 開始轉換時再讀受擊動畫的長度
+        if (health != null && controller != null && Time.time - health.StandardHitTime < .05f) hitLockPendingFrames = 4;
+    }
+
+    bool IsHitState(AnimatorStateInfo info)
+    {
+        foreach (var s in HitStates) if (info.IsName(s)) return true;
+        return false;
+    }
+
+    /// <summary>受擊動畫開始之後：照它實際的長度把移動鎖住（最多 hitMoveLockMax 秒）</summary>
+    void UpdateHitMoveLock()
+    {
+        if (hitLockPendingFrames <= 0 || controller == null) return;
+        AnimatorStateInfo info = animator.IsInTransition(0) ? animator.GetNextAnimatorStateInfo(0) : animator.GetCurrentAnimatorStateInfo(0);
+        float lockSeconds = -1f;
+        if (IsHitState(info)) lockSeconds = info.length * hitMoveLockFraction;
+        else if (--hitLockPendingFrames <= 0) lockSeconds = .5f; // 找不到受擊動畫（例如被其他動作蓋掉）：鎖一下就好
+        if (lockSeconds < 0f) return;
+        hitLockPendingFrames = 0;
+        lockSeconds = Mathf.Min(lockSeconds, hitMoveLockMax);
+        hitLockUntil = Time.time + lockSeconds;
+        controller.Stun(lockSeconds);
     }
 
     static readonly int DeathStateHash = Animator.StringToHash("Death");
