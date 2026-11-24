@@ -6,7 +6,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 整個遊戲的關卡流程（跨場景存在，不會因為換場景被刪掉）：
-///   - 主選單（MainMenu）按「開始遊戲」→ StartNewGame()，從第一關開始
+///   - 主選單（MainMenu）按「開始遊戲」→ StartStoryGame()，從漁村開始（StartNewGame() 從第一關沙漠開始，Game Over / 通關的重新開始用）
 ///   - 記住關卡順序：星球 →（傳送門）→ 維京村莊 →（搭船）→ 地下城（Boss，最後一關）
 ///   - 另一條主線（storyLevels）：漁村 ↔ 道場。跟上面一樣可以暫停（存檔 / 讀檔 / 設定 / 重新開始本關）、
 ///     換場景時帶著玩家的狀態（血量、背包、錢、造型）、進場景時自動存檔；但不算進「下一關」的順序、沒有關卡標題和轉場動畫
@@ -420,6 +420,17 @@ public class GameManager : MonoBehaviour
     public string StoryStartScene => storyLevels != null && storyLevels.Length > 0 ? storyLevels[0].sceneName : null;
     /// <summary>最近一次進漁村時玩家的狀態（漁村主線的「從漁村重新開始」用）</summary>
     PlayerState storyStartState;
+
+    /// <summary>主選單的「開始遊戲」：命和時間重設，從漁村開始（用場景裡玩家原本的數值）</summary>
+    public void StartStoryGame()
+    {
+        if (IsLoading || string.IsNullOrEmpty(StoryStartScene)) return;
+        Lives = maxLives;
+        PlayTime = 0f;
+        levelEntryState = null;
+        storyStartState = null;
+        LoadScene(StoryStartScene, false);
+    }
 
     /// <summary>漁村主線的「重新開始」：不管在漁村還是道場，都回到漁村，帶著最近一次進漁村時的狀態</summary>
     public void RestartStory()

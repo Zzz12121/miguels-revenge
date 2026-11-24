@@ -4460,7 +4460,7 @@ public static class JapaneseVillageBuilder
     }
 
     /// <summary>
-    /// 雙尾虎：趴在竹林空地裡，玩家走近就怒吼衝過來決鬥（飛撲、揮爪），打中 8 下就逃往竹林深處，原地留下三株草藥。
+    /// 雙尾虎：趴在竹林空地裡，玩家走近就怒吼衝過來決鬥（飛撲、揮爪），打中 8 下就逃往竹林深處，原地留下虎皮、虎牙（TigerLoot，執行時生成；下面的三株草藥現在一直藏著）。
     /// 模型是 Tripo 的四足骨架（沒有動畫），動作都在 TigerBeast 用程式擺骨頭。
     /// </summary>
     static void BuildTiger()

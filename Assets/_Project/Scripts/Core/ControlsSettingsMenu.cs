@@ -103,10 +103,12 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
         {
             var a = actions[i];
             int col = i / perColumn, row = i % perColumn;
-            float x = col == 0 ? -430f : 430f, y = 135f - row * 58f;
+            // 一欄超過 8 個動作：每列靠近一點，最下面一列才不會壓到下面的說明
+            float step = perColumn > 8 ? 400f / (perColumn - 1) : 58f, rowH = Mathf.Min(50f, step - 4f);
+            float x = col == 0 ? -430f : 430f, y = 135f - row * step;
             UIKit.Label("Label_" + a, root, InputBindings.Label(a), 26, new Color(0.9f, 0.92f, 1f), new Vector2(x - 150f, y),
-                        new Vector2(320f, 50f), TextAnchor.MiddleRight);
-            var b = UIKit.Button("Bind_" + a, root, "", new Vector2(x + 140f, y), new Vector2(240f, 50f), () => BeginListen(a), 26);
+                        new Vector2(320f, rowH), TextAnchor.MiddleRight);
+            var b = UIKit.Button("Bind_" + a, root, "", new Vector2(x + 140f, y), new Vector2(240f, rowH), () => BeginListen(a), 26);
             bindingButtons[a] = b;
             bindingTexts[a] = b.GetComponentInChildren<Text>();
         }

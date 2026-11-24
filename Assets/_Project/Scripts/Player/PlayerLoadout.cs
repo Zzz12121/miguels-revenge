@@ -19,6 +19,7 @@ public enum WeaponLoadout
 /// 玩家目前帶的武器（鐵匠鋪換）。自動掛在每個場景的玩家身上，選的武器和剩下的箭跨場景保留（只存在記憶體，不寫存檔）。
 /// 不改戰鬥的程式，只調 PlayerCombat 現成的欄位：
 ///   - 判定的距離 / 範圍（hitForwardOffset、hitRadius）、每段的出手時間（stepWindup / stepSwing / stepRecovery）、傷害倍率（weaponDamageScale）
+///   - 鐵匠鋪用虎皮、虎牙升級過（WeaponForge）：近戰和箭的傷害再乘上 WeaponForge.DamageScale，武器發橘光（WeaponForgeGlow）
 ///   - 弓：打開 PlayerCombat.bowMode（和維京村莊海戰同一套：右鍵瞄準、左鍵射箭），每射一支扣一支，射完自動換回近戰（小刀）
 ///     射出去的箭插在地上 / 牆上、或射中敵人掉在地上，走過去就撿回來（ArrowRecover / ArrowPickup），撿到箭會換回弓
 ///     右鍵按住瞄準：先從腰間的箭筒抽一支箭搭上弦，接著蓄力——畫面中央的大圓往內收，收到跟小圓重合時放箭最準、威力最大，
@@ -78,6 +79,16 @@ public class PlayerLoadout : MonoBehaviour
             if (c.GetComponent<PlayerHealth>() != null && c.GetComponent<PlayerLoadout>() == null)
                 c.gameObject.AddComponent<PlayerLoadout>();
     }
+
+    /// <summary>武器的數值重新套一次（鐵匠鋪升級之後）</summary>
+    public static void Refresh()
+    {
+        if (Instance != null) Instance.Apply();
+        Changed?.Invoke();
+    }
+
+    /// <summary>手上 / 背上的弓模型（日式村莊的 JV_Bow；沒有就是 null）</summary>
+    public GameObject BowModel => tripoBow;
 
     /// <summary>換武器。換成弓的時候箭補滿</summary>
     public static void Equip(WeaponLoadout loadout)
@@ -226,6 +237,7 @@ public class PlayerLoadout : MonoBehaviour
     {
         Instance = this;
         combat = GetComponent<PlayerCombat>();
+        if (GetComponent<WeaponForgeGlow>() == null) gameObject.AddComponent<WeaponForgeGlow>(); // 升級過的武器發橘光
         presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         archerBow = GetComponent<PlayerArcherBow>();
         combat.OnSwing += i => { swingAt = Time.time; swingIndex = i; };
@@ -350,8 +362,9 @@ public class PlayerLoadout : MonoBehaviour
         var s = StatsFor(melee);
         combat.hitForwardOffset = baseOffset * s.offset;
         combat.hitRadius = baseRadius * s.radius;
-        combat.weaponDamageScale = s.damage;
-        combat.arrowDamage = Current == WeaponLoadout.BowKnife ? ArrowDamage : 0f;
+        // 鐵匠鋪升級過（虎皮、虎牙）：每種武器都多一點傷害
+        combat.weaponDamageScale = s.damage * WeaponForge.DamageScale;
+        combat.arrowDamage = Current == WeaponLoadout.BowKnife ? ArrowDamage * WeaponForge.DamageScale : 0f;
         combat.hideBowHint = !boatLevel; // 「只有射中船上的弓箭手才有效」是船戰的說明，這裡的弓不用
         ApplyTiming();
 
@@ -1193,7 +1206,7 @@ public class PlayerLoadout : MonoBehaviour
         float q = ChargeQuality;
         combat.hipFireSpread = HipSpread;
         combat.aimedSpread = Mathf.Lerp(WorstAimSpread, 0f, q);
-        combat.arrowDamage = aiming ? ArrowDamage * Mathf.Lerp(0.5f, 1.6f, q) : ArrowDamage * 0.6f;
+        combat.arrowDamage = (aiming ? ArrowDamage * Mathf.Lerp(0.5f, 1.6f, q) : ArrowDamage * 0.6f) * WeaponForge.DamageScale; // 鐵匠鋪升級過再多一點
         combat.arrowSpeed = baseArrowSpeed * (aiming ? Mathf.Lerp(0.75f, 1.2f, q) : 0.85f);
 
         PoseFetch(aiming);
@@ -1210,6 +1223,7 @@ public class PlayerLoadout : MonoBehaviour
     void OnArrowSpawned(GameObject arrow)
     {
         AlignShotWithDraw(arrow);
+        AssistArrow(arrow);
         // 換成真的箭：藏起原本的圓柱和方塊，掛上 JV_Arrow（模型沿 +Y，箭飛的方向是 +Z）
         var prefab = Resources.Load<GameObject>("Weapons/JV_Arrow");
         if (prefab != null && Current == WeaponLoadout.BowKnife && managingBow)
@@ -1271,6 +1285,77 @@ public class PlayerLoadout : MonoBehaviour
         foreach (var tr in arrow.GetComponentsInChildren<TrailRenderer>()) tr.Clear();
         LastShotStart = start;
         LastShotDir = nd;
+    }
+
+    // ---------------- 弓箭的輔助瞄準 ----------------
+
+    /// <summary>箭的方向離敵人只差一點點（角度 AssistAngle 以內、或從敵人身邊 AssistMiss 公尺內擦過）就修正成正中敵人</summary>
+    const float AssistAngle = 4f, AssistMiss = 0.75f, AssistRange = 60f;
+    readonly Collider[] assistOverlap = new Collider[256];
+
+    /// <summary>
+    /// 輔助瞄準：箭射出去的那一下（已經算過準心、拉弓的偏移），如果這條線本來就會射中敵人（IDamageable）就不動；
+    /// 沒射中但離某個敵人只差一點點，而且中間沒有東西擋著，就把箭改成朝那個敵人的身體中間飛（照距離補一點重力下墜）。
+    /// 偏太多（沒瞄準亂射、蓄力太早或太晚放）一樣會射歪。不在船戰用。
+    /// </summary>
+    void AssistArrow(GameObject arrow)
+    {
+        if (boatLevel) return;
+        var pa = arrow.GetComponent<PlayerArrow>();
+        if (pa == null || pa.velocity.sqrMagnitude < 0.01f) return;
+        Vector3 o = arrow.transform.position, d = pa.velocity.normalized;
+        float speed = pa.velocity.magnitude;
+        // 本來就會射中敵人：不動
+        var first = FirstHit(o, d, AssistRange);
+        if (first.HasValue && first.Value.collider.GetComponentInParent<IDamageable>() is IDamageable already && !already.IsDead) return;
+
+        float bestScore = float.MaxValue;
+        Vector3 bestPoint = default;
+        int n = Physics.OverlapSphereNonAlloc(o + d * (AssistRange * 0.5f), AssistRange * 0.5f, assistOverlap, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+        {
+            var c = assistOverlap[i];
+            if (c == null || c.transform.IsChildOf(transform) || ArrowPassThrough.On(c)) continue;
+            var dmg = c.GetComponentInParent<IDamageable>();
+            if (dmg == null || dmg.IsDead) continue;
+            Vector3 p = c.bounds.center;
+            Vector3 to = p - o;
+            float along = Vector3.Dot(to, d);
+            if (along < 1f || along > AssistRange) continue;
+            float angle = Vector3.Angle(d, to);
+            float miss = Vector3.Cross(d, to).magnitude; // 箭的直線離目標中心多遠
+            // 目標本身的大小也算進去：大的敵人（老虎）離身體邊緣近就算
+            float size = Mathf.Min(c.bounds.extents.x, c.bounds.extents.z);
+            if (angle > AssistAngle && miss > AssistMiss + size) continue;
+            // 中間沒有別的東西擋著
+            var block = FirstHit(o, to.normalized, to.magnitude);
+            var dmgRoot = (dmg as Component) != null ? ((Component)dmg).transform : c.transform;
+            if (block.HasValue && !block.Value.collider.transform.IsChildOf(dmgRoot) && block.Value.collider != c) continue;
+            float score = angle + miss * 2f;
+            if (score < bestScore) { bestScore = score; bestPoint = p; }
+        }
+        if (bestScore == float.MaxValue) return;
+        Vector3 aim = bestPoint - o;
+        float t = aim.magnitude / Mathf.Max(1f, speed);
+        aim += Vector3.up * (0.5f * pa.gravity * t * t); // 箭會往下掉：往上補一點
+        Vector3 nd = aim.normalized;
+        arrow.transform.rotation = Quaternion.LookRotation(nd);
+        pa.velocity = nd * speed;
+        foreach (var tr in arrow.GetComponentsInChildren<TrailRenderer>()) tr.Clear();
+        LastShotDir = nd;
+    }
+
+    RaycastHit? FirstHit(Vector3 o, Vector3 d, float range)
+    {
+        int n = Physics.RaycastNonAlloc(o, d, aimHits, range, ~0, QueryTriggerInteraction.Ignore);
+        RaycastHit? best = null;
+        for (int i = 0; i < n; i++)
+        {
+            var h = aimHits[i];
+            if (h.collider.transform.IsChildOf(transform) || ArrowPassThrough.On(h.collider)) continue;
+            if (!best.HasValue || h.distance < best.Value.distance) best = h;
+        }
+        return best;
     }
 
     void EnsureQuiver()

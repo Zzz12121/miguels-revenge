@@ -4,6 +4,7 @@ using UnityEngine;
 /// 村長家後院通往道場的大門。僧侶答應開門之前門鎖著（Unlock 之後才推得開）。
 /// 解鎖後走到門前按 E（或直接往門走過去）把兩扇門往外推開；門開了就沒有東西擋著，
 /// 直接穿過門洞走出去（超過門外 passDistance）就轉移到道場，換場景時畫面輪播四幅古畫（PaintingSlideshow）。
+/// 推開之後（autoEnter）門一盪開就直接轉移，不用再走過門洞；到了道場直接站在道場大門前、自動推門接上開場演出（DojoGateArrival）。
 /// （surface / glowLight 留空就不顯示傳送門的光。）
 /// </summary>
 public class DojoGate : MonoBehaviour
@@ -37,6 +38,10 @@ public class DojoGate : MonoBehaviour
     public float passDistance = 1.2f;
     [Tooltip("門洞的半寬 (m)：在這個寬度內穿過去才算")]
     public float gateHalfWidth = 2f;
+    [Tooltip("門推開之後直接轉移（不用走過門洞）")]
+    public bool autoEnter = true;
+    [Tooltip("門開到底之後等幾秒才轉移")]
+    public float autoEnterDelay = 0.35f;
 
     public bool IsUnlocked { get; private set; }
     public bool IsOpen { get; private set; }
@@ -44,7 +49,7 @@ public class DojoGate : MonoBehaviour
     PlayerHealth player;
     CharacterController body;
     ThirdPersonController controller;
-    float openT = -1f, pushTime;
+    float openT = -1f, pushTime, openedAt;
     bool entering;
 
     void Start()
@@ -93,6 +98,7 @@ public class DojoGate : MonoBehaviour
             if (openT >= 1f)
             {
                 IsOpen = true;
+                openedAt = Time.time;
                 if (blocker != null) blocker.enabled = false; // 門洞可以走過去了
             }
         }
@@ -119,6 +125,8 @@ public class DojoGate : MonoBehaviour
             return;
         }
         if (!IsOpen) return;
+        // 推開了：門盪開之後直接轉移（不用再走過門洞），到了道場接著推道場的大門
+        if (autoEnter && Time.time - openedAt >= autoEnterDelay) { Enter(); return; }
         // 穿過門洞走到門外：直接轉移
         Vector3 rel = player.transform.position - transform.position;
         Vector3 across = Vector3.Cross(Vector3.up, pushDirection.normalized);
@@ -138,9 +146,11 @@ public class DojoGate : MonoBehaviour
         entering = true;
         GameAudio.Play("SFX/RPG/doorOpen_1", transform.position, 1f, 1.4f, 0f, 1f, 50f);
         if (controller != null) controller.inputEnabled = false;
+        DojoGateArrival.Pending = sceneName == DojoGateArrival.DojoScene; // 到了道場直接站到大門前、推門接開場演出
         PaintingSlideshow.Play(slides, () => gm.LoadLevel(sceneName), () =>
         {
             // 載入失敗（場景不在 Build Settings 之類）：恢復操作，可以再試一次
+            DojoGateArrival.Pending = false;
             entering = false;
             if (controller != null) controller.inputEnabled = true;
         });

@@ -8,6 +8,8 @@ using UnityEngine.InputSystem;
 /// 外觀（look）：Rope = 麻繩 + 三爪鉤爪（TetherRopeVisual），先從右手丟出鉤爪、勾住了才開始拉；Energy = 原本的紅藍能量光束。
 /// 精力：每拉一次（拉自己、拉目標、甩出去）照距離扣精力，貼著目標 minStaminaCost、最遠射程 maxStaminaCost；
 /// 精力不夠就拉不動（精力條閃一下）。拉的時候武器收起來（PlayerLoadout.Holster，立刻收），拉完再拔出來。
+/// 輔助瞄準：游標只差一點點（assistRadius 像素以內）沒對準時自動吸過去——旁邊有拉得動的東西 / 敵人就吸到它身上，
+/// 游標指著空氣就吸到最近的表面（準星直接畫在吸過去的位置）。
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class EnergyTetherSkill : MonoBehaviour
@@ -53,6 +55,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
     [Min(.01f)] public float beamWidth = .085f;
     [Min(0f)] public float beamJitter = .18f;
     [Min(.05f)] public float reticleRadius = .28f;
+    [Header("輔助瞄準")]
+    [Tooltip("游標離物體多近（像素，以 1080p 為準）就自動吸過去；0 = 不輔助")]
+    [Min(0f)] public float assistRadius = 48f;
 
     struct AimPoint
     {
@@ -299,7 +304,45 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         EndAiming(release);
     }
 
+    /// <summary>
+    /// 輔助瞄準：游標正下方是拉得動的東西 / 敵人就直接用；不是的話，在游標周圍一圈圈（由近到遠）找：
+    ///   1. 有拉得動的東西 / 敵人 → 吸到最近的那一個
+    ///   2. 游標正下方什麼都沒有（空氣）→ 吸到最近的表面
+    /// 都沒有就照原本的。
+    /// </summary>
     AimPoint FindAimPoint(Vector2 pointer)
+    {
+        AimPoint raw = RawAimPoint(pointer);
+        if (assistRadius <= 0f || (raw.hitSomething && IsAssistTarget(raw))) return raw;
+        float scale = Screen.height / 1080f;
+        const int Rings = 4, Spokes = 12;
+        AimPoint surface = default;
+        bool haveSurface = false;
+        for (int ring = 1; ring <= Rings; ring++)
+        {
+            float r = assistRadius * scale * ring / Rings;
+            for (int k = 0; k < Spokes; k++)
+            {
+                float a = (k + (ring & 1) * 0.5f) * Mathf.PI * 2f / Spokes;
+                AimPoint p = RawAimPoint(pointer + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r);
+                if (!ValidPoint(p)) continue;
+                if (IsAssistTarget(p)) return p;           // 最近的一圈裡有目標：直接吸過去
+                if (!haveSurface && !raw.hitSomething) { surface = p; haveSurface = true; }
+            }
+        }
+        return haveSurface ? surface : raw;
+    }
+
+    /// <summary>值得吸過去的目標：拉得動的東西（有 Rigidbody、標成可拉 / 浮空地塊）或敵人（IDamageable）</summary>
+    bool IsAssistTarget(AimPoint p)
+    {
+        if (p.collider == null) return false;
+        var marker = p.collider.GetComponentInParent<TetherInteractable>();
+        if (marker != null && marker.mode != TetherInteractable.TetherMode.Auto) return marker.mode != TetherInteractable.TetherMode.StaticAnchor || p.collider.GetComponentInParent<IDamageable>() != null;
+        return !IsStaticAnchor(p);
+    }
+
+    AimPoint RawAimPoint(Vector2 pointer)
     {
         Ray ray = aimCamera.ScreenPointToRay(pointer);
         // Inspect the first real surface even beyond casting range so a failed cast can

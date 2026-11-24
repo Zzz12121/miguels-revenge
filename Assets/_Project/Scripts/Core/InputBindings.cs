@@ -8,7 +8,8 @@ public enum GameAction
 {
     Jump, Sprint, Roll, Attack, Block, Interact, Tether,
     Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map,
-    SwitchWeapon, BatPowder
+    SwitchWeapon, BatPowder,
+    VillageMap   // 漁村地圖（巡邏的村丁給的，VillageMapScreen）
 }
 
 /// <summary>操作方式：自動（鍵盤滑鼠和手把都能用）/ 只用鍵盤滑鼠 / 只用手把</summary>
@@ -29,6 +30,7 @@ public static class InputBindings
         "<Keyboard>/e", "<Mouse>/middleButton",
         "<Keyboard>/1", "<Keyboard>/2", "<Keyboard>/3", "<Keyboard>/4", "<Keyboard>/q", "<Keyboard>/g", "<Keyboard>/m",
         "<Keyboard>/tab", "<Keyboard>/f",
+        "<Keyboard>/n",
     };
     static readonly string[] DefaultPad =
     {
@@ -37,6 +39,7 @@ public static class InputBindings
         "<Gamepad>/dpad/left", "<Gamepad>/dpad/up", "<Gamepad>/dpad/right", "<Gamepad>/dpad/down",
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
         "<Gamepad>/rightTrigger", "",   // 撒石粉：手把沒有空的按鍵了，預設不綁（可以在設定裡自己綁）
+        "",                             // 漁村地圖：手把預設不綁
     };
 
     public static string Label(GameAction a) => a switch
@@ -47,6 +50,7 @@ public static class InputBindings
         GameAction.Skill3 => "技能 3 月弧突進", GameAction.Skill4 => "技能 4 空中十字斬",
         GameAction.HealPotion => "治癒藥水", GameAction.StaminaPotion => "精力藥水", GameAction.Map => "小地圖",
         GameAction.SwitchWeapon => "切換武器（刀 / 弓）", GameAction.BatPowder => "撒石粉（擾亂蝙蝠）",
+        GameAction.VillageMap => "漁村地圖",
         _ => a.ToString()
     };
 
