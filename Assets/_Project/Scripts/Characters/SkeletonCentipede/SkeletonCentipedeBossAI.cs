@@ -238,6 +238,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         // 被玩家大招挑起來時這個元件會被暫時關掉，如果在空中被打死，大招結束後「死掉的敵人」不會再被打開，
         // 用 OnEnable 訂閱就永遠收不到死亡 → 本體死了分身不會跟著倒、分身死了也不會沉下去。
         health.OnDied += OnBossDied;
+        if (GetComponent<SkeletonCentipedeNoStand>() == null) gameObject.AddComponent<SkeletonCentipedeNoStand>();   // 玩家不能站在身上
     }
 
     void OnDestroy()
@@ -784,7 +785,8 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         CurrentAction = "擊敗";
         if (isClone)
         {
-            StartCoroutine(SinkAfterDeath());   // 死亡動畫播完後沉入地底，然後消失
+            // 死亡動畫播完後碎成灰消散，然後消失（SkeletonCentipedeDissolveVfx）
+            StartCoroutine(SkeletonCentipedeDissolveVfx.For(gameObject).Run(cloneDissolveDelay));
             return;
         }
         health.Invulnerable = false;
@@ -794,52 +796,9 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         OnDefeated?.Invoke();
     }
 
-    [Header("三階段：分身倒下後沉入地底")]
-    [Tooltip("倒下後等多久才開始沉（讓死亡動畫先播完）")]
-    public float cloneSinkDelay = 2.8f;
-    [Tooltip("沉下去花幾秒")]
-    public float cloneSinkSeconds = 2.2f;
-
-    /// <summary>分身倒下：死亡動畫播完 → 一邊冒塵土一邊慢慢沉進地底 → 消失</summary>
-    IEnumerator SinkAfterDeath()
-    {
-        yield return new WaitForSeconds(cloneSinkDelay);
-
-        // 沉多深：整隻模型的高度再多一點，確定完全沒入地面
-        float depth = 2f;
-        var rs = GetComponentsInChildren<Renderer>();
-        bool any = false; Bounds b = default;
-        foreach (var r in rs)
-        {
-            if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer || !r.enabled) continue;
-            if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
-        }
-        if (any) depth = Mathf.Max(depth, b.max.y - transform.position.y + 0.5f);
-        float radius = any ? Mathf.Max(b.extents.x, b.extents.z) : 3f;
-
-        // 碰撞先關掉：沉下去的途中不會擋到玩家、也不會被打到
-        foreach (var c in GetComponentsInChildren<Collider>()) c.enabled = false;
-
-        Vector3 start = transform.position;
-        Color dust = new Color(.55f, .48f, .38f, .55f);
-        CombatVFX.Ring(new Vector3(start.x, RestY(start) - groundOffset + .05f, start.z), dust, radius * .8f);
-        float nextPuff = 0f;
-        for (float t = 0f; t < cloneSinkSeconds; t += Time.deltaTime)
-        {
-            float u = t / cloneSinkSeconds;
-            // 先慢後快（像被地面吞下去），加一點點左右晃
-            transform.position = start + Vector3.down * depth * (u * u) + transform.right * (Mathf.Sin(t * 38f) * .04f * (1f - u));
-            if (t >= nextPuff)
-            {
-                nextPuff = t + .12f;
-                Vector2 rnd = Random.insideUnitCircle * radius;
-                Vector3 at = new Vector3(start.x + rnd.x, RestY(start) - groundOffset + .05f, start.z + rnd.y);
-                CombatVFX.Puff(at, Vector3.up, dust);
-            }
-            yield return null;
-        }
-        Destroy(gameObject);
-    }
+    [Header("三階段：分身倒下後消散")]
+    [Tooltip("倒下後等多久才開始消散（讓死亡動畫先播完）")]
+    public float cloneDissolveDelay = 2.8f;
 
     void OnPlayerDied()
     {

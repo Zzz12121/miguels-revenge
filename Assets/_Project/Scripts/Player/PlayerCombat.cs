@@ -41,8 +41,10 @@ public class PlayerCombat : MeleeCombat
     public float blockTapWindow = 0.35f;
     [Tooltip("盾牌放下後多久才能再按 (秒)，避免一直連點")]
     public float blockTapCooldown = 0.25f;
-    [Tooltip("連續擋幾下會破防：第幾下的攻擊會穿過盾牌扣血（3 = 擋兩下，第三下扣血）")]
-    public int blockHitsBeforeBreak = 3;
+    [Tooltip("連續擋幾下會破防：第幾下的攻擊會穿過盾牌扣血（3 = 擋兩下，第三下扣血）。0 = 不限次數，永遠不會破防")]
+    public int blockHitsBeforeBreak = 0;
+    /// <summary>格擋有沒有次數限制（blockHitsBeforeBreak ≤ 0 = 沒有，永遠不會破防）</summary>
+    public bool BlockLimited => blockHitsBeforeBreak > 0;
     [Tooltip("舉盾時的移動速度倍率。格擋必須站穩，因此預設為 0。")]
     [Range(0f, 1f)] public float blockMoveMultiplier = 0f;
     [Tooltip("破防之後多久不能再舉盾 (秒)")]
@@ -266,7 +268,7 @@ public class PlayerCombat : MeleeCombat
 
     /// <summary>
     /// 舉盾時擋下正面的攻擊（PlayerHealth 受傷時呼叫）：回傳實際要扣的傷害。
-    /// 擋下 → 0；連續擋到第 blockHitsBeforeBreak 下 → 破防，這一下照扣、盾牌放下一會兒。
+    /// 擋下 → 0；有次數限制時，連續擋到第 blockHitsBeforeBreak 下 → 破防，這一下照扣、盾牌放下一會兒。
     /// knockback = 攻擊把玩家推開的方向（用來判斷攻擊從哪裡來；沒有方向的攻擊例如光束擋不住）
     /// </summary>
     public float ApplyShieldBlock(float damage, Vector3 knockback)
@@ -279,7 +281,7 @@ public class PlayerCombat : MeleeCombat
         BlockStreak++;
         lastBlockTime = Time.time;
         Vector3 shieldPoint = transform.position + Vector3.up * 0.3f + transform.forward * 0.6f;
-        if (BlockStreak >= Mathf.Max(1, blockHitsBeforeBreak))
+        if (BlockLimited && BlockStreak >= blockHitsBeforeBreak)
         {
             // 破防：這一下穿過盾牌，盾牌放下一會兒
             BlockStreak = 0;
@@ -740,7 +742,7 @@ public class PlayerCombat : MeleeCombat
             GUI.color = new Color(1f, 0.4f, 0.3f, 1f - sinceBlock);
             GUI.Label(new Rect(cx - 150f, y - 40f, 300f, 34f), "破防！", style);
         }
-        if (!ShieldUp) { GUI.color = Color.white; return; }
+        if (!ShieldUp || !BlockLimited) { GUI.color = Color.white; return; }   // 不限次數：不用顯示耐久格
 
         // 盾牌耐久：亮的格子 = 還能完全擋下幾下
         int total = Mathf.Max(1, blockHitsBeforeBreak);

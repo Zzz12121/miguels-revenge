@@ -14,8 +14,8 @@ public class ForestRetry : MonoBehaviour
 {
     public const string Scene = VillageReturn.BridgeRestartScene;
 
-    /// <summary>重生時撒幾顆石頭</summary>
-    public static int RetryStones = 5;
+    /// <summary>重生時樹林周圍至少要有幾顆石頭（已經在地上的也算）</summary>
+    public static int RetryStones = 10;
     /// <summary>石頭撒在離戰鬥區中心多遠的範圍（樹林邊緣；戰鬥區半徑 24m）</summary>
     public static Vector2 StoneRing = new Vector2(21f, 30f);
 
@@ -97,13 +97,23 @@ public class ForestRetry : MonoBehaviour
         var centerMarker = GameObject.Find("GameplayMarkers/ArenaCenter (r=24m)");
         Vector3 center = centerMarker != null ? centerMarker.transform.position : Vector3.zero;
 
+        // 樹林周圍已經有（上一條命沒撿完）的石頭也算，只補不夠的
+        int existing = 0;
+        foreach (var s in FindObjectsByType<PowderStone>())
+        {
+            Vector3 d = s.transform.position - center; d.y = 0f;
+            if (d.magnitude <= StoneRing.y + 6f) existing++;
+        }
+        int want = Mathf.Max(0, RetryStones - existing);
+        if (want == 0) yield break;
+
         var rnd = new System.Random(System.Environment.TickCount);
         int placed = 0;
         float startAngle = (float)rnd.NextDouble() * Mathf.PI * 2f;
-        for (int attempt = 0; attempt < RetryStones * 12 && placed < RetryStones; attempt++)
+        for (int attempt = 0; attempt < want * 12 && placed < want; attempt++)
         {
             // 平均分在一圈上（每顆一個扇區，扇區內隨機），整片樹林邊緣都找得到
-            float sector = Mathf.PI * 2f / RetryStones;
+            float sector = Mathf.PI * 2f / want;
             float ang = startAngle + placed * sector + (float)rnd.NextDouble() * sector * 0.7f;
             float r = Mathf.Lerp(StoneRing.x, StoneRing.y, (float)rnd.NextDouble());
             Vector3 p = center + new Vector3(Mathf.Cos(ang) * r, 0f, Mathf.Sin(ang) * r);
@@ -111,6 +121,17 @@ public class ForestRetry : MonoBehaviour
             PowderStone.Create(g, (float)rnd.NextDouble() * 360f).ShowMarker();
             placed++;
         }
+        // 扇區裡剛好都是樹、陡坡放不下：整圈隨便找位置補滿
+        for (int attempt = 0; attempt < want * 40 && placed < want; attempt++)
+        {
+            float ang = (float)rnd.NextDouble() * Mathf.PI * 2f;
+            float r = Mathf.Lerp(StoneRing.x - 4f, StoneRing.y + 4f, (float)rnd.NextDouble());
+            Vector3 p = center + new Vector3(Mathf.Cos(ang) * r, 0f, Mathf.Sin(ang) * r);
+            if (!Ground(p, out Vector3 g)) continue;
+            PowderStone.Create(g, (float)rnd.NextDouble() * 360f).ShowMarker();
+            placed++;
+        }
+        if (placed < want) Debug.LogWarning($"[ForestRetry] 石粉石頭只放得下 {existing + placed}/{RetryStones} 顆");
     }
 
     /// <summary>往下找平坦的地面（避開樹幹、石頭頂端和陡坡）</summary>
