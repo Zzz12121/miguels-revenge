@@ -462,6 +462,8 @@ public static class JapaneseVillageBuilder
         }
         // 村長宅院：大門進去到主屋前的路
         if (x > PlazaX && x < ChiefHouseX - 12f) Road(Mathf.Abs(z - ChiefAxisZ), 1.8f);
+        // 村長宅院：主殿後門的石階下來到後院大門的路
+        if (x > ChiefHouseX + 12f && x < ChiefX1) Road(Mathf.Abs(z - ChiefAxisZ), 1.8f);
         // 通往棧橋的路
         if (z < RoadSouth + 2f && z > ShoreZ(PierX) + 8f) Road(Mathf.Abs(x - PierX), 2f);
         // 石階路與山上的空地
@@ -2010,6 +2012,8 @@ public static class JapaneseVillageBuilder
         houseBounds = JVGarden.WorldBounds(main);
         float porchFrontX = houseBounds.min.x;
         Debug.Log($"[JapaneseVillage] 村長家（道場主殿 ×{ChiefHouseScale}）外框 {houseBounds.size}，x {houseBounds.min.x:F1}～{houseBounds.max.x:F1}，最低 y {houseBounds.min.y - y:F2}");
+        // 中軸的通道：主殿後牆正中間開後門、後緣補石階，從大門穿過主殿直直走到後院大門
+        var rearFoot = ChiefHouseRearPassage.Open(main, root, SaveMesh);
 
         BuildChiefWall(root, y);
 
@@ -2021,6 +2025,17 @@ public static class JapaneseVillageBuilder
             float z = ChiefAxisZ + (float)rng.NextDouble() * 0.5f - 0.25f;
             var stone = JVGarden.Place(stones[rng.Next(stones.Length)], root, new Vector3(x, y - 0.03f, z), (float)rng.NextDouble() * 360f);
             stone.transform.localScale *= 1.25f;
+        }
+        // 後院：主殿後門的石階下來，飛石一路鋪到後院大門（另一個亂數，前院的排法不變）
+        if (rearFoot.HasValue)
+        {
+            var rearRng = new System.Random(78);
+            for (float x = rearFoot.Value.x + 0.8f; x < ChiefX1 - 1.4f; x += 0.95f)
+            {
+                float z = ChiefAxisZ + (float)rearRng.NextDouble() * 0.5f - 0.25f;
+                var stone = JVGarden.Place(stones[rearRng.Next(stones.Length)], root, new Vector3(x, y - 0.03f, z), (float)rearRng.NextDouble() * 360f);
+                stone.transform.localScale *= 1.25f;
+            }
         }
 
         var cherry = JVGarden.Place("Cherry_tree_01", root, new Vector3(107.5f, y, ChiefAxisZ - 13f), 40f);

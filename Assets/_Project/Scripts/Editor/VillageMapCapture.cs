@@ -18,7 +18,7 @@ using UnityEngine.Rendering.Universal;
 public static class VillageMapCapture
 {
     const string Flag = "VillageMapCapture.Pending";
-    const string ScenePath = "Assets/_Project/Scenes/JapaneseVillage.unity";
+    public const string ScenePath = "Assets/_Project/Scenes/JapaneseVillage.unity";
     public const string OutDir = "Assets/_Project/Resources/VillageMap";
 
     static VillageMapCapture()
@@ -40,6 +40,9 @@ public static class VillageMapCapture
         if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
         EditorSceneManager.OpenScene(ScenePath);
         SessionState.SetBool(Flag, true);
+        // 要留在漁村拍：這次進 Play 不要跳到主畫面
+        PlayerPrefs.SetInt(MainMenu.SkipRedirectOnceKey, 1);
+        PlayerPrefs.Save();
         EditorApplication.EnterPlaymode();
     }
 
@@ -124,6 +127,14 @@ public class VillageMapCaptureRunner : MonoBehaviour
         fog = RenderSettings.fog;
         // 等村子擺好（套件模型、村民的位置）
         for (float t = 0f; t < 4f; t += Time.unscaledDeltaTime) yield return null;
+        // 不在漁村（例如被帶到主畫面）：什麼都不寫，免得把原本的圖蓋成一片海
+        var active = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (active.path != VillageMapCapture.ScenePath)
+        {
+            Debug.LogError($"[VillageMap] 現在的場景是 {active.name}，不是漁村，沒有拍（原本的圖沒動）");
+            VillageMapCapture.Finish(written);
+            yield break;
+        }
         Time.timeScale = 0f;
 
         // 找地點

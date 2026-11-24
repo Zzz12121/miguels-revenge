@@ -25,6 +25,8 @@ public class MainMenu : MonoBehaviour
     const string Art = "MainMenu/";
     /// <summary>編輯器：直接從漁村按 Play 時不跳到主畫面（GeminiGrowUp/主畫面/直接測試漁村）</summary>
     public const string SkipVillageRedirectKey = "MainMenu.SkipVillageRedirect";
+    /// <summary>編輯器工具用：下一次進 Play 不跳到主畫面（只算一次，例如拍漁村地圖空拍圖時要留在漁村）</summary>
+    public const string SkipRedirectOnceKey = "MainMenu.SkipRedirectOnce";
 
     Canvas canvas;
     RectTransform root;
@@ -75,6 +77,12 @@ public class MainMenu : MonoBehaviour
         bool skip = false;
 #if UNITY_EDITOR
         skip = PlayerPrefs.GetInt(SkipVillageRedirectKey, 0) == 1;
+        if (PlayerPrefs.GetInt(SkipRedirectOnceKey, 0) == 1)
+        {
+            skip = true;
+            PlayerPrefs.DeleteKey(SkipRedirectOnceKey);
+            PlayerPrefs.Save();
+        }
 #endif
         if (!skip && first.name == village && Application.CanStreamedLevelBeLoaded(menuScene))
         {
@@ -415,7 +423,9 @@ public class MainMenu : MonoBehaviour
     void BeginGame()
     {
         var gm = GameManager.Instance;
-        if (gm != null) gm.StartStoryGame();
+        if (gm == null) return;
+        StoryLoadingScreen.Begin(gm); // 下方的進度條（偶爾會倒退），跑完才進漁村
+        gm.StartStoryGame();
     }
 
     /// <summary>選項：操作方式、鏡頭靈敏度、自訂按鍵（和遊戲中暫停選單的設定是同一個畫面、同一份設定）</summary>
@@ -423,11 +433,8 @@ public class MainMenu : MonoBehaviour
     {
         if (ControlsSettingsMenu.IsOpen || canvas == null) return;
         GameAudio.Play("SFX/RPG/metalClick", Vector3.zero, 0.8f, 1.1f, 0f, 0f);
-        canvas.gameObject.SetActive(false);
-        ControlsSettingsMenu.Open(transform, () =>
-        {
-            if (canvas != null) canvas.gameObject.SetActive(true);
-        });
+        // 主畫面留著當背景（選項畫在皮紙上、蓋在主畫面上面）；主畫面的選單在選項開著時不吃輸入（UpdateItems）
+        ControlsSettingsMenu.Open(transform, null);
     }
 
     void OnQuit()

@@ -9,6 +9,9 @@ using UnityEngine.UI;
 /// 暫停選單的「設定」畫面：選操作方式（自動 / 鍵盤滑鼠 / 手把）、鏡頭靈敏度、上下反轉，
 /// 以及每個動作的按鍵（鍵盤滑鼠、手把各一份，點一下再按新的鍵）。設定存在 PlayerPrefs，下次開遊戲還在。
 /// 滑鼠點、鍵盤方向鍵 + Enter、手把十字鍵 / 左搖桿 + A 都能操作；Esc / 手把 B 返回。
+/// 外觀跟主畫面同一套（Resources/MainMenu 的圖，Art/MainMenu/make_settings_art.py 產生）：整個畫面寫在一張撕得破破爛爛的皮紙上，
+/// 每個按鈕是一塊破布，選到 / 滑鼠移上去時像被微風吹（ClothFlutter）；字用主畫面的字（Bookman Old Style + 標楷體）。
+/// 圖不在的話退回原本的樣子。
 /// 用法：ControlsSettingsMenu.Open(parent, onClose)
 /// </summary>
 public sealed class ControlsSettingsMenu : MonoBehaviour
@@ -36,8 +39,10 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
     Button keyboardTab, padTabButton, invertButton, rumbleButton, layoutButton;
     Text lookValue, statusText;
 
-    static Color Selected => UIKit.TabOn;
-    static Color Normal => UIKit.TabOff;
+    static Color Selected => styled ? MenuSkin.ClothChosen : UIKit.TabOn;
+    static Color Normal => styled ? MenuSkin.ClothNormal : UIKit.TabOff;
+    // 主畫面風格（皮紙、破布，MenuSkin）
+    static bool styled;
 
     public static void Open(Transform parent, Action onClose)
     {
@@ -74,8 +79,16 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
 
         canvas = UIKit.CreateCanvas("ControlsSettingsCanvas", 110, transform);
         root = canvas.transform;
-        UIKit.Panel("Dim", root, UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.65f) : new Color(0f, 0f, 0f, 0.82f)).raycastTarget = true;
-        if (UIKit.Washi) UIKit.HangingScroll(root, new Vector2(0f, 25f), new Vector2(1640f, 930f)); // 漁村風格：整個設定寫在一大幅掛軸上
+        styled = MenuSkin.Available;
+        UIKit.Panel("Dim", root, styled ? MenuSkin.Dim
+                                 : UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.65f) : new Color(0f, 0f, 0f, 0.82f)).raycastTarget = true;
+        if (styled)
+        {
+            // 整個設定寫在一張撕得破破爛爛的皮紙上；標題「設定」底下刷一筆朱紅（跟主畫面選到的選項同一筆）
+            MenuSkin.WideParchment(root, new Vector2(0f, 25f), 1720f);
+            MenuSkin.TitleStroke(root, new Vector2(0f, 420f), new Vector2(440f, 96f));
+        }
+        else if (UIKit.Washi) UIKit.HangingScroll(root, new Vector2(0f, 25f), new Vector2(1640f, 930f)); // 漁村風格：整個設定寫在一大幅掛軸上
         UIKit.Label("Title", root, "設定", 64, new Color(0.85f, 0.9f, 1f), new Vector2(0f, 425f), new Vector2(800f, 90f),
                     TextAnchor.MiddleCenter, FontStyle.Bold);
 
@@ -122,6 +135,14 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
         UIKit.Button("Reset", root, "恢復預設按鍵", new Vector2(-180f, -375f), new Vector2(320f, 62f), ResetCurrent, 30);
         var back = UIKit.Button("Back", root, "返回", new Vector2(180f, -375f), new Vector2(320f, 62f), Close, 30);
 
+        if (styled)
+        {
+            MenuSkin.Apply(root);   // 按鈕換成破布、字換成墨色和主畫面的字
+            root.Find("Title").GetComponent<Text>().fontSize = 72;
+        }
+        else if (MenuSkin.Font != null)
+            foreach (var t in root.GetComponentsInChildren<Text>(true)) t.font = MenuSkin.Font;   // 字體跟主畫面一樣
+
         Refresh();
         EventSystem.current?.SetSelectedGameObject(back.gameObject);
     }
@@ -159,6 +180,7 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
     {
         var c = b.colors;
         c.normalColor = on ? Selected : Normal;
+        if (styled) c.highlightedColor = c.selectedColor = on ? MenuSkin.ClothChosenHover : MenuSkin.ClothHover;   // 選了的那塊布被選到時還是紅的
         b.colors = c;
     }
 

@@ -7,6 +7,7 @@ using UnityEngine;
 /// 冷卻中還沒冷卻完的部分蓋一層暗色，暗色從 12 點鐘方向順時針被掃掉，中間顯示剩幾秒；
 /// 轉完一圈 = 可以用了，圖示和外圈亮起來閃一下。圓的右邊寫目前配置的按鍵（手把 / 鍵盤自動切換）。
 /// 圖示載不到的話退回原本的純色圓 +「盾」「劈」字。
+/// 拿長槍時（SpearArts，一個武器兩招）：「盾」「劈」換成長槍的兩招——R2 + □（破陣突刺，「刺」）、△ □（飛身貫地，「貫」），圖示 Move_SpearCharge / Move_SpearPlunge。
 /// </summary>
 public sealed class MoveCooldownHud : MonoBehaviour
 {
@@ -19,7 +20,9 @@ public sealed class MoveCooldownHud : MonoBehaviour
     static readonly Color Rim = new Color(0.45f, 0.29f, 0.16f, 0.95f);
     static readonly Color RimReady = new Color(0.75f, 0.92f, 1f, 1f);
     static readonly Color Shade = new Color(0.02f, 0.03f, 0.06f, 0.72f);   // 冷卻中蓋在圖示上的暗色
-    static readonly string[] IconPaths = { "UI/Move_ShieldSlide", "UI/Move_LeapCleave" };
+    static readonly string[] IconPaths = { "UI/Move_ShieldSlide", "UI/Move_LeapCleave", "UI/Move_SpearCharge", "UI/Move_SpearPlunge" };
+    // 每一格用哪張圖示：平常（盾、劈）/ 拿長槍（刺、貫）
+    static readonly int[] NormalIcons = { 0, 1 }, SpearIcons = { 2, 3 };
 
     static MoveCooldownHud instance;
 
@@ -38,6 +41,8 @@ public sealed class MoveCooldownHud : MonoBehaviour
     PlayerHealth health;
     ShieldSlideStrike slide;
     LeapCleaveStrike leap;
+    SpearArts arts;
+    bool SpearMode => arts != null && arts.Active;
     float nextFind;
     Material mat;
     readonly float[] readyAt = { float.NegativeInfinity, float.NegativeInfinity };
@@ -77,8 +82,17 @@ public sealed class MoveCooldownHud : MonoBehaviour
                 leap = health.GetComponentInChildren<LeapCleaveStrike>();
             }
         }
-        Track(0, slide != null ? slide.CooldownRemaining : 0f);
-        Track(1, leap != null ? leap.CooldownRemaining : 0f);
+        if (health != null && arts == null) arts = health.GetComponentInChildren<SpearArts>();
+        if (SpearMode)
+        {
+            Track(0, arts.ChargeRemaining);
+            Track(1, arts.PlungeRemaining);
+        }
+        else
+        {
+            Track(0, slide != null ? slide.CooldownRemaining : 0f);
+            Track(1, leap != null ? leap.CooldownRemaining : 0f);
+        }
     }
 
     /// <summary>冷卻剛轉完一圈的那一刻記下來（外圈閃一下）</summary>
@@ -96,11 +110,19 @@ public sealed class MoveCooldownHud : MonoBehaviour
         if (RangeInputSettings.IsRange(health)) return;   // 靶場不顯示（跟技能條一樣）
 
         string N(GameAction a) => InputBindings.DisplayName(a);
-        var moves = new[]
-        {
-            (slide != null, slide != null ? slide.CooldownRemaining : 0f, slide != null ? slide.cooldown : 1f, "盾", $"{N(GameAction.Roll)} {N(GameAction.Attack)} {N(GameAction.Roll)}"),
-            (leap != null, leap != null ? leap.CooldownRemaining : 0f, leap != null ? leap.cooldown : 1f, "劈", $"{N(GameAction.Sprint)} + {N(GameAction.Jump)} {N(GameAction.Attack)}"),
-        };
+        bool spear = SpearMode;
+        int[] iconIdx = spear ? SpearIcons : NormalIcons;
+        var moves = spear
+            ? new[]
+            {
+                (true, arts.ChargeRemaining, arts.chargeCooldown, "刺", $"{N(GameAction.Sprint)} + {N(GameAction.Attack)}"),
+                (true, arts.PlungeRemaining, arts.plungeCooldown, "貫", $"{N(GameAction.Jump)} {N(GameAction.Attack)}"),
+            }
+            : new[]
+            {
+                (slide != null, slide != null ? slide.CooldownRemaining : 0f, slide != null ? slide.cooldown : 1f, "盾", $"{N(GameAction.Roll)} {N(GameAction.Attack)} {N(GameAction.Roll)}"),
+                (leap != null, leap != null ? leap.CooldownRemaining : 0f, leap != null ? leap.cooldown : 1f, "劈", $"{N(GameAction.Sprint)} + {N(GameAction.Jump)} {N(GameAction.Attack)}"),
+            };
 
         float t = Time.unscaledTime;
         if (Event.current.type == EventType.Repaint)
@@ -115,18 +137,18 @@ public sealed class MoveCooldownHud : MonoBehaviour
                 float flash = cooling ? 0f : Mathf.Clamp01(1f - (t - readyAt[i]) / 0.4f);
                 Vector2 c = Center(i);
                 Ring(c, R + 0.5f, R + 2.5f, cooling ? Rim : Color.Lerp(RimReady, Color.white, flash));
-                if (Icon(i) == null) DrawDial(c, Progress(remaining, total), cooling, t - readyAt[i]);
+                if (Icon(iconIdx[i]) == null) DrawDial(c, Progress(remaining, total), cooling, t - readyAt[i]);
             }
             EndGL();
 
             // 2. 圖示
             for (int i = 0; i < moves.Length; i++)
             {
-                if (!moves[i].Item1 || Icon(i) == null) continue;
+                if (!moves[i].Item1 || Icon(iconIdx[i]) == null) continue;
                 Vector2 c = Center(i);
                 Color old = GUI.color;
                 GUI.color = moves[i].Item2 > 0f ? new Color(0.8f, 0.8f, 0.85f, 1f) : Color.white;
-                GUI.DrawTexture(new Rect(c.x - R, c.y - R, R * 2f, R * 2f), Icon(i), ScaleMode.StretchToFill, true);
+                GUI.DrawTexture(new Rect(c.x - R, c.y - R, R * 2f, R * 2f), Icon(iconIdx[i]), ScaleMode.StretchToFill, true);
                 GUI.color = old;
             }
 
@@ -135,7 +157,7 @@ public sealed class MoveCooldownHud : MonoBehaviour
             for (int i = 0; i < moves.Length; i++)
             {
                 var (has, remaining, total, _, _) = moves[i];
-                if (!has || Icon(i) == null) continue;
+                if (!has || Icon(iconIdx[i]) == null) continue;
                 Vector2 c = Center(i);
                 if (remaining > 0f)
                 {
@@ -162,7 +184,7 @@ public sealed class MoveCooldownHud : MonoBehaviour
             Vector2 c = Center(i);
             bool cooling = remaining > 0f;
             center.normal.textColor = cooling ? new Color(1f, 1f, 1f, 0.95f) : new Color(0.9f, 0.97f, 1f, 1f);
-            string mid = cooling ? remaining.ToString("0.0") : Icon(i) == null ? glyph : null;   // 有圖示：好了就不寫字
+            string mid = cooling ? remaining.ToString("0.0") : Icon(iconIdx[i]) == null ? glyph : null;   // 有圖示：好了就不寫字
             if (mid != null) Shadowed(new Rect(c.x - R, c.y - R, R * 2f, R * 2f), mid, center);
             label.normal.textColor = cooling ? new Color(1f, 1f, 1f, 0.45f) : new Color(0.85f, 0.93f, 1f, 0.9f);
             Shadowed(new Rect(c.x + R + 6f, c.y - 10f, Spacing - R * 2f - 10f, 20f), keys, label);
