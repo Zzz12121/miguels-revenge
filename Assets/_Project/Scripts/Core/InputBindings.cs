@@ -9,7 +9,8 @@ public enum GameAction
     Jump, Sprint, Roll, Attack, Block, Interact, Tether,
     Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map,
     SwitchWeapon, BatPowder,
-    BowAim, AimConfirm   // 新的加在最後面：PlayerPrefs 用名字存，但預設表用順序對應
+    BowAim, AimConfirm,   // 新的加在最後面：PlayerPrefs 用名字存，但預設表用順序對應
+    VillageMap            // 漁村地圖（巡邏的村丁給的，VillageMapScreen）
 }
 
 /// <summary>手把配置：PS4（△ 跳、× 翻滾、R2 衝刺…）或 Xbox（原本的 A 跳、B 翻滾、LB 衝刺…）。兩套各自記住改過的按鍵</summary>
@@ -34,6 +35,7 @@ public static class InputBindings
         "<Keyboard>/1", "<Keyboard>/2", "<Keyboard>/3", "<Keyboard>/4", "<Keyboard>/q", "<Keyboard>/g", "<Keyboard>/m",
         "<Keyboard>/tab", "<Keyboard>/f",
         "<Mouse>/rightButton", "",   // 拉弓瞄準：跟格擋一樣是右鍵（拿弓時才有作用）；瞄準確認：鍵盤固定用滑鼠左鍵
+        "<Keyboard>/n",
     };
     // 手把預設（括號內是 PS4 的按鍵）：
     //   跳躍 Y（△）、衝刺 RT（R2 按住）、翻滾 A（×）、攻擊 X（□）、格擋 / 盾反 LB（L1）、互動 B（○）、牽引 RB（R1）
@@ -51,6 +53,7 @@ public static class InputBindings
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
         "<Gamepad>/rightTrigger", "",
         "<Gamepad>/leftTrigger", "<Gamepad>/buttonWest",
+        "",   // 漁村地圖：手把預設不綁
     };
 
     static readonly string[] DefaultPadPS4 =
@@ -61,6 +64,7 @@ public static class InputBindings
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
         "<Gamepad>/dpad/down", "<Gamepad>/buttonEast",   // 撒石粉 = ○（跟互動同一顆：旁邊有能互動的東西時先互動）
         "<Gamepad>/leftTrigger", "<Gamepad>/rightTrigger",
+        "",   // 漁村地圖：手把預設不綁
     };
 
     public static string Label(GameAction a) => a switch
@@ -72,6 +76,7 @@ public static class InputBindings
         GameAction.HealPotion => "治癒藥水", GameAction.StaminaPotion => "精力藥水", GameAction.Map => "小地圖",
         GameAction.SwitchWeapon => "切換武器（刀 / 弓）", GameAction.BatPowder => "撒石粉（擾亂蝙蝠）",
         GameAction.BowAim => "拉弓瞄準（按住）", GameAction.AimConfirm => "瞄準確認 / 射箭",
+        GameAction.VillageMap => "漁村地圖",
         _ => a.ToString()
     };
 

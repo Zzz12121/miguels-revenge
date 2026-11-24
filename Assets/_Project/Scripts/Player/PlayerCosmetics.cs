@@ -267,6 +267,7 @@ public sealed class PlayerCosmetics : MonoBehaviour
         public float segment, width, thickness, phase;
         public Mesh mesh;
         public Vector3[] verts;
+        public Vector3[] shown;         // FollowKnot 用：這一幀畫出來的點（不動模擬用的 points）
     }
 
     readonly List<Tail> tails = new List<Tail>();
@@ -439,24 +440,81 @@ public sealed class PlayerCosmetics : MonoBehaviour
                 pts[k] = Vector3.Lerp(pts[k], want, 1f - Mathf.Exp(-dt * 14f));
                 pts[k] = pts[k - 1] + (pts[k] - pts[k - 1]).normalized * tail.segment;
             }
-            for (int k = 0; k < pts.Length; k++)
+            BuildTailMesh(tail, pts);
+        }
+    }
+
+    /// <summary>照一串點把巾尾的網格做出來</summary>
+    void BuildTailMesh(Tail tail, Vector3[] pts)
+    {
+        Vector3 back = -transform.forward, outward = -transform.right;
+        for (int k = 0; k < pts.Length; k++)
+        {
+            Vector3 seg = (k < pts.Length - 1 ? pts[k + 1] - pts[k] : pts[k] - pts[k - 1]).normalized;
+            Vector3 side = Vector3.Cross(seg, outward + back * 0.5f).normalized;
+            Vector3 face = Vector3.Cross(side, seg).normalized;
+            float u = k / (pts.Length - 1f);
+            // 根部比較寬（從結裡鬆開）、末端收窄一點；最後一圈縮小把尾端收起來
+            float halfW = tail.width * 0.5f * Mathf.Lerp(1.15f, 0.8f, u) * (k == pts.Length - 1 ? 0.6f : 1f);
+            float halfT = tail.thickness * 0.5f * Mathf.Lerp(1.2f, 0.7f, u) * (k == pts.Length - 1 ? 0.6f : 1f);
+            for (int q = 0; q < TailSides; q++)
             {
-                Vector3 seg = (k < pts.Length - 1 ? pts[k + 1] - pts[k] : pts[k] - pts[k - 1]).normalized;
-                Vector3 side = Vector3.Cross(seg, outward + back * 0.5f).normalized;
-                Vector3 face = Vector3.Cross(side, seg).normalized;
-                float u = k / (pts.Length - 1f);
-                // 根部比較寬（從結裡鬆開）、末端收窄一點；最後一圈縮小把尾端收起來
-                float halfW = tail.width * 0.5f * Mathf.Lerp(1.15f, 0.8f, u) * (k == pts.Length - 1 ? 0.6f : 1f);
-                float halfT = tail.thickness * 0.5f * Mathf.Lerp(1.2f, 0.7f, u) * (k == pts.Length - 1 ? 0.6f : 1f);
-                for (int q = 0; q < TailSides; q++)
-                {
-                    float ph = q * Mathf.PI * 2f / TailSides;
-                    tail.verts[k * TailSides + q] = pts[k] + side * (Mathf.Cos(ph) * halfW) + face * (Mathf.Sin(ph) * halfT);
-                }
+                float ph = q * Mathf.PI * 2f / TailSides;
+                tail.verts[k * TailSides + q] = pts[k] + side * (Mathf.Cos(ph) * halfW) + face * (Mathf.Sin(ph) * halfT);
             }
-            tail.mesh.vertices = tail.verts;
-            tail.mesh.RecalculateNormals();
-            tail.mesh.RecalculateBounds();
+        }
+        tail.mesh.vertices = tail.verts;
+        tail.mesh.RecalculateNormals();
+        tail.mesh.RecalculateBounds();
+    }
+
+    /// <summary>
+    /// 給在 LateUpdate 裡把身體挪位置的姿勢用（BenchSeat 坐下：骨盆、脖子整個往下往後移）：
+    /// 巾尾是在這之前照站著的脖子算的（往後外斜飄），坐著的時候改成從結沿著背往下垂，碰到 keepAbove（椅子）就平鋪在椅面上往後，
+    /// 超過椅子後緣再往下垂。drape = 0 → 照原本模擬的形狀搬到結的位置，1 → 完全垂下（坐下 / 起身時漸變）。
+    /// 只改這一幀畫出來的網格，模擬還是照原本的
+    /// </summary>
+    public void FollowKnot(Bounds? keepAbove = null, float drape = 1f)
+    {
+        Vector3 back = -transform.forward;
+        back.y = 0f;
+        back = back.sqrMagnitude > 1e-6f ? back.normalized : Vector3.back;
+        Vector3 hang = (Vector3.down + back * 0.2f - transform.right * 0.04f).normalized;
+        foreach (var tail in tails)
+        {
+            if (tail.knot == null) continue;
+            var pts = tail.points;
+            if (tail.shown == null || tail.shown.Length != pts.Length) tail.shown = new Vector3[pts.Length];
+            Vector3 start = tail.knot.TransformPoint(tail.offset);
+            Vector3 delta = start - pts[0];
+            Vector3 prev = start;
+            tail.shown[0] = start;
+            for (int k = 1; k < pts.Length; k++)
+            {
+                // 垂下的形狀：每節照 hang 往下；落在椅面範圍裡、低於椅面的話，平鋪在椅面上往後
+                Vector3 q = prev + hang * tail.segment;
+                if (keepAbove.HasValue)
+                {
+                    var b = keepAbove.Value;
+                    float top = b.max.y + tail.thickness * 0.5f;
+                    if (q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && q.y < top)
+                    {
+                        float dy = Mathf.Max(0f, prev.y - top);
+                        float hz = Mathf.Sqrt(Mathf.Max(0f, tail.segment * tail.segment - dy * dy));
+                        q = new Vector3(prev.x, top, prev.z) + back * hz;
+                    }
+                }
+                prev = q;
+                Vector3 moved = pts[k] + delta;
+                if (keepAbove.HasValue)
+                {
+                    var b = keepAbove.Value;
+                    float top = b.max.y + tail.thickness * 0.5f;
+                    if (moved.x > b.min.x && moved.x < b.max.x && moved.z > b.min.z && moved.z < b.max.z && moved.y < top) moved.y = top;
+                }
+                tail.shown[k] = Vector3.Lerp(moved, q, Mathf.Clamp01(drape));
+            }
+            BuildTailMesh(tail, tail.shown);
         }
     }
 

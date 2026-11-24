@@ -4,8 +4,9 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 玩家的消耗品（在商人那裡用草藥買）：
-///   - 治癒藥水：按 Q 喝，花 1.5 秒喝完（期間移動變慢、不能做其他動作），喝完回復 30% 最大生命
-///   - 精力藥水：按 G 喝，一樣花 1.5 秒喝完，喝完精力全滿
+///   - 治癒藥水：按 Q 喝，花 1.8 秒喝完（期間可以走動但比較慢，不能攻擊、放技能、翻滾、跳），喝完回復 30% 最大生命
+///     動作（PotionSip）：武器收起來，右手從腰間拿出小藥瓶舉到嘴邊仰頭喝，喝完放回去再拿出武器
+///   - 精力藥水：按 G 喝，一樣花 1.8 秒喝完，喝完精力全滿
 /// 數量存在 PlayerInventory（跟草藥一樣），所以會跟著換關卡 / 存檔。
 /// 治癒藥水像原素瓶：死亡重生後補回「買過的總數」，喝掉的會回來；精力藥水用掉就沒了。
 /// 身上有消耗品時，畫面右下角顯示數量和按鍵。PlayerHealth 會自動加上這個元件。
@@ -23,9 +24,9 @@ public class PlayerItems : MonoBehaviour
     [Tooltip("治癒藥水回復最大生命的比例")]
     public float potionHealRatio = 0.3f;
     [Tooltip("喝藥水要花多久 (秒)")]
-    public float drinkTime = 1.5f;
+    public float drinkTime = PotionSip.Base; // 拿出來 0.3 秒、在嘴前喝 1.2 秒、收回去 0.3 秒
     [Tooltip("喝藥水時的移動速度倍率")]
-    [Range(0f, 1f)] public float drinkMoveMultiplier = 0.35f;
+    [Range(0f, 1f)] public float drinkMoveMultiplier = 0.6f;
     [Tooltip("兩次使用之間的冷卻 (秒)")]
     public float useCooldown = 0.6f;
 
@@ -173,7 +174,10 @@ public class PlayerItems : MonoBehaviour
             controller.ApplyTemporarySpeedMultiplier(drinkMoveMultiplier, drinkTime);
         }
         GameAudio.Play("SFX/RPG/beltHandle1", transform.position, 0.7f, 1.2f, 0.05f, 0.3f);
-        if (visual != null) visual.PlayGesture(drinkAnimation, drinkTime);
+        // 拿起藥瓶喝的動作（邊走邊喝也可以；攻擊、技能被上面的 LockActions 擋住）
+        var sip = GetComponent<PotionSip>();
+        if (sip == null) sip = gameObject.AddComponent<PotionSip>();
+        sip.Begin(drinkTime, staminaPotion ? StaminaColor : GameUI.Good);
 
         yield return new WaitForSeconds(drinkTime);
 
@@ -207,6 +211,8 @@ public class PlayerItems : MonoBehaviour
     void CancelDrink()
     {
         if (drinkRoutine != null) StopCoroutine(drinkRoutine);
+        var sip = GetComponent<PotionSip>();
+        if (sip != null) sip.Stop();
         EndDrink();
     }
 

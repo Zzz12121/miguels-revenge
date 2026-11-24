@@ -7,7 +7,7 @@ using UnityEngine;
 ///   招式：遠一點就伏低身子蓄力、飛撲過來（高度剛好，翻滾的無敵時間可以躲掉）；貼近了就揮爪，越近揮得越頻繁
 ///   （左右爪連揮最多三下，冷卻也越短）。撲空或揮完會停一下（破綻）。在撲的距離內冷卻時沿著圓弧繞著玩家走（身體朝走的方向、頭看著玩家）。
 ///   玩家死了：在原地趴下，不追、不走開；玩家再走近才又起來。
-///   被打中 fleeHits 下以後再吼一聲，轉身往竹林深處（fleeTarget）跑掉，原地留下幾株草藥（herbs，一開始藏著）。
+///   被打中 fleeHits 下以後再吼一聲，轉身往竹林深處（fleeTarget）跑掉，原地留下一張虎皮和一對虎牙（TigerLoot，拿去鐵匠鋪升級武器）。
 /// 不會死。模型是 Tripo 的四足骨架（沒有動畫），所有動作都是在 LateUpdate 用程式擺骨頭：
 /// 每幀先把骨頭放回原本的姿勢，再依狀態疊上走路 / 奔跑的步伐、趴下、吼叫、飛撲、揮爪。
 /// </summary>
@@ -46,7 +46,7 @@ public class TigerBeast : MonoBehaviour, IDamageable
     public int fleeHits = 8;
     [Tooltip("逃去哪裡（竹林深處）")]
     public Vector3 fleeTarget;
-    [Tooltip("逃走時留下的草藥（一開始藏著）")]
+    [Tooltip("舊版逃走時留下的草藥：現在改成掉虎皮、虎牙（TigerLoot），這些一直藏著")]
     public GameObject[] herbs;
 
     public enum State { Lying, Waking, Chase, Windup, Pounce, Swipe, Recover, Fleeing, Gone }
@@ -342,17 +342,8 @@ public class TigerBeast : MonoBehaviour, IDamageable
         SetState(State.Fleeing);
         GameAudio.Play("SFX/dragon_roar", transform.position, 1f, 0.72f, 0f, 1f, 80f);
         ThirdPersonCamera.ShakeMain(0.2f, 0.8f);
-        // 原地留下草藥
-        if (herbs != null)
-            for (int i = 0; i < herbs.Length; i++)
-            {
-                if (herbs[i] == null) continue;
-                float a = i * Mathf.PI * 2f / herbs.Length + 0.4f;
-                Vector3 p = transform.position + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 1.3f;
-                p.y = Ground(p);
-                herbs[i].transform.position = p;
-                herbs[i].SetActive(true);
-            }
+        // 原地留下虎皮、虎牙（舊的草藥不再出現）
+        TigerLoot.Drop(transform.position, transform.forward, Ground);
     }
 
     void SetState(State s)

@@ -7,7 +7,9 @@ using UnityEngine.InputSystem;
 ///     雙腳用 IK 踩在椅子前面的地上、膝蓋往前彎，雙手放在大腿上
 ///   - 坐在椅子上離玩家最近的位子；茶屋老闆娘（或其他村民）坐著的那一邊就換另一邊
 ///   - 按 E、空白鍵或方向鍵起身
-///   - 坐著的時候，掛在身上的東西（收在背上的刀、箭筒……）先藏起來，不會插進椅子；起身再拿出來
+///   - 坐著的時候，掛在身上的東西（收在背上的刀、箭筒、弓……）藏起來，不會插進椅子；起身再拿出來。
+///     每幀都藏（在武器、弓的腳本擺完之後）：那些腳本每幀會自己把網格打開；弓（PlayerArcherBow）掛在場景最上層，不在玩家底下
+///   - 圍巾的巾尾從結沿著背垂下、碰到椅面就平鋪在椅面上（PlayerCosmetics.FollowKnot），不會照站著的樣子往後斜插出去
 /// 椅子的長邊是 X（Builder 的 PlaceBench），坐的人面向 -Z（跟老闆娘一樣）；椅面高度 = 碰撞盒的頂。
 /// 姿勢在所有動畫擺完之後才擺（DefaultExecutionOrder）。
 /// </summary>
@@ -28,7 +30,9 @@ public sealed class BenchSeat : MonoBehaviour
     Vector3 seatPoint, facing, footBase;
     float ankleHeight;
 
-    readonly System.Collections.Generic.List<Renderer> hidden = new System.Collections.Generic.List<Renderer>();
+    /// <summary>坐著時藏起來的網格，和它原本的 forceRenderingOff（起身時還原）</summary>
+    readonly System.Collections.Generic.List<(Renderer r, bool off)> hidden = new System.Collections.Generic.List<(Renderer, bool)>();
+    PlayerCosmetics cosmetics;
 
     Transform hips, lThigh, lKnee, lFoot, rThigh, rKnee, rFoot, lArm, lFore, lHand, rArm, rFore, rHand;
 
@@ -114,6 +118,7 @@ public sealed class BenchSeat : MonoBehaviour
             controller.inputEnabled = false;
         }
         PlayerLoadout.Holster(this);
+        cosmetics = health.GetComponent<PlayerCosmetics>();
         HideGear(true);
         sitting = true;
         leaving = false;
@@ -138,28 +143,42 @@ public sealed class BenchSeat : MonoBehaviour
     void OnDisable() => StandUp(true);
 
     /// <summary>
-    /// 藏起（或拿回）掛在身上的東西：玩家底下除了身體本身（SkinnedMeshRenderer）、造型（Cosmetic_）以外，現在看得到的網格。
-    /// 只拿回自己藏起來的那些
+    /// 藏起（或拿回）身上的東西：玩家底下除了身體（Animator 底下的 SkinnedMeshRenderer）、造型（Cosmetic_）以外的網格，
+    /// 加上 PlayerArcherBow 掛在場景最上層的弓（PlayerBow_Mount、PlayerBow_Visual）。
+    /// 用 forceRenderingOff（不動 enabled，武器腳本自己管 enabled）；起身時還原成原本的值
     /// </summary>
     void HideGear(bool hide)
     {
         if (!hide)
         {
-            foreach (var r in hidden) if (r != null) r.enabled = true;
+            foreach (var (r, off) in hidden) if (r != null) r.forceRenderingOff = off;
             hidden.Clear();
             return;
         }
         hidden.Clear();
-        foreach (var r in health.GetComponentsInChildren<Renderer>())
+        var seen = new System.Collections.Generic.HashSet<Renderer>();
+        Transform body = animator != null ? animator.transform : null;
+        foreach (var r in health.GetComponentsInChildren<Renderer>(true))
         {
-            if (!r.enabled || r is SkinnedMeshRenderer || r is LineRenderer || r is ParticleSystemRenderer) continue;
+            if (r is LineRenderer || r is ParticleSystemRenderer) continue;
+            if (r is SkinnedMeshRenderer && body != null && r.transform.IsChildOf(body)) continue;
             bool cosmetic = false;
             for (var t = r.transform; t != null && t != health.transform; t = t.parent)
                 if (t.name.StartsWith("Cosmetic")) { cosmetic = true; break; }
             if (cosmetic) continue;
-            r.enabled = false;
-            hidden.Add(r);
+            if (seen.Add(r)) hidden.Add((r, r.forceRenderingOff));
         }
+        var bow = health.GetComponentInChildren<PlayerArcherBow>(true);
+        if (bow != null)
+            foreach (var field in new[] { "mount", "archer" })
+            {
+                var value = typeof(PlayerArcherBow).GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(bow);
+                var root = value is Transform tr ? tr : value is GameObject go ? go.transform : null;
+                if (root == null) continue;
+                foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+                    if (!(r is LineRenderer || r is ParticleSystemRenderer) && seen.Add(r)) hidden.Add((r, r.forceRenderingOff));
+            }
+        foreach (var (r, _) in hidden) r.forceRenderingOff = true;
     }
 
     void ResolveBones()
@@ -175,6 +194,8 @@ public sealed class BenchSeat : MonoBehaviour
     void LateUpdate()
     {
         if (!sitting || hips == null) return;
+        // 武器、弓的腳本每幀都會把自己的網格打開，所以每幀在它們之後再關一次
+        foreach (var (r, _) in hidden) if (r != null) r.forceRenderingOff = true;
         weight = Mathf.MoveTowards(weight, leaving ? 0f : 1f, Time.deltaTime / Mathf.Max(0.05f, blendTime));
         float w = Mathf.SmoothStep(0f, 1f, weight);
         if (w < 0.001f) return;
@@ -190,6 +211,7 @@ public sealed class BenchSeat : MonoBehaviour
         // 雙手放在大腿上（膝蓋往回三成的地方），手肘往後外
         Arm(lArm, lFore, lHand, lThigh, lKnee, -1f, right, w);
         Arm(rArm, rFore, rHand, rThigh, rKnee, 1f, right, w);
+        if (cosmetics != null) cosmetics.FollowKnot(box != null ? box.bounds : (Bounds?)null, w);
     }
 
     void Leg(Transform thigh, Transform knee, Transform foot, float side, Vector3 right, float w)
