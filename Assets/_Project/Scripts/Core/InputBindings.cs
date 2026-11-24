@@ -8,8 +8,12 @@ public enum GameAction
 {
     Jump, Sprint, Roll, Attack, Block, Interact, Tether,
     Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map,
-    SwitchWeapon, BatPowder
+    SwitchWeapon, BatPowder,
+    BowAim, AimConfirm   // 新的加在最後面：PlayerPrefs 用名字存，但預設表用順序對應
 }
+
+/// <summary>手把配置：PS4（△ 跳、× 翻滾、R2 衝刺…）或 Xbox（原本的 A 跳、B 翻滾、LB 衝刺…）。兩套各自記住改過的按鍵</summary>
+public enum PadLayout { PS4, Xbox }
 
 /// <summary>操作方式：自動（鍵盤滑鼠和手把都能用）/ 只用鍵盤滑鼠 / 只用手把</summary>
 public enum InputScheme { Auto, KeyboardMouse, Gamepad }
@@ -29,14 +33,34 @@ public static class InputBindings
         "<Keyboard>/e", "<Mouse>/middleButton",
         "<Keyboard>/1", "<Keyboard>/2", "<Keyboard>/3", "<Keyboard>/4", "<Keyboard>/q", "<Keyboard>/g", "<Keyboard>/m",
         "<Keyboard>/tab", "<Keyboard>/f",
+        "<Mouse>/rightButton", "",   // 拉弓瞄準：跟格擋一樣是右鍵（拿弓時才有作用）；瞄準確認：鍵盤固定用滑鼠左鍵
     };
-    static readonly string[] DefaultPad =
+    // 手把預設（括號內是 PS4 的按鍵）：
+    //   跳躍 Y（△）、衝刺 RT（R2 按住）、翻滾 A（×）、攻擊 X（□）、格擋 / 盾反 LB（L1）、互動 B（○）、牽引 RB（R1）
+    //   技能 1 = 十字 ↑（先選技能 1，再按住 L1 蓄力、R1 發射）；技能 2~4 手把預設不綁（可以在設定裡自己綁）
+    //   切換武器 十字 ↓、撒石粉 B（○，跟互動共用）、拉弓瞄準 LT（L2）、瞄準確認 / 射箭 RT（R2）
+    static string[] DefaultPad => layout == PadLayout.Xbox ? DefaultPadXbox : DefaultPadPS4;
+
+    // Xbox 配置（原本的手把預設）：A 跳躍、LB 衝刺、B 翻滾、X 攻擊、LT 格擋、Y 互動、RB 牽引、十字 ← ↑ → ↓ 技能 1~4、
+    //   R3 治癒藥水、L3 精力藥水、Select 小地圖、RT 切換武器、撒石粉不綁、LT 拉弓瞄準（跟格擋同一顆）、X 瞄準確認 / 射箭（跟攻擊同一顆）
+    static readonly string[] DefaultPadXbox =
     {
         "<Gamepad>/buttonSouth", "<Gamepad>/leftShoulder", "<Gamepad>/buttonEast", "<Gamepad>/buttonWest", "<Gamepad>/leftTrigger",
         "<Gamepad>/buttonNorth", "<Gamepad>/rightShoulder",
         "<Gamepad>/dpad/left", "<Gamepad>/dpad/up", "<Gamepad>/dpad/right", "<Gamepad>/dpad/down",
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
-        "<Gamepad>/rightTrigger", "",   // 撒石粉：手把沒有空的按鍵了，預設不綁（可以在設定裡自己綁）
+        "<Gamepad>/rightTrigger", "",
+        "<Gamepad>/leftTrigger", "<Gamepad>/buttonWest",
+    };
+
+    static readonly string[] DefaultPadPS4 =
+    {
+        "<Gamepad>/buttonNorth", "<Gamepad>/rightTrigger", "<Gamepad>/buttonSouth", "<Gamepad>/buttonWest", "<Gamepad>/leftShoulder",
+        "<Gamepad>/buttonEast", "<Gamepad>/rightShoulder",
+        "<Gamepad>/dpad/up", "", "", "",
+        "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
+        "<Gamepad>/dpad/down", "<Gamepad>/buttonEast",   // 撒石粉 = ○（跟互動同一顆：旁邊有能互動的東西時先互動）
+        "<Gamepad>/leftTrigger", "<Gamepad>/rightTrigger",
     };
 
     public static string Label(GameAction a) => a switch
@@ -47,6 +71,7 @@ public static class InputBindings
         GameAction.Skill3 => "技能 3 月弧突進", GameAction.Skill4 => "技能 4 空中十字斬",
         GameAction.HealPotion => "治癒藥水", GameAction.StaminaPotion => "精力藥水", GameAction.Map => "小地圖",
         GameAction.SwitchWeapon => "切換武器（刀 / 弓）", GameAction.BatPowder => "撒石粉（擾亂蝙蝠）",
+        GameAction.BowAim => "拉弓瞄準（按住）", GameAction.AimConfirm => "瞄準確認 / 射箭",
         _ => a.ToString()
     };
 
@@ -54,6 +79,8 @@ public static class InputBindings
     static InputScheme scheme;
     static float lookSensitivity = 1f;
     static bool invertY;
+    static bool rumble = true;
+    static PadLayout layout = PadLayout.PS4;
     static bool loaded;
 
     const string Prefs = "Controls.";
@@ -62,16 +89,37 @@ public static class InputBindings
     {
         if (loaded) return;
         loaded = true;
+        layout = (PadLayout)PlayerPrefs.GetInt(Prefs + "padLayout", (int)PadLayout.PS4);
         keyboard = (string[])DefaultKeyboard.Clone();
         pad = (string[])DefaultPad.Clone();
         for (int i = 0; i < All.Length; i++)
         {
             keyboard[i] = PlayerPrefs.GetString(Prefs + "kb." + All[i], keyboard[i]);
-            pad[i] = PlayerPrefs.GetString(Prefs + "pad." + All[i], pad[i]);
+            pad[i] = PlayerPrefs.GetString(PadKey + All[i], pad[i]);
+        }
+        // 手把配置整個換過一次（第 3 版：△ 跳、× 翻滾、○ 互動、L1 盾反、L2 拉弓、R2 衝刺 / 確認…）：
+        // 存檔裡的舊手把按鍵全部換成新預設（鍵盤的不動）
+        if (PlayerPrefs.GetInt(Prefs + "padVersion", 1) < 3)
+        {
+            layout = PadLayout.PS4;
+            PlayerPrefs.SetInt(Prefs + "padLayout", (int)layout);
+            pad = (string[])DefaultPad.Clone();
+            for (int i = 0; i < All.Length; i++) PlayerPrefs.SetString(Prefs + "pad." + All[i], pad[i]);
+            PlayerPrefs.SetInt(Prefs + "padVersion", 4);
+            PlayerPrefs.Save();
+        }
+        // 第 4 版：撒石粉預設改成 ○（原本手把沒綁）
+        if (PlayerPrefs.GetInt(Prefs + "padVersion", 1) < 4)
+        {
+            int powder = (int)GameAction.BatPowder;
+            if (string.IsNullOrEmpty(pad[powder])) { pad[powder] = DefaultPad[powder]; PlayerPrefs.SetString(Prefs + "pad." + GameAction.BatPowder, pad[powder]); }
+            PlayerPrefs.SetInt(Prefs + "padVersion", 4);
+            PlayerPrefs.Save();
         }
         scheme = (InputScheme)PlayerPrefs.GetInt(Prefs + "scheme", 0);
         lookSensitivity = PlayerPrefs.GetFloat(Prefs + "look", 1f);
         invertY = PlayerPrefs.GetInt(Prefs + "invertY", 0) == 1;
+        rumble = PlayerPrefs.GetInt(Prefs + "rumble", 1) == 1;
     }
 
     static void Save()
@@ -79,11 +127,13 @@ public static class InputBindings
         for (int i = 0; i < All.Length; i++)
         {
             PlayerPrefs.SetString(Prefs + "kb." + All[i], keyboard[i]);
-            PlayerPrefs.SetString(Prefs + "pad." + All[i], pad[i]);
+            PlayerPrefs.SetString(PadKey + All[i], pad[i]);
         }
+        PlayerPrefs.SetInt(Prefs + "padLayout", (int)layout);
         PlayerPrefs.SetInt(Prefs + "scheme", (int)scheme);
         PlayerPrefs.SetFloat(Prefs + "look", lookSensitivity);
         PlayerPrefs.SetInt(Prefs + "invertY", invertY ? 1 : 0);
+        PlayerPrefs.SetInt(Prefs + "rumble", rumble ? 1 : 0);
         PlayerPrefs.Save();
     }
 
@@ -93,6 +143,31 @@ public static class InputBindings
     /// <summary>鏡頭靈敏度倍率（滑鼠和右搖桿都套用）</summary>
     public static float LookSensitivity { get { EnsureLoaded(); return lookSensitivity; } set { EnsureLoaded(); lookSensitivity = Mathf.Clamp(value, .25f, 3f); Save(); } }
     public static bool InvertY { get { EnsureLoaded(); return invertY; } set { EnsureLoaded(); invertY = value; Save(); } }
+    /// <summary>手把震動（打中敵人、被打到時）</summary>
+    public static bool RumbleEnabled { get { EnsureLoaded(); return rumble; } set { EnsureLoaded(); rumble = value; Save(); } }
+
+    /// <summary>手把配置（PS4 / Xbox）。切換時換成那一套的按鍵（各自記住改過的鍵），按鍵名稱也跟著顯示 ×○□△ 或 ABXY</summary>
+    public static PadLayout Layout
+    {
+        get { EnsureLoaded(); return layout; }
+        set
+        {
+            EnsureLoaded();
+            if (value == layout) return;
+            Save();   // 先把目前這一套存起來
+            layout = value;
+            pad = (string[])DefaultPad.Clone();
+            for (int i = 0; i < All.Length; i++) pad[i] = PlayerPrefs.GetString(PadKey + All[i], pad[i]);
+            PadShouldersReserved = false;
+            Save();
+        }
+    }
+
+    /// <summary>PS4 的按鍵存在 "pad."（沿用原本的存檔），Xbox 存在 "padXbox."</summary>
+    static string PadKey => Prefs + (layout == PadLayout.Xbox ? "padXbox." : "pad.");
+
+    /// <summary>手把某顆鍵在目前配置下的名稱，例如 PadName("leftShoulder") = L1 / LB</summary>
+    public static string PadName(string control) => PathName("<Gamepad>/" + control);
 
     public static bool KeyboardEnabled => Scheme != InputScheme.Gamepad;
     public static bool PadEnabled => Scheme != InputScheme.KeyboardMouse && Gamepad.current != null;
@@ -140,7 +215,28 @@ public static class InputBindings
     }
 
     static ButtonControl KeyboardControl(GameAction a) => KeyboardEnabled ? Resolve(KeyboardPath(a)) : null;
-    static ButtonControl PadControl(GameAction a) => PadEnabled ? Resolve(PadPath(a)) : null;
+    static ButtonControl PadControl(GameAction a)
+    {
+        if (!PadEnabled) return null;
+        string path = PadPath(a);
+        // 技能 1 虛空連斬選好之後，L1 / R1 是它的蓄力 / 發射鍵：綁在 L1 / R1 上的其他動作（盾反、牽引…）暫時不算
+        // L1 + R1 一起按住 = 選技能 1：這時候也不算盾反、牽引（不然先按的那顆會順便觸發）
+        if ((PadShouldersReserved || PadShouldersChorded) && (path == "<Gamepad>/leftShoulder" || path == "<Gamepad>/rightShoulder")) return null;
+        return Resolve(path);
+    }
+
+    /// <summary>手把的 L1 / R1 正被技能 1 拿去瞄準 / 發射（VoidRendSkillDemo 設定）</summary>
+    public static bool PadShouldersReserved { get; set; }
+
+    /// <summary>手把 L1 和 R1 同時按住（選技能 1 的組合鍵）</summary>
+    public static bool PadShouldersChorded
+    {
+        get
+        {
+            var pad = PadEnabled ? Gamepad.current : null;
+            return pad != null && pad.leftShoulder.isPressed && pad.rightShoulder.isPressed;
+        }
+    }
 
     /// <summary>這一幀剛按下（鍵盤滑鼠或手把任一個）</summary>
     public static bool Pressed(GameAction a) => KeyboardPressed(a) || PadPressed(a);
@@ -166,6 +262,15 @@ public static class InputBindings
         if (device == "<Mouse>")
             return c switch { "leftButton" => "滑鼠左鍵", "rightButton" => "滑鼠右鍵", "middleButton" => "滑鼠中鍵",
                               "backButton" => "滑鼠側鍵 1", "forwardButton" => "滑鼠側鍵 2", _ => c };
+        if (device == "<Gamepad>" && Layout == PadLayout.PS4)
+            return c switch
+            {
+                "buttonSouth" => "×", "buttonEast" => "○", "buttonWest" => "□", "buttonNorth" => "△",
+                "leftShoulder" => "L1", "rightShoulder" => "R1", "leftTrigger" => "L2", "rightTrigger" => "R2",
+                "leftStickPress" => "L3", "rightStickPress" => "R3", "start" => "OPTIONS", "select" => "SHARE",
+                "dpad/up" => "十字 ↑", "dpad/down" => "十字 ↓", "dpad/left" => "十字 ←", "dpad/right" => "十字 →",
+                _ => c
+            };
         if (device == "<Gamepad>")
             return c switch
             {

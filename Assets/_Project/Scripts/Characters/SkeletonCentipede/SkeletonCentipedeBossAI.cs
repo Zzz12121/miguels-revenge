@@ -148,6 +148,10 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
     Vector3 homePos;
     Quaternion homeRot;
     float homeY;
+    /// <summary>軸心離地形表面多高（開場位置量的）。移動時用「這個位置的地形高度 + 它」當高度，爬坡不會鑽進地底</summary>
+    float groundOffset;
+    /// <summary>身體在自己座標裡往前 / 往後伸多長（開場時從模型量的）：頭和尾巴伸到坡上時整隻抬高，不會埋進去</summary>
+    float bodyFront, bodyBack;
     bool dead, phase2, dashing, dashHit;
     bool phase3, phase3Pending, isClone;
     float damageMultiplier = 1f;
@@ -162,6 +166,58 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
     float Speed => moveSpeed * (phase2 ? phase2SpeedMultiplier : 1f);
     float Cd(float seconds) => seconds * (phase2 ? phase2CooldownMultiplier : 1f);
+    // ===== 被玩家大招打中：僵持（SkillStun） =====
+    float stunUntil = float.NegativeInfinity;
+    bool inPhaseChange;
+    Coroutine stunRoutine;
+    /// <summary>正在僵持：不能動、不能出招 / 放技能，攻擊判定也不算</summary>
+    public bool Stunned => Time.time < stunUntil && !dead;
+    /// <summary>任何一隻百足駭骨（本體或分身）正在僵持：這段時間蝙蝠也不能攻擊</summary>
+    public static bool AnyStunned => stunnedCount > 0;
+    static int stunnedCount;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetStunStatics() => stunnedCount = 0;
+
+    /// <summary>
+    /// 被玩家的大招（虛空連斬、技能 2~4）打中：僵持 seconds 秒，不能移動、出招、放技能（殘影圍殺中斷），蝙蝠也不攻擊。
+    /// 連續打中會一直延長到最後一下之後 seconds 秒。換階段（二、三階段的吼叫 / 召喚分身）時不會被打斷。
+    /// </summary>
+    public void SkillStun(float seconds)
+    {
+        if (dead || !FightActive || inPhaseChange || seconds <= 0f) return;
+        stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+        if (stunRoutine == null) stunRoutine = StartCoroutine(StunRoutine());
+    }
+
+    IEnumerator StunRoutine()
+    {
+        stunCounted = true;
+        stunnedCount++;
+        if (brain != null) { StopCoroutine(brain); brain = null; }
+        if (encircle != null && encircle.IsRunning) encircle.Stop();
+        dashing = false;
+        CurrentAction = "僵持";
+        driver.SetMoveSpeed(0f);
+        driver.PlayHit();
+        driver.Animator.speed = 0.55f;   // 受擊動作放慢，看起來是被打到動彈不得
+        while (Stunned && FightActive) yield return null;
+        stunRoutine = null;
+        ClearStun();
+        // 僵持結束：重新開始思考（不再開場吼叫），技能冷卻照舊
+        if (FightActive && !dead && brain == null) brain = StartCoroutine(Brain(false));
+    }
+
+    /// <summary>解除僵持（結束、死亡、玩家倒下、重置時都會呼叫；StopAllCoroutines 不會跑 finally，所以要另外清）</summary>
+    void ClearStun()
+    {
+        if (stunRoutine != null) { StopCoroutine(stunRoutine); stunRoutine = null; }
+        stunUntil = float.NegativeInfinity;
+        if (stunCounted) { stunCounted = false; stunnedCount = Mathf.Max(0, stunnedCount - 1); }
+        if (driver != null && driver.Animator != null) driver.Animator.speed = 1f;
+    }
+    bool stunCounted;
+
     bool SkillBusy => (encircle != null && encircle.IsRunning) || (batSwarm != null && batSwarm.IsRunning) || (batGuard != null && batGuard.IsRunning);
     bool PlayerAlive => player != null && !player.IsDead;
 
@@ -176,6 +232,38 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         homePos = transform.position;
         homeRot = transform.rotation;
         homeY = homePos.y;
+        groundOffset = TerrainY(homePos, out float g) ? homeY - g : 0f;
+        MeasureBody();
+        // 死亡事件在 Awake 就訂閱、不跟著 OnEnable / OnDisable：
+        // 被玩家大招挑起來時這個元件會被暫時關掉，如果在空中被打死，大招結束後「死掉的敵人」不會再被打開，
+        // 用 OnEnable 訂閱就永遠收不到死亡 → 本體死了分身不會跟著倒、分身死了也不會沉下去。
+        health.OnDied += OnBossDied;
+        if (GetComponent<SkeletonCentipedeNoStand>() == null) gameObject.AddComponent<SkeletonCentipedeNoStand>();   // 玩家不能站在身上
+    }
+
+    void OnDestroy()
+    {
+        if (health != null) health.OnDied -= OnBossDied;
+    }
+
+    void MeasureBody()
+    {
+        bodyFront = bodyBack = 0f;
+        foreach (var r in GetComponentsInChildren<Renderer>())
+        {
+            if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer || !r.enabled) continue;
+            Bounds b = r.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                float z = transform.InverseTransformPoint(corner).z;
+                bodyFront = Mathf.Max(bodyFront, z);
+                bodyBack = Mathf.Min(bodyBack, z);
+            }
+        }
+        // 只算到 8 成：模型最尖端（鐮刀、尾巴尖）擦到草地沒關係，不要為了一點點就整隻浮起來
+        bodyFront *= 0.8f;
+        bodyBack *= 0.8f;
     }
 
     void OnEnable()
@@ -183,9 +271,10 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         driver.AttackImpact += OnAttackImpact;
         driver.DashStart += OnDashStart;
         driver.DashEnd += OnDashEnd;
-        health.OnDied += OnBossDied;
         health.OnDamaged += OnBossDamaged;
         if (rangedVfx != null) rangedVfx.ProjectileHit += OnProjectileHit;
+        // 被大招挑起來時這個元件會暫時關掉，關著的時候被打死就收不到 OnDied：重新開啟時補走死亡流程
+        if (health.IsDead && !dead && FightActive) OnBossDied();
     }
 
     void OnDisable()
@@ -193,9 +282,9 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         driver.AttackImpact -= OnAttackImpact;
         driver.DashStart -= OnDashStart;
         driver.DashEnd -= OnDashEnd;
-        health.OnDied -= OnBossDied;
         health.OnDamaged -= OnBossDamaged;
         if (rangedVfx != null) rangedVfx.ProjectileHit -= OnProjectileHit;
+        ClearStun();
         if (player != null) { player.OnDied -= OnPlayerDied; player.OnRespawned -= OnPlayerRespawned; }
     }
 
@@ -237,10 +326,14 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             return;
         }
 
+        if (Stunned) return;   // 僵持中：不移動（StunRoutine 處理）
+
         if (dashing)
         {
             Vector3 p = transform.position + dashDir * dashSpeed * Time.deltaTime;
-            transform.position = ClampToArena(p);
+            p = ClampToArena(p);
+            p.y = Mathf.Max(p.y, RestY(p));   // 衝刺上坡：貼著地面，不鑽進去
+            transform.position = p;
             if (!dashHit && PlayerAlive && FlatDistance(player.transform.position, transform.position) < dashContactRadius)
             {
                 dashHit = true;
@@ -249,9 +342,11 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         }
         else if (!SkillBusy)
         {
-            // 技能（跳躍）結束後回到地面高度
+            // 貼著地形走：比地面低（爬坡）→ 直接拉上來；比地面高（技能跳起來、下坡）→ 往下落
             var pos = transform.position;
-            if (Mathf.Abs(pos.y - homeY) > 0.001f) transform.position = new Vector3(pos.x, Mathf.MoveTowards(pos.y, homeY, 20f * Time.deltaTime), pos.z);
+            float want = RestY(pos);
+            if (pos.y < want) transform.position = new Vector3(pos.x, want, pos.z);
+            else if (pos.y - want > 0.001f) transform.position = new Vector3(pos.x, Mathf.MoveTowards(pos.y, want, 20f * Time.deltaTime), pos.z);
         }
     }
 
@@ -270,12 +365,12 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             GameAudio.PlayBattleMusic(GameAudio.Pick(bossMusic, "Music/boss_fight_music"), musicVolume, 1.5f);
             OnFightStarted?.Invoke();
         }
-        brain = StartCoroutine(Brain());
+        brain = StartCoroutine(Brain(true));
     }
 
-    IEnumerator Brain()
+    IEnumerator Brain(bool opening)
     {
-        if (!isClone)
+        if (opening && !isClone)
         {
             CurrentAction = "開場吼叫";
             yield return FacePlayer(0.6f);
@@ -296,13 +391,17 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
             if (phase3Pending && !phase3)
             {
+                inPhaseChange = true;
                 yield return EnterPhase3();
+                inPhaseChange = false;
                 continue;
             }
 
             if (!isClone && !phase2 && health.Health <= health.maxHealth * phase2Threshold)
             {
+                inPhaseChange = true;
                 yield return EnterPhase2();
+                inPhaseChange = false;
                 continue;
             }
 
@@ -469,7 +568,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         {
             float side = cloneCount == 1 ? 1f : Mathf.Lerp(-1f, 1f, i / (float)(cloneCount - 1));
             Vector3 pos = ClampToArena(transform.position + transform.right * side * cloneSpawnOffset + transform.forward * 2f);
-            pos.y = homeY;
+            pos.y = RestY(pos);
 
             var go = Instantiate(gameObject, pos, transform.rotation);
             go.name = $"{name} (Clone {i + 1})";
@@ -477,6 +576,10 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             var clone = go.GetComponent<SkeletonCentipedeBossAI>();
             clone.InitAsClone(this, health.maxHealth * cloneHealthFraction, cloneDamageMultiplier);
             clones.Add(clone);
+            // 分身的血條：浮在頭上（本體的血條在畫面下方）
+            var bar = go.GetComponent<SkeletonCentipedeCloneHealthBar>();
+            if (bar == null) bar = go.AddComponent<SkeletonCentipedeCloneHealthBar>();
+            bar.label = cloneCount == 1 ? "分身" : $"分身 {i + 1}";
 
             if (batSwarm != null && batSwarm.summonEffectPrefab != null)
             {
@@ -497,6 +600,9 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         homePos = transform.position;
         homeRot = transform.rotation;
         homeY = owner.homeY;
+        groundOffset = owner.groundOffset;
+        bodyFront = owner.bodyFront;   // 自己座標的長度：分身縮小了，換成世界座標時會自動跟著變短
+        bodyBack = owner.bodyBack;
 
         health.maxHealth = maxHealth;
         health.ResetHealth();
@@ -511,7 +617,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
     bool AnyCloneAlive()
     {
-        foreach (var c in clones) if (c != null && !c.dead) return true;
+        foreach (var c in clones) if (c != null && !c.dead && !c.health.IsDead) return true;   // 也直接看血量（漏接死亡事件時不會卡住）
         return false;
     }
 
@@ -593,7 +699,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
     void OnAttackImpact(string attack)
     {
-        if (!FightActive || dead || !PlayerAlive) return;
+        if (!FightActive || dead || !PlayerAlive || Stunned) return;
         switch (attack)
         {
             case "Slash":
@@ -613,7 +719,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             case "TailWhip":
             {
                 float d = FlatDistance(player.transform.position, transform.position);
-                bool jumped = player.FeetY - homeY > tailJumpFeetClearance;
+                bool jumped = player.FeetY - (TerrainY(player.transform.position, out float pg) ? pg : homeY - groundOffset) > tailJumpFeetClearance;
                 if (d <= tailRadius && !jumped)
                 {
                     Vector3 away = player.transform.position - transform.position;
@@ -667,6 +773,9 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
 
     void OnBossDied()
     {
+        if (dead) return;
+        ClearStun();
+        inPhaseChange = false;
         dead = true;
         FightActive = false;
         dashing = false;
@@ -676,7 +785,8 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         CurrentAction = "擊敗";
         if (isClone)
         {
-            Destroy(gameObject, 6f); // 死亡動畫播完後消失
+            // 死亡動畫播完後碎成灰消散，然後消失（SkeletonCentipedeDissolveVfx）
+            StartCoroutine(SkeletonCentipedeDissolveVfx.For(gameObject).Run(cloneDissolveDelay));
             return;
         }
         health.Invulnerable = false;
@@ -686,8 +796,14 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         OnDefeated?.Invoke();
     }
 
+    [Header("三階段：分身倒下後消散")]
+    [Tooltip("倒下後等多久才開始消散（讓死亡動畫先播完）")]
+    public float cloneDissolveDelay = 2.8f;
+
     void OnPlayerDied()
     {
+        ClearStun();
+        inPhaseChange = false;
         if (dead) return;
         FightActive = false;
         dashing = false;
@@ -821,6 +937,40 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         Vector3 to = player.transform.position - transform.position;
         to.y = 0f;
         return Vector3.SignedAngle(transform.forward, to, Vector3.up);
+    }
+
+    /// <summary>站在 p 這個位置時軸心該在的高度（地形表面 + groundOffset；不在地形上就用開場高度）</summary>
+    /// 沿著身體前後取幾個點，用最高的那個：頭伸到坡上（例如玩家站在場地邊的土坡上）時整隻抬高，頭不會埋進坡裡
+    public float RestY(Vector3 p)
+    {
+        if (!TerrainY(p, out float best)) return homeY;
+        Vector3 fwd = transform.forward; fwd.y = 0f;
+        if (fwd.sqrMagnitude > 0.0001f)
+        {
+            fwd.Normalize();
+            float scale = transform.lossyScale.z;
+            for (int i = 0; i < 4; i++)
+            {
+                float z = i switch { 0 => bodyFront, 1 => bodyFront * 0.5f, 2 => bodyBack * 0.5f, _ => bodyBack } * scale;
+                if (TerrainY(p + fwd * z, out float g)) best = Mathf.Max(best, g);
+            }
+        }
+        return best + groundOffset;
+    }
+
+    /// <summary>p 正下方的地形（Terrain）表面高度</summary>
+    public static bool TerrainY(Vector3 p, out float y)
+    {
+        y = 0f;
+        foreach (var t in Terrain.activeTerrains)
+        {
+            if (t == null || t.terrainData == null) continue;
+            Vector3 o = t.transform.position, size = t.terrainData.size;
+            if (p.x < o.x || p.z < o.z || p.x > o.x + size.x || p.z > o.z + size.z) continue;
+            y = t.SampleHeight(p) + o.y;
+            return true;
+        }
+        return false;
     }
 
     Vector3 ClampToArena(Vector3 p)

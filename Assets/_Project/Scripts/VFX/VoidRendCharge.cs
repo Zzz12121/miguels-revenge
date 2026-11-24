@@ -46,10 +46,85 @@ public sealed partial class VoidRendSkillDemo
     /// <summary>蓄力進度 0～1</summary>
     public float ChargeProgress => charging ? Mathf.Clamp01((Time.time - chargeStart) / chargeSeconds) : 0f;
 
+    // ── 手把：L1 + R1 一起按（或十字鍵 ↑）先選技能 1 → 兩顆都放開 → 按住 L1 蓄力瞄準 → 蓄滿後 R1 發射 ──
+    // 選了技能 1 之後，L1 / R1 暫時不當衝刺 / 牽引用（PadShouldersReserved），出招、再按一次 ↑、按 ○ 或改選別的技能就取消。
+    bool padVoidRendArmed, padCharge;
+    static VoidRendSkillDemo padShoulderOwner;
+    public bool PadVoidRendArmed => padVoidRendArmed;
+
+    /// <summary>選了技能 1：手把的 L1 / R1 交給它（InputBindings 這時不把 L1 / R1 算給盾反、牽引等動作）</summary>
+    void SetPadVoidRendArmed(bool armed)
+    {
+        padVoidRendArmed = armed;
+        if (armed) padShoulderOwner = this;
+        else if (padShoulderOwner == this) padShoulderOwner = null;
+        InputBindings.PadShouldersReserved = padShoulderOwner != null;
+    }
+
+    static bool PadL1Held => PadInput.Pad?.leftShoulder.isPressed ?? false;
+    static bool PadBothShouldersHeld => PadInput.Pad != null && PadInput.Pad.leftShoulder.isPressed && PadInput.Pad.rightShoulder.isPressed;
+
+    // L1 + R1 一起按：padChordLatched = 這次一起按住已經算過了（兩顆都放開才算下一次）
+    //                padChordPending = 一起按了、還沒交給技能 1 處理
+    //                padWaitShoulderRelease = 剛用 L1 + R1 選好：要等兩顆都放開，才開始讀 L1 蓄力（不然選好的瞬間就開始蓄力）
+    bool padChordLatched, padChordPending, padWaitShoulderRelease;
+
+    /// <summary>每幀都要跑（在任何提早 return 之前）：偵測 L1 + R1 一起按</summary>
+    void TickPadShoulderChord()
+    {
+        var pad = PadInput.Pad;
+        if (pad == null) { padChordLatched = padChordPending = padWaitShoulderRelease = false; return; }
+        bool l = pad.leftShoulder.isPressed, r = pad.rightShoulder.isPressed;
+        if (!l && !r) { padChordLatched = false; padWaitShoulderRelease = false; }
+        if (l && r && !padChordLatched)
+        {
+            padChordLatched = true;
+            padChordPending = true;
+            // 先按 R1 的話牽引已經開始瞄準了：一起按 = 要放技能，把牽引的瞄準取消掉
+            if (!charging && !playing && !IsTargeting && SkillAimCancellation.IsAiming) SkillAimCancellation.Cancel();
+        }
+    }
+    static bool PadR1Pressed => PadInput.Pad?.rightShoulder.wasPressedThisFrame ?? false;
+
+    /// <summary>還沒出招時的手把技能 1 輸入。回傳 true = 這一幀的輸入已經處理掉了（不要再讀別的技能鍵）</summary>
+    bool UpdatePadVoidRendSelection()
+    {
+        if (PadInput.Pad == null) { if (padVoidRendArmed) SetPadVoidRendArmed(false); return false; }
+        if (padChordPending)
+        {
+            padChordPending = false;
+            if (PadBothShouldersHeld)
+            {
+                if (!padVoidRendArmed && PlayerSkillAvailability.TryUse() && SkillGauge.TryBegin(this)) SetPadVoidRendArmed(true);   // 技能條沒滿選不了
+                if (padVoidRendArmed) padWaitShoulderRelease = true;
+                return true;
+            }
+        }
+        if (padWaitShoulderRelease && padVoidRendArmed) return true;   // 等 L1 / R1 都放開
+        if (InputBindings.PadPressed(GameAction.Skill1))
+        {
+            if (padVoidRendArmed) SetPadVoidRendArmed(false);           // 再按一次 ↑ = 取消選擇
+            else if (PlayerSkillAvailability.TryUse() && SkillGauge.TryBegin(this)) SetPadVoidRendArmed(true);   // 技能條沒滿選不了
+            return true;
+        }
+        if (!padVoidRendArmed) return false;
+        if (PadInput.CancelPressed || InputBindings.PadPressed(GameAction.Skill2) || InputBindings.PadPressed(GameAction.Skill3) ||
+            InputBindings.PadPressed(GameAction.Skill4))
+        { SetPadVoidRendArmed(false); return false; }
+        if (PadL1Held && PlayerSkillAvailability.TryUse())
+        {
+            BeginCharge();
+            padCharge = charging;
+            return true;
+        }
+        return false;
+    }
+
     bool CanUseChargeStart => practiceController != null && casterAnimator != null && casterAnimator.isHuman;
 
     void BeginCharge()
     {
+        if (!playing && !charging && !SkillGauge.TryBegin(this)) return;   // 技能條沒滿：不能蓄力
         if (!CanUseChargeStart) { BeginTargeting(PreviewSkill.VoidRend); return; } // 舊場景：原本的時間暫停
         if (playing || charging || !SkillAimCancellation.Register(CancelCharge)) return;
         charging = true; chargeFull = false;
@@ -93,7 +168,13 @@ public sealed partial class VoidRendSkillDemo
         if (!PlayerSkillAvailability.TryUse() || GameUI.OverlayOpen || !practiceController.isActiveAndEnabled || practiceController.IsStunned)
         { CancelCharge(); return; }
         if (Keyboard.current.escapeKey.wasPressedThisFrame) { SkillAimCancellation.CancelForEscape(); return; }
-        if (!Keyboard.current.digit1Key.isPressed) { CancelCharge(); return; } // 放開 1 = 取消
+        if (padCharge)
+        {
+            // 手把：放開 L1 = 取消蓄力（技能 1 仍然選著，可以再按住 L1）；按 ○ = 整個取消
+            if (PadInput.CancelPressed) { CancelCharge(); SetPadVoidRendArmed(false); return; }
+            if (!PadL1Held) { CancelCharge(); return; }
+        }
+        else if (!Keyboard.current.digit1Key.isPressed) { CancelCharge(); return; } // 放開 1 = 取消
 
         float p = ChargeProgress;
         if (p >= 1f && !chargeFull)
@@ -140,8 +221,9 @@ public sealed partial class VoidRendSkillDemo
                 .008f, .018f + .02f * p, Color.Lerp(chargeColor, pale, p));
         }
 
-        // 蓄滿 + 有對準的目標：左鍵出招
-        if (chargeFull && chargeSelection.IsValid && Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+        // 蓄滿 + 有對準的目標：左鍵出招（手把：R1）
+        bool fire = padCharge ? PadR1Pressed : Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame;
+        if (chargeFull && chargeSelection.IsValid && fire)
             LaunchFromCharge();
     }
 
@@ -173,7 +255,8 @@ public sealed partial class VoidRendSkillDemo
     void EndChargeState(bool launching)
     {
         if (!charging) return;
-        charging = false;
+        charging = false; padCharge = false;
+        if (launching) SetPadVoidRendArmed(false);   // 出招了：技能 1 的選擇用掉
         SkillAimCancellation.Release(CancelCharge);
         if (practiceController != null)
         {
@@ -205,6 +288,8 @@ public sealed partial class VoidRendSkillDemo
     {
         TargetSelection selection = chargeSelection;
         EndChargeState(true);
+        SkillGauge.Consume(this);           // 出招了：技能條用掉（蓄力到一半取消不會扣）
+        SkillDamageCap.BeginCast(this);
         calligraphyCast = CalligraphyAttackContext.NewCast();
         calligraphySkill = (int)PreviewSkill.VoidRend;
         calligraphyHit = 0;
@@ -247,7 +332,24 @@ public sealed partial class VoidRendSkillDemo
         GUI.DrawTexture(new Rect(bar.x, bar.y, bar.width * p, bar.height), Texture2D.whiteTexture);
         GUI.color = old;
         GUIStyle hint = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 15, normal = { textColor = new Color(.85f, .95f, 1f, .9f) } };
-        string text = !chargeFull ? "蓄力中…（放開 1 取消）" : chargeSelection.IsValid ? "左鍵：虛空連斬" : "把準心對準目標";
+        string text = padCharge
+            ? (!chargeFull ? $"蓄力中…（放開 {InputBindings.PadName("leftShoulder")} 取消）" : chargeSelection.IsValid ? $"{InputBindings.PadName("rightShoulder")}：虛空連斬" : "用右搖桿把準心對準目標")
+            : (!chargeFull ? "蓄力中…（放開 1 取消）" : chargeSelection.IsValid ? "左鍵：虛空連斬" : "把準心對準目標");
         GUI.Label(new Rect(c.x - 150f, c.y + 34f, 300f, 24f), text, hint);
+    }
+
+    /// <summary>手把選了技能 1、還沒按住 L1：畫面下方中間提示下一步</summary>
+    void DrawPadVoidRendArmedHint()
+    {
+        if (!padVoidRendArmed || charging || playing || GameUI.OverlayOpen) return;
+        GUIStyle hint = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontSize = 17, fontStyle = FontStyle.Bold, normal = { textColor = pale } };
+        Rect r = new Rect(Screen.width * .5f - 230f, Screen.height - 150f, 460f, 34f);
+        Color old = GUI.color;
+        GUI.color = new Color(0f, 0f, 0f, .55f); GUI.DrawTexture(r, Texture2D.whiteTexture);
+        GUI.color = old;
+        string L1 = InputBindings.PadName("leftShoulder"), R1 = InputBindings.PadName("rightShoulder");
+        GUI.Label(r, padWaitShoulderRelease
+            ? $"虛空連斬：先放開 {L1} {R1}，再按住 {L1} 蓄力"
+            : $"虛空連斬：按住 {L1} 蓄力瞄準、{R1} 發射（{InputBindings.PadName("buttonEast")} 取消）", hint);
     }
 }

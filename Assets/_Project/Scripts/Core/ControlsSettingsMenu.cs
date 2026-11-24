@@ -33,7 +33,7 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
     readonly Dictionary<GameAction, Text> bindingTexts = new Dictionary<GameAction, Text>();
     readonly Dictionary<GameAction, Button> bindingButtons = new Dictionary<GameAction, Button>();
     readonly List<(InputScheme scheme, Button button)> schemeButtons = new List<(InputScheme, Button)>();
-    Button keyboardTab, padTabButton, invertButton;
+    Button keyboardTab, padTabButton, invertButton, rumbleButton, layoutButton;
     Text lookValue, statusText;
 
     static Color Selected => UIKit.TabOn;
@@ -91,10 +91,13 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
         lookValue = UIKit.Label("LookValue", root, "", 30, Color.white, new Vector2(-280f, 278f), new Vector2(120f, 56f));
         UIKit.Button("LookUp", root, "＋", new Vector2(-180f, 278f), new Vector2(70f, 56f), () => ChangeLook(.1f), 34);
         invertButton = UIKit.Button("Invert", root, "", new Vector2(120f, 278f), new Vector2(360f, 56f), ToggleInvert, 28);
+        rumbleButton = UIKit.Button("Rumble", root, "", new Vector2(480f, 278f), new Vector2(320f, 56f), ToggleRumble, 28);
 
         // 分頁
         keyboardTab = UIKit.Button("TabKeyboard", root, "鍵盤滑鼠按鍵", new Vector2(-160f, 205f), new Vector2(300f, 60f), () => SetTab(false), 30);
         padTabButton = UIKit.Button("TabPad", root, "手把按鍵", new Vector2(160f, 205f), new Vector2(300f, 60f), () => SetTab(true), 30);
+        // 手把配置：PS4 / Xbox 兩套預設按鍵（各自記住改過的鍵）
+        layoutButton = UIKit.Button("PadLayout", root, "", new Vector2(520f, 205f), new Vector2(330f, 60f), ToggleLayout, 28);
 
         // 按鍵列表：兩欄
         var actions = InputBindings.All;
@@ -103,10 +106,12 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
         {
             var a = actions[i];
             int col = i / perColumn, row = i % perColumn;
-            float x = col == 0 ? -430f : 430f, y = 135f - row * 58f;
+            // 動作變多時把行距縮小，最後一行不要壓到下面的狀態文字（y = -270）
+            float step = Mathf.Min(58f, 375f / Mathf.Max(1, perColumn - 1)), h = Mathf.Min(50f, step - 4f);
+            float x = col == 0 ? -430f : 430f, y = 135f - row * step;
             UIKit.Label("Label_" + a, root, InputBindings.Label(a), 26, new Color(0.9f, 0.92f, 1f), new Vector2(x - 150f, y),
-                        new Vector2(320f, 50f), TextAnchor.MiddleRight);
-            var b = UIKit.Button("Bind_" + a, root, "", new Vector2(x + 140f, y), new Vector2(240f, 50f), () => BeginListen(a), 26);
+                        new Vector2(320f, h), TextAnchor.MiddleRight);
+            var b = UIKit.Button("Bind_" + a, root, "", new Vector2(x + 140f, y), new Vector2(240f, h), () => BeginListen(a), 26);
             bindingButtons[a] = b;
             bindingTexts[a] = b.GetComponentInChildren<Text>();
         }
@@ -142,6 +147,8 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
         Tint(padTabButton, padTab);
         lookValue.text = $"{InputBindings.LookSensitivity:0.0}x";
         invertButton.GetComponentInChildren<Text>().text = "鏡頭上下反轉：" + (InputBindings.InvertY ? "開" : "關");
+        rumbleButton.GetComponentInChildren<Text>().text = "手把震動：" + (InputBindings.RumbleEnabled ? "開" : "關");
+        layoutButton.GetComponentInChildren<Text>().text = "手把配置：" + (InputBindings.Layout == PadLayout.Xbox ? "Xbox" : "PS4");
         foreach (var a in InputBindings.All)
             bindingTexts[a].text = listening && a == listenAction ? "按下新按鍵…" : InputBindings.DisplayName(a, padTab);
         if (!listening && statusText != null && !statusText.text.StartsWith("沒有偵測到"))
@@ -172,6 +179,24 @@ public sealed class ControlsSettingsMenu : MonoBehaviour
     {
         InputBindings.InvertY = !InputBindings.InvertY;
         Refresh();
+    }
+
+    void ToggleRumble()
+    {
+        InputBindings.RumbleEnabled = !InputBindings.RumbleEnabled;
+        if (InputBindings.RumbleEnabled) PadRumble.Pulse(.4f, .4f, .25f);   // 打開時震一下讓玩家知道
+        Refresh();
+    }
+
+    void ToggleLayout()
+    {
+        InputBindings.Layout = InputBindings.Layout == PadLayout.Xbox ? PadLayout.PS4 : PadLayout.Xbox;
+        listening = false;
+        padTab = true;
+        Refresh();
+        statusText.text = InputBindings.Layout == PadLayout.Xbox
+            ? "換成 Xbox 配置：A 跳躍、B 翻滾、X 攻擊、Y 互動、LB 衝刺、RB 牽引、LT 格擋 / 拉弓、RT 切換武器"
+            : "換成 PS4 配置：△ 跳躍、× 翻滾、□ 攻擊、○ 互動 / 撒石粉、L1 盾反、R1 牽引、L2 拉弓、R2 衝刺 / 確認";
     }
 
     void ResetCurrent()

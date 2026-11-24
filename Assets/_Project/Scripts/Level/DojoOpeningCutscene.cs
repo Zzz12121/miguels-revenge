@@ -12,7 +12,7 @@ using UnityEngine.InputSystem;
 ///      老師父跟不上就直接移到下一個鏡頭該在的位置。門開了之後玩家也慢慢往庭院中間走。
 ///   4. 高空俯視：兩人慢慢走近，在庭院中間（MeetPoint）隔一段距離停下 → 劇情對話（StoryDialogue，跟沙漠商人同一套）
 ///   5. 對話結束：鏡頭從高空飛回玩家背後、可以操作 → 老師父開始 Boss 戰（DojoMasterBoss，血條 / 音樂跟森林島一樣）
-/// 演出期間玩家不能操作；對話前按 Space 可以跳過鏡頭直接到對話。
+/// 演出期間玩家不能操作；對話前按 Space（手把 A / PS4 ×）可以跳過鏡頭直接到對話。
 /// 選單 GeminiGrowUp > 道場 > 建立開場演出 會把這個物件、路線、鏡頭都擺好，之後可以在場景裡直接拖動調整。
 /// </summary>
 [DisallowMultipleComponent]
@@ -391,8 +391,9 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
         {
             // 門轉完之後先關掉門的互動（不然演出中會跳出「關閉大門」、按 E 會把門關上）
             if (gate != null && gate.enabled && !gate.IsMoving) gate.enabled = false;
+            // 跳過：鍵盤 Space / 手把 A（PS4 ×）
             if (allowSkip && !skip && !inDialogue && !GameUI.OverlayOpen
-                && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame)
+                && ((Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame) || PadInput.ConfirmPressed))
                 skip = true;
             if (!explorationFirst && !playerWalking && !playerArrived && !inDialogue && Time.time - playStartedAt >= playerWalkDelay) StartPlayerWalk();
             UpdatePlayerWalk();
@@ -1248,7 +1249,7 @@ public sealed class DojoOpeningCutscene : MonoBehaviour
             float x = Screen.width - 32f - w, y = Screen.height - h * 0.5f - 12f;
             GUI.color = new Color(1f, 1f, 1f, 0.75f);
             GUI.Label(new Rect(x, y, w, 24f), action, style);
-            GameUI.Key(new Rect(x - 64f, y, 58f, 24f), "Space", 0.75f);
+            GameUI.Key(new Rect(x - 64f, y, 58f, 24f), PadInput.UsingPadRecently ? InputBindings.PathName("<Gamepad>/buttonSouth") : "Space", 0.75f);
             GUI.color = Color.white;
         }
     }

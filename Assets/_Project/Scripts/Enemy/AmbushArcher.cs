@@ -56,8 +56,8 @@ public class AmbushArcher : MonoBehaviour, IDamageable
     [Header("投降")]
     [Tooltip("離投降的弓箭手多近才能接過弓 (m)")]
     public float handOverRange = 3.2f;
-    [Tooltip("說完話之後，在附近撒幾顆可以磨成石粉的石頭")]
-    public int powderStones = 6;
+    [Tooltip("說完話之後，在附近撒幾顆可以磨成石粉的石頭（至少 BatPowder.Max 顆，剛好能帶滿）")]
+    public int powderStones = 10;
     [Tooltip("石頭撒在投降位置的多遠範圍內 (m)")]
     public Vector2 powderStoneRadius = new Vector2(3f, 11f);
     public string speakerName = "投降的弓箭手";
@@ -784,8 +784,13 @@ public class AmbushArcher : MonoBehaviour, IDamageable
         }, () =>
         {
             PlayerLoadout.GrantBow();
-            int n = PowderStone.Scatter(transform.position, powderStones, powderStoneRadius.x, powderStoneRadius.y);
-            if (n < powderStones) PowderStone.Scatter(hidePoint, powderStones - n, 1.5f, powderStoneRadius.y, 917);
+            // 至少撒到能把石粉帶滿（場景裡舊的設定值可能比較少）
+            int want = Mathf.Max(powderStones, BatPowder.Max);
+            int n = PowderStone.Scatter(transform.position, want, powderStoneRadius.x, powderStoneRadius.y);
+            if (n < want) n += PowderStone.Scatter(hidePoint, want - n, 1.5f, powderStoneRadius.y, 917);
+            // 附近地形太亂放不下：範圍放大再撒，確保數量足夠
+            for (int pass = 1; n < want && pass <= 3; pass++)
+                n += PowderStone.Scatter(transform.position, want - n, 1.5f, powderStoneRadius.y * (1f + pass * 0.6f), 917 + pass * 131);
             StartCoroutine(FleeRoutine());
         });
     }

@@ -77,11 +77,13 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdatePreviewInputAndTargeting()
     {
+        TickPadShoulderChord();   // 手把 L1 + R1 一起按（每幀都要偵測，才知道什麼時候放開）
         if(RangeInputSettings.InputBlocked)return;
         if(CalligraphyPaintingWorld.BlocksTether)
         {
             if(IsTargeting)CancelTargeting();
             if(charging)CancelCharge();
+            SetPadVoidRendArmed(false);
             return;
         }
         if (Keyboard.current == null) return;
@@ -105,9 +107,11 @@ public sealed partial class VoidRendSkillDemo
             // Dialogue/shop already owns movement input and the number keys.
             if (GameUI.OverlayOpen || (practiceController != null &&
                 (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
-            // 技能 1：按住 1 蓄力（VoidRendCharge 用 1 鍵判斷放開，所以固定用鍵盤的 1）
-            // 技能 2~4：預設 2~4 / 手把十字鍵 ↑ → ↓，可以在暫停選單「設定」裡改
-            if (Keyboard.current.digit1Key.wasPressedThisFrame) { if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
+            // 技能 1：鍵盤固定「按住 1 蓄力、左鍵出招」
+            // 技能 2~4：預設 2~4 / 手把十字鍵 ← → ↓，可以在暫停選單「設定」裡改
+            // 手把：L1 + R1 一起按（或十字鍵 ↑）選技能 1 → 放開 → 按住 L1 蓄力瞄準 → R1 發射（見 VoidRendCharge）
+            if (Keyboard.current.digit1Key.wasPressedThisFrame) { SetPadVoidRendArmed(false); if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
+            else if (UpdatePadVoidRendSelection()) { }
             else if (InputBindings.Pressed(GameAction.Skill2)) BeginTargeting(PreviewSkill.CatPounce);
             else if (InputBindings.Pressed(GameAction.Skill3)) BeginTargeting(PreviewSkill.CrescentDash);
             else if (InputBindings.Pressed(GameAction.Skill4)) BeginTargeting(PreviewSkill.SkyfallCross);
@@ -160,6 +164,7 @@ public sealed partial class VoidRendSkillDemo
     void BeginTargeting(PreviewSkill skill)
     {
         if(!PlayerSkillAvailability.TryUse())return;
+        if (!playing && skill != PreviewSkill.None && !SkillGauge.TryBegin(this)) return;   // 技能條沒滿
         if (playing || skill == PreviewSkill.None || Time.timeScale <= 0f ||
             !SkillAimCancellation.Register(CancelTargeting)) return;
         pendingSkill = skill;
@@ -210,6 +215,8 @@ public sealed partial class VoidRendSkillDemo
             target = selectedTarget;
             PrepareSkillOrigin();
             SuspendPracticeControlsForSkill();
+            SkillGauge.Consume(this);           // 真的放出去了：技能條用掉
+            SkillDamageCap.BeginCast(this);
 
             switch (selectedSkill)
             {
@@ -338,10 +345,24 @@ public sealed partial class VoidRendSkillDemo
         }
     }
 
+    PlayerHealth castProtected;
+
+    /// <summary>
+    /// 施放技能（虛空連斬、技能 2~4）從出招到收招都無敵：PlayerHealth.TakeDamage 會擋掉所有傷害，
+    /// 蝠群襲擊、護體蝙蝠、Boss 的招式都打不到。用 caster 當 owner，跟前搖的 SetWindupInvulnerability（owner = this）分開。
+    /// </summary>
+    void SetCastInvulnerability(bool value)
+    {
+        if (value && castProtected == null && caster) castProtected = caster.GetComponent<PlayerHealth>();
+        if (castProtected) castProtected.SetSkillInvulnerability(caster ? (Object)caster : this, value);
+        if (!value) castProtected = null;
+    }
+
     void SuspendPracticeControlsForSkill()
     {
         if (practiceControlsSuspended) return;
         practiceControlsSuspended = true;
+        SetCastInvulnerability(true);   // 大招整段無敵（蝙蝠、Boss 招式都打不到），收招時解除
         if (practiceController != null)
         {
             practiceController.inputEnabled = false;
@@ -372,6 +393,7 @@ public sealed partial class VoidRendSkillDemo
     void RestorePracticeControlsAfterSkill()
     {
         practiceControlsSuspended = false;
+        SetCastInvulnerability(false);
         if (practiceBody != null) practiceBody.enabled = true;
         if (practiceController != null)
         {
@@ -572,8 +594,10 @@ public sealed partial class VoidRendSkillDemo
         if (target == null || amount <= 0f) return;
         IDamageable damageable = target.GetComponentInParent<IDamageable>();
         if (damageable == null || damageable.IsDead) return;
+        float dealt;
         using (CalligraphyAttackContext.Enter(calligraphyCast, calligraphySkill, ++calligraphyHit))
-            damageable.TakeDamage(amount, TargetAimPosition());
+            dealt = SkillDamageCap.Deal(this, damageable, amount, TargetAimPosition());   // 強敵的技能傷害上限
+        if (dealt > 0f) PadRumble.Hit(1.2f);   // 手把震動
     }
 
     void FinishStandaloneSkill(Vector3 position, Quaternion rotation, bool sheathe = true)
@@ -592,6 +616,20 @@ public sealed partial class VoidRendSkillDemo
     /// <summary>畫面下方的操作說明要不要展開（平常收起來，按 F1 / 手把 View 鍵切換）</summary>
     static bool controlsExpanded;
     static int controlsToggledFrame = -1;
+
+    /// <summary>操作說明的技能那一行；手把沒綁的技能（預設技能 2~4）不列出來</summary>
+    static string SkillHelpLine(bool pad, System.Func<GameAction, string> N)
+    {
+        if (!pad) return "1：虛空連斬（按住蓄力、左鍵出招）　" + $"{N(GameAction.Skill2)}：貓躍雙斬　{N(GameAction.Skill3)}：月弧突進　{N(GameAction.Skill4)}：空中十字斬（技能需滑鼠選取）";
+        var line = new System.Text.StringBuilder();
+        string L1 = InputBindings.PadName("leftShoulder"), R1 = InputBindings.PadName("rightShoulder");
+        line.Append($"{L1}+{R1} 一起按選虛空連斬 → 按住 {L1} 蓄力、{R1} 出招　");
+        bool others = false;
+        foreach (var (a, name) in new[] { (GameAction.Skill2, "貓躍雙斬"), (GameAction.Skill3, "月弧突進"), (GameAction.Skill4, "空中十字斬") })
+            if (!string.IsNullOrEmpty(InputBindings.PadPath(a))) { line.Append($"{N(a)}：{name}　"); others = true; }
+        if (others) line.Append($"（右搖桿瞄準、{N(GameAction.AimConfirm)} 確認、{InputBindings.PadName("buttonEast")} 取消）");
+        return line.ToString();
+    }
 
     void DrawTargetingUI()
     {
@@ -634,8 +672,7 @@ public sealed partial class VoidRendSkillDemo
             + (RangeInputSettings.IsRange(owner) && !pad ? "　K：按鍵設定" : "　Esc / Start：暫停・設定");
         GUI.Label(new Rect(31f, Screen.height - 83f, Screen.width-50f, 24f), moveLine, controls);
         GUI.Label(new Rect(31f, Screen.height - 56f, Screen.width-50f, 24f),
-            "1：虛空連斬（按住蓄力、左鍵出招）　" + $"{N(GameAction.Skill2)}：貓躍雙斬　{N(GameAction.Skill3)}：月弧突進　{N(GameAction.Skill4)}：空中十字斬"
-            + (pad ? $"（右搖桿瞄準、{N(GameAction.Attack)} 確認、B 取消）" : "（技能需滑鼠選取）"), controls);
+            SkillHelpLine(pad, N), controls);
 
         if (!IsTargeting) return;
         PadInput.DrawPointer();
