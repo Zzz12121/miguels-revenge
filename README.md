@@ -10,14 +10,14 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
   左邊是「Miguel's Revenge」標題（「Miguel」被三道朱紅的爪痕抓破、「Revenge」被一刀斜斜砍開，刀口上半截滑開一點）、副標「神使之復仇」和三個選項（開始遊戲、選項、離開遊戲），右邊是主角舉刀
   （第三批人物照的去背圖），背後一團潑墨、一輪朱紅的日，和一尊巨大的道士水墨法相（第二批道士拿巨筆的去背照轉成墨：衣服的深淺變成墨的濃淡、輪廓暈開、下半身散成霧；巨筆劃過紅日）；背景是舊宣紙上淡淡的遊戲裡的古畫（祠堂的海上鬥龍、百足現世、與民同醉）和弔玄清的詩，墨點慢慢飄。
   進場時墨從中間暈開 → 日、道士法相、主角浮現 → 標題浮現 → 一爪抓破 Miguel → 一刀砍開 Revenge（每一下標題震一下）→ 選項依序出現；潑墨和法相一直慢慢呼吸、主角輕輕起伏。選到的選項後面刷上一筆朱紅
-  （滑鼠移上去、方向鍵 / W S、手把十字鍵或左搖桿選，Enter / 空白鍵 / 手把 A 確定）。「開始遊戲」墨潑滿畫面後進漁村（`GameManager.StartStoryGame`），
-  「選項」是跟暫停選單同一個設定畫面。不再顯示規則、操作說明和「繼續遊戲」（存檔從暫停選單讀）。
+  （滑鼠移上去、方向鍵 / W S、手把十字鍵或左搖桿選，Enter / 空白鍵 / 手把 A 確定）。「開始遊戲」墨潑滿畫面後，換成主畫面的舊宣紙，下方一長條破布當載入進度條，進度的部分染成朱紅（偶爾會倒退一截，退掉的那段留下淡淡的紅、停一下再繼續；跑完才切到漁村，`StoryLoadingScreen`），再進漁村（`GameManager.StartStoryGame`），
+  「選項」是跟暫停選單同一個設定畫面，外觀跟主畫面同一套：整個設定寫在一張撕得破破爛爛的皮紙上（裂口、小洞、脫線），每個按鈕是一塊破布，選到或滑鼠移上去時像被微風吹（`ClothFlutter`），字用主畫面的字（英文 Bookman Old Style、中文標楷體）；圖用 `python Art/MainMenu/make_settings_art.py` 產生。不再顯示規則、操作說明和「繼續遊戲」（存檔從暫停選單讀）。
   圖都在 `Resources/MainMenu`，用 `python Art/MainMenu/make_menu_art.py` 產生（加 `--preview` 另外拼一張預覽圖）；匯入設定由 `Scripts/Editor/MainMenuArtTools.cs` 自動處理。
   在編輯器裡直接從 `JapaneseVillage` 按 Play 時會先跳到主畫面，按「開始遊戲」才進村子；選單 **GeminiGrowUp > 主畫面 > 直接測試漁村** 打勾可以跳過。
 - **生命**：玩家有 3 條命（`GameManager.maxLives`），倒下扣一條命並在檢查點復活，用完 → **Game Over**
   （重新挑戰本關 / 從第一關重新開始 / 回主選單）。
 - **通關**：打倒第三關 Boss → 通關畫面（通關時間、剩餘生命；重新開始 / 回主選單）。
-- **暫停**：遊戲中按 `Esc` / 手把 Start（繼續 / 存檔 / 讀取存檔 / 設定 / 重新開始本關 / 回主選單）。漁村這條主線（`GameManager.storyLevels`：漁村 `JapaneseVillage` ↔ 道場 `DojoArena_ArchitecturePreview`）也一樣可以暫停、存讀檔、進設定（漁村風格：暫停選單是一幅掛軸，跟對話框同一套牛皮紙、深紅褐色裱布、上下木軸，墨色的「暫停」大字旁邊蓋一個朱印、下面寫在漁村還是道場，按鈕是紙上的淡墨框、選到或滑鼠移上去變朱紅；設定畫面整個寫在一大幅掛軸上，淺色的字都換成墨色，`UIKit.Washi`）。「從漁村重新開始」不管在漁村還是道場都回到漁村，帶著最近一次進漁村時的狀態（`GameManager.RestartStory`）。換場景時帶著玩家的狀態（血量、背包、錢、魚、造型），進場景時自動存檔（從暫停選單讀檔）；但不算進「下一關」的順序，沒有關卡標題和轉場動畫。
+- **暫停**：遊戲中按 `Esc` / 手把 Start（繼續 / 存檔 / 讀取存檔 / 設定 / 重新開始本關 / 回主選單）。漁村這條主線（`GameManager.storyLevels`：漁村 `JapaneseVillage` ↔ 道場 `DojoArena_ArchitecturePreview`）也一樣可以暫停、存讀檔、進設定（暫停、Game Over、通關畫面都跟主畫面的選項同一套風格，`Scripts/Core/MenuSkin.cs`：寫在一張直的破皮紙上（九宮格，高度跟著按鈕數量變；排得比較緊，6 個按鈕時整張約 710 高，比較扁的畫面也放得下），墨色的標題底下刷一筆朱紅，漁村主線的暫停旁邊蓋一個朱印、下面寫在漁村還是道場；按鈕是破布，選到或滑鼠移上去時像被微風吹；圖載不到時退回原本的掛軸 / 深色樣式）。「從漁村重新開始」不管在漁村還是道場都回到漁村，帶著最近一次進漁村時的狀態（`GameManager.RestartStory`）。換場景時帶著玩家的狀態（血量、背包、錢、魚、造型），進場景時自動存檔（從暫停選單讀檔）；但不算進「下一關」的順序，沒有關卡標題和轉場動畫。
 - **用手把選選項**（`MerchantNPC`，村民對話的選項和所有對話框商店）：十字鍵 ↑ ↓ 或左搖桿上下移動游標（亮起來的那一格，推著不放會連續移動），A 選，B / Y 離開或選最後一項（`PadInput.NavigatePressed`）；鍵盤照樣按數字鍵。
 - **血量延續**（`Scripts/Core/PlayerState.cs`）：換到下一關時血量、最大生命、能力升級（跑速 / 攻擊）、背包都會帶過去；
   「重新開始本關」和 Game Over 後「重新挑戰」會回到進入這一關時的狀態。
@@ -30,6 +30,7 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
   選單 **GeminiGrowUp > 安裝玩家（聖騎士 + Cinemachine）** 會裝到 `PlayerRig.prefab`。
 - **鏡頭**（`Scripts/Player/ThirdPersonCamera.cs`）：Cinemachine 3（CinemachineBrain + CinemachineCamera 的 Third Person Follow，
   開啟 Avoid Obstacles 不穿牆）。滑鼠轉視角、滾輪縮放、畫面震動由 ThirdPersonCamera 控制注視點。
+  被東西擋住時不把模型藏起來：跟祠堂、房子一樣，鏡頭拉近（最近到拍得到整個角色）、還不夠就往上抬越過去；竹子、欄杆這種很細的東西不理它（`ThirdPersonCamera.hideSmallOccluders` 打開可以回到原本「小東西直接隱藏」）。
 - **補血道具**（`Scripts/Level/HealthPickup.cs`、`Prefabs/HealthPickup.prefab`）：漂浮的紅十字，走過去自動回 30 血（血滿不會撿）。
   選單 **GeminiGrowUp > 放置補血道具** 會在沙漠、維京村莊各放 6 個；地下城由 DungeonGenerator 每間戰鬥房間放一個。
 - **背景音樂**：主選單和每一關各一首（`Resources/Audio/Music/bgm_*.wav`，程式合成的原創音樂），Boss 戰換成 Boss 音樂。
@@ -80,7 +81,7 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
 選單 **GeminiGrowUp > 建立日式村莊場景** 會產生整個場景（`Scripts/Editor/JapaneseVillage*.cs`），重新執行會覆蓋場景和產生出來的資產，所以大改配置請改 Builder。
 
 - **素材**：建築、石燈籠、石階、竹子來自 `ThirdParty/URP 3D Sample Garden`（Unity 官方範本 `com.unity.template.urp-sample` 的 Garden 場景，只複製用得到的檔案）；松、楓、櫻、鳥居、岩石、地面貼圖來自 `Assets/Waldemarst`（Asset Store 的 Japanese Garden Pack，和隊友的道場場景共用，它的樹是舊管線材質，Builder 會另外做 URP 材質）。漁船、曬網架、暖簾和大部分村民這兩包沒有，仍是程式產生；長椅（茶屋兩張、村長家櫻花樹下、女書生）是 Tripo 模型 `Models/JapaneseVillage/Bench`（Builder 的 `PlaceBench`，坐面高 `BenchSeatHeight` = 0.48 m）；茶屋的大紅傘是 Tripo 和傘 `Models/JapaneseVillage/Parasol`（`PlaceParasol`：模型是斜拿著的，用傘面的法線轉直、放大到直徑 3 m，傘柄底下補一根竹竿）；日式道具組 `Models/JapaneseVillage/JpProps`（11 樣，`PlaceKitPiece` 拆開擺、`alignLong` 把斜放的轉正）分散在村裡：茶屋旁兩個酒樽和一塊立招牌、行商攤子旁的包鐵角木箱和米草包、砍竹人旁的一捆竹子和竹籬笆、鐵匠鋪門口的兵器架和刀架、女書生長椅旁的小石燈籠、藥師陶爐旁的陶甕和木板屏風（部分村民改用 Tripo 模型，見下面「村民」）。
-- **房屋**：`JapaneseVillageHouses` 用 Garden 模組組成 Prefab（`Prefabs/JapaneseVillage/Houses`），改 `BuildHouseRows` 裡的款式清單就能換寬度和門窗配置。村長家在三排房屋東側盡頭，直接用道場場景的主殿 `PF_MainDojo_Complete`（縮小 85%，可以走進去），外觀和最終決戰的道場一致；宅院東邊的後院有一道大門，就是通往道場的傳送門。
+- **房屋**：`JapaneseVillageHouses` 用 Garden 模組組成 Prefab（`Prefabs/JapaneseVillage/Houses`），改 `BuildHouseRows` 裡的款式清單就能換寬度和門窗配置。村長家在三排房屋東側盡頭，直接用道場場景的主殿 `PF_MainDojo_Complete`（縮小 85%，可以走進去），外觀和最終決戰的道場一致；宅院東邊的後院有一道大門，就是通往道場的傳送門。主殿中軸是一條通道（`Scripts/Editor/ChiefHouseRearPassage.cs`，Builder 建村長家時呼叫）：從宅院大門進主殿、穿過內殿入口，從後牆正中間的後門出去，走後緣的石階下到後院，飛石和土路直直通到後院大門。後門跟內殿入口一樣寬（6 × 0.85 ≈ 5.1 m）：中柱拿掉、兩旁兩格紙門裁短、門邊補門框、門頂補橫楣；後面的石階是正面石階前後鏡射。主殿外觀是按材質合併好的大 Mesh，所以複製一份來改（存進 `JV_Meshes.asset`，隊友的 Prefab 和最終決戰場景不受影響），碰撞跟著改（中柱關掉、紙門的碰撞框縮到門邊、石階另外放）。
 - **樹**：Terrain Tree（`Prefabs/JapaneseVillage/Trees`），可以用 Terrain 筆刷再刷。
 - **村民**：都是 `MerchantNPC`（`sellsGoods` 關掉就是一般對話）；會走路的另外掛 `Scripts/Level/VillagerWalker.cs`，路線在 `PlaceWalkers` 裡設定。所有村民（含師父、僧侶）都是原本的 1.2 倍大（Builder 的 `NpcScale`）。村莊裡的人物頭上不顯示任何文字或指引標記。
   - 6 位成年男性村民（賣魚的阿伯、巡邏的村丁、收網的漁夫、宅院的家僕、年輕漁夫、砍竹人）用 Tripo 生成、已綁人形骨架的模型 `Models/JapaneseVillage/Villager/Villager_Peasant.fbx`（約 1.1 萬面），在 `WalkerAt` / `NpcAt` 傳 `villager: "Grey"`（或 `Indigo`、`Brown`、`Olive`）就會換成這個模型；僧侶和村長也是 Tripo 模型（僧侶見下面「祠堂的試煉」）；其他人（婦人、小孩、老奶奶、師父、行商、老漁夫）仍是程式產生。
@@ -103,6 +104,10 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
   - 大刀（原本的光劍）：判定距離比原本多約 0.5 m（前方 1.6 m、半徑 1.6 m），可以舉盾。
   - 弓與小刀：和維京村莊海戰同一套弓箭操作（`PlayerCombat.bowMode`：右鍵瞄準、左鍵射箭），箭 20 支、每支 14 傷害（畫面下方不顯示船戰的射箭說明，`PlayerCombat.hideBowHint`）；射完自動換成小刀（判定最遠約 2 m、出手快 40%、每下 70% 傷害）。小刀有自己的三段招式：直刺 → 反手橫斬 → 反握下刺（`PlayerLoadout.KnifeMoves`，程式擺姿勢，蓋在原本揮刀的手臂動作上）。按住右鍵瞄準時，右手先從右腰旁邊（貼著腰間、開口在腰帶高度）的箭筒抽一支箭搭上弦（約 0.5 秒），接著開始蓄力：畫面中央一個大圓往內收、一個小圓固定（半徑 70 / 12 像素，1080p），大圓收到跟小圓重合時（約 1.1 秒）放箭最準、威力最大（傷害 1.6 倍、不偏），太早或太晚都會變差；沒瞄準直接按左鍵射會亂飄（±9°）、傷害 0.6 倍。射出去的箭和搭在弦上的箭是 `Resources/Weapons/JV_Arrow`（Tripo 的箭模型 `Models/JapaneseVillage/Arrow`，長 0.94 m；箭頭朝哪一端是看兩端的金屬度自動判斷的；沒有模型時退回程式做的竹箭），箭筒是 `JV_Quiver`。畫面右下角用弓的圖示 + 20 支箭的小圖表示剩下幾支，射完變成小刀的圖示（圖示在 `Resources/UI`，`python Art/JapaneseVillage/make_ui_icons.py` 產生）。回鐵匠鋪再選一次就補滿。輔助瞄準（`PlayerLoadout.AssistArrow`）：箭射出去的方向離敵人只差一點點（4° 以內，或從敵人身邊 0.75 m 內擦過）、中間沒有東西擋著，就修正成正中敵人身體中間（照距離往上補一點下墜）；本來就會射中、或偏太多（亂射、蓄力時機不對）都不動。弓的模型是 Tripo 的 `Models/JapaneseVillage/Bow`（換掉 Erika 的弓，掛在同一個位置）。
   - 長槍：雙手拿（右手在右腰稍後、左手在肚子前面握著槍桿，平常槍放低在腰間、槍頭朝前稍微往上；手掌中心對準槍桿），戳擊時雙手一起往前推、槍放平（`PlayerLoadout.TwoBoneIK` 擺手），判定 1.2 ~ 3.6 m、左右較窄；出手比大刀快 20%，每下 85% 傷害（`PlayerLoadout.SpearStats`）。
+  - 長槍的兩個組合技（`Scripts/Player/SpearArts.cs`，拿長槍時才有；跟大刀的跳劈、盾滑一樣是一般招式，不用技能條、有冷卻，傷害乘上鐵匠鋪升級的倍率）：
+    - 破陣突刺（按住衝刺 + 攻擊）：蹲低把槍往後收，朝前方的敵人直線爆衝（最遠 9.5 m）、槍放平往前推，路上每個敵人都被刺穿一次（40 × 1.8），衝過頭一點再煞住。
+    - 飛身貫地（跳起來之後按攻擊）：飛到敵人頭上、雙手把槍舉到胸口槍尖朝下，停一下再整個人往下把槍插進敵人（40 × 2.4），地面震波震到旁邊的敵人（20）；拿長槍時取代大刀的跳劈（同一組按鍵）。
+    - 整段無敵，附近沒有敵人時照常攻擊；手和槍交給 `PlayerLoadout.ArtPose`（雙手持槍 IK：往後收 / 往前推 / 舉高、槍指的方向）。一個武器兩招：拿長槍時大刀的跳劈、盾滑（翻滾 攻擊 翻滾）都關掉，換回大刀再打開；左上的招式冷卻圖示拿長槍時換成「刺、貫」（`MoveCooldownHud`）。
   - 小刀、長槍一直拿在手上，不播大刀那種聚合 / 散開的收刀特效（`PlayerLoadout.KeepWeaponInHand`）；大刀照原本的。
   - 拉弓：瞄準時左手（拿弓）往瞄準的方向伸直；抽好箭之後蓄力時，右手把弓弦從弓上沿著箭的方向直直往後拉到下巴前面（靠弦點，跟右肩一樣高），手肘往外屈、維持水平不垂下去（大約在兩個圓重合前拉滿）。箭的那條線從靠弦點對著準心打到的那一點（`PlayerLoadout.DrawLine` / `AimPoint`，跟 `PlayerCombat.ShootArrow` 一樣從鏡頭中央打線），握弓的左手放在這條線上；射出去的箭從弓上那支箭的位置、沿著同一條線飛向原本的目標（`AlignShotWithDraw`），拉弓的角度跟射出去的角度一樣。瞄準時上半身側過來（`TurnTorsoForAim`：兩肩連線比瞄準方向往右轉到約 32 度，動畫本來就側身的話少轉一點；頭轉回來看著準心），左手就在身體的左前方。射出去的箭用 `JV_Arrow` 模型，飛行時只拖一條很短、很淡、跟箭身同色的尾巴（`ArrowRecover`）。瞄準時全身的 BowDraw 動畫直接從「拉滿弓」那一格開始（`PlayerLoadout.SnapBowDrawPose`，不播 Mixamo 動畫前半段自己伸手拿箭的部分，手臂都由程式擺），每次開始拉弓不會先跑掉一下。瞄準時走路由 `Scripts/Player/BowAimFootwork.cs` 踏步（`PlayerCombat` 自動掛上）：一隻腳踩住地面不動、另一隻腳抬起來往移動的方向跨一步，落地後換另一隻（跨出去的前腳落得比站姿前面一點，落地後兩腳一起踩住一下，要等身體走過它、落到後面夠遠才換腳，前腳定得比較久）；站著轉身轉太多才挪腳；腿伸不到時骨盆稍微下沉；開始 / 停止瞄準時慢慢混進混出。弓的模型原本是斜放、弓弦朝外：Builder 用兩端弓梢的連線把弓轉直、弓弦轉向拉弓的人，並拿掉模型本身那條直的弓弦（一樣用 `StripMeshParts`，不另存網格），弓弦（`JV_Bow` 的 `StringTop` / `StringBottom` 兩個弓梢之間的線）跟著右手拉成 V 字；拉太久手會開始抖。
   - 換武器的程式在 `Scripts/Player/PlayerLoadout.cs`（自動掛在每個場景的玩家身上，只調 PlayerCombat 現有的欄位；選的武器和剩下的箭跨場景保留，但不寫進存檔）。小刀、長槍、弓的 Prefab 由 Builder 產生在 `Resources/Weapons`。武器架只擺玩家沒帶的武器（`WeaponRackDisplay`）；走近武器架按 E 也能直接換，架子上方會浮出一張說明卡（`WeaponRackSlot`）。

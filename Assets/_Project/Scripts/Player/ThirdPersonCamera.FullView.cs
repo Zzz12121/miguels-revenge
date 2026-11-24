@@ -15,6 +15,10 @@ using UnityEngine.Rendering;
 ///    判斷方式：物件或它的上層名字有建築關鍵字（buildingKeywords）、上層掛了 CameraNeverHide、
 ///    或整個物件在角色頭頂上方（屋頂、屋簷、橫樑這種從下面看擋住天空的東西）
 /// 瞄準中不自動抬鏡頭（不然準心會跑掉），只隱藏擋住的東西。
+///
+/// hideSmallOccluders 關著（預設）：上面第 1 點不做了，擋在中間的東西一律不隱藏，全部跟祠堂、房子一樣當成大東西處理
+/// （鏡頭拉近到 fullViewMinDistance、還不夠就往上抬越過去）；很細的東西（竹子、欄杆、燈柱，水平寬度小於 ignoreThinOccluder）
+/// 只擋住一條，不理它（不然在竹林裡鏡頭會一直跳）。打開就回到原本「小東西直接隱藏」的做法。
 /// </summary>
 public partial class ThirdPersonCamera
 {
@@ -27,6 +31,10 @@ public partial class ThirdPersonCamera
     [Range(0f, 80f)] public float maxAutoRaise = 50f;
     [Tooltip("比這個尺寸小的東西（樹、石頭、擺設）擋在鏡頭和角色中間時直接隱藏 (m)")]
     public float hideOccluderMaxSize = 9f;
+    [Tooltip("開著：擋在中間的小東西直接隱藏（舊做法）。關著：一律不隱藏，跟祠堂、房子一樣把鏡頭拉近 / 抬高繞過去")]
+    public bool hideSmallOccluders = false;
+    [Tooltip("hideSmallOccluders 關著時：水平方向比這個還細的東西（竹子、欄杆、燈柱）擋在中間不理它 (m)")]
+    public float ignoreThinOccluder = 0.45f;
     [Tooltip("物件或它上層物件的名字含有這些字（不分大小寫）就當成建築，不會被隱藏")]
     public string[] buildingKeywords =
     {
@@ -86,6 +94,8 @@ public partial class ThirdPersonCamera
         if (Mathf.Max(size.x, size.y, size.z) > hideOccluderMaxSize) return Occluder.Solid;
         // 建築零件、頭頂上的東西：不隱藏（藏掉會破圖），當成大東西讓鏡頭拉近 / 抬高
         if (IsBuildingPart(c) || IsOverhead(c)) return Occluder.Solid;
+        // 不隱藏：跟建築一樣處理；很細的東西不理它
+        if (!hideSmallOccluders) return Mathf.Max(size.x, size.z) < ignoreThinOccluder ? Occluder.Ignore : Occluder.Solid;
         return Occluder.Hide;
     }
 

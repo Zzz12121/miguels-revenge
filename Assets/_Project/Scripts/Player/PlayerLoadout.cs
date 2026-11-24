@@ -758,6 +758,13 @@ public class PlayerLoadout : MonoBehaviour
         Quaternion.LookRotation(dir.normalized, flat.sqrMagnitude > 1e-6f ? flat : Vector3.up) * Quaternion.Euler(90f, 0f, 0f);
 
     float spearHoldW;
+
+    /// <summary>
+    /// 長槍的組合技（SpearArts）要的持槍姿勢：weight 0~1 混進來；pull 往後收、extend 往前推（跟普攻的戳一樣）、
+    /// raise 雙手抬到胸口以上（往下刺用）、dir 槍指的方向（世界座標，0 = 照原本的）。組合技每幀設定，結束時 weight 設回 0
+    /// </summary>
+    public struct SpearArtPose { public float weight, pull, extend, raise; public Vector3 dir; }
+    public static SpearArtPose ArtPose;
     Transform hipsBone, lUpperArm, lForeArm, lHandBone, rPalmBone, lPalmBone;
 
     /// <summary>手掌中心（手腕往手指方向 60%）：槍桿要穿過這裡，看起來才是握在手裡</summary>
@@ -776,7 +783,9 @@ public class PlayerLoadout : MonoBehaviour
         // 每幀先回到掛在手上的樣子，再擺成雙手拿
         spear.transform.SetLocalPositionAndRotation(spearRestPos, spearRestRot);
         bool special = combat.IsAttacking && !attacking; // 空中攻擊、下劈、衝刺斬：交給原本的動作
-        bool hold = melee == Melee.Spear && presenter != null && presenter.IsDrawn && spear.activeInHierarchy && !Dead && !SkillDrawing && !special;
+        var art = ArtPose;
+        bool artOn = art.weight > 0.001f && melee == Melee.Spear;   // 長槍組合技：一定雙手拿著、照它要的姿勢
+        bool hold = melee == Melee.Spear && presenter != null && (presenter.IsDrawn || artOn) && spear.activeInHierarchy && !Dead && !SkillDrawing && (!special || artOn);
         spearHoldW = Mathf.MoveTowards(spearHoldW, hold ? 1f : 0f, dt * 6f);
         if (spearHoldW <= 0.001f || melee != Melee.Spear || upperArm == null) return;
         if (hipsBone == null && animator != null && animator.isHuman)
@@ -794,6 +803,12 @@ public class PlayerLoadout : MonoBehaviour
         float extend = strike * (1f - recover);
         pull *= 1f - strike;
         float t = thrustWeight, w = spearHoldW;
+        if (artOn)
+        {
+            pull = Mathf.Lerp(pull, art.pull, art.weight);
+            extend = Mathf.Lerp(extend, art.extend, art.weight);
+            t = Mathf.Lerp(t, 1f, art.weight);
+        }
         Vector3 fwd = transform.forward, up = Vector3.up, right = transform.right;
 
         // 戳出去時身體往前壓一點（先轉身體，再擺手，手才會對到槍上）
@@ -803,9 +818,12 @@ public class PlayerLoadout : MonoBehaviour
         Vector3 ready = (fwd + up * 0.2f - right * 0.1f).normalized;
         Vector3 thrust = (fwd - up * 0.04f).normalized;
         Vector3 dir = Vector3.Slerp(ready, thrust, t).normalized;
+        if (artOn && art.dir.sqrMagnitude > 1e-4f) dir = Vector3.Slerp(dir, art.dir.normalized, art.weight).normalized;
         // 後手在右腰稍後面；戳的時候先往後收，再往前推到肚子前面
         Vector3 rear = hipsBone.position + right * 0.2f + up * 0.06f - fwd * 0.04f;
         rear += t * (-fwd * 0.2f * pull + (fwd * 0.42f + up * 0.12f - right * 0.08f) * extend);
+        // 往下刺：雙手抬到胸口以上、往身體前面收（槍從手往下指）
+        if (artOn && art.raise > 0f) rear += (up * 0.55f + fwd * 0.12f + right * 0.02f) * art.raise * art.weight;
         // 前手在後手往前 0.48 m 的槍桿上（大約在肚子前面）
         Vector3 front = rear + dir * 0.48f;
         // 手腕的目標 = 手掌要握的地方往回退半個手掌（手掌中心才會在槍桿上）。

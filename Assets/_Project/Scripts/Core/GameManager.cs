@@ -86,6 +86,13 @@ public class GameManager : MonoBehaviour
 
     /// <summary>正在換場景（傳送門用來避免重複觸發）</summary>
     public bool IsLoading { get; private set; }
+    /// <summary>換場景的載入進度 0~1（LoadSceneAsync 的 progress / 0.9）。主畫面「開始遊戲」的進度條（StoryLoadingScreen）用</summary>
+    public float LoadProgress { get; private set; }
+    /// <summary>
+    /// 不是 null 時：下一次一般的換場景（不是傳送門轉場）先在背景載好，等它回傳 true 才切換到新場景，用完就清掉。
+    /// 主畫面的進度條用它讓「開始遊戲」的進度條跑完才進漁村
+    /// </summary>
+    public System.Func<bool> HoldSceneActivation;
     /// <summary>目前場景在關卡順序中的位置，不在清單裡就是 -1</summary>
     public int CurrentLevelIndex => IndexOf(SceneManager.GetActiveScene().name);
     public Level CurrentLevel => CurrentLevelIndex >= 0 ? levels[CurrentLevelIndex] : null;
@@ -304,6 +311,7 @@ public class GameManager : MonoBehaviour
     IEnumerator LoadRoutine(string sceneName, bool carryPlayer)
     {
         IsLoading = true;
+        LoadProgress = 0f;
         if (pendingEnding != null) StopCoroutine(pendingEnding);
         pendingEnding = null;
 
@@ -332,6 +340,20 @@ public class GameManager : MonoBehaviour
         IsGameWon = false;
         Time.timeScale = 1f; // Boss 的慢動作之類的效果不要帶到下一關
         var op = SceneManager.LoadSceneAsync(sceneName);
+        var hold = HoldSceneActivation;
+        HoldSceneActivation = null;
+        if (!travel && hold != null)
+        {
+            // 主畫面的進度條：背景載好，而且進度條跑完了才切換
+            op.allowSceneActivation = false;
+            while (op.progress < 0.9f || !hold())
+            {
+                LoadProgress = op.progress / 0.9f;
+                yield return null;
+            }
+            LoadProgress = 1f;
+            op.allowSceneActivation = true;
+        }
         if (travel)
         {
             op.allowSceneActivation = false; // 先在背景載入，動畫至少播 transitionMinTime 秒
@@ -344,7 +366,12 @@ public class GameManager : MonoBehaviour
             transition.Progress = 1f;
             op.allowSceneActivation = true;
         }
-        while (!op.isDone) yield return null;
+        while (!op.isDone)
+        {
+            LoadProgress = Mathf.Max(LoadProgress, Mathf.Min(1f, op.progress / 0.9f));
+            yield return null;
+        }
+        LoadProgress = 1f;
         yield return null; // 等新場景的 Start 都跑完
 
         if (FindLevel(sceneName) != null)
@@ -539,8 +566,24 @@ public class GameManager : MonoBehaviour
 
         overlay = UIKit.CreateCanvas("GameFlowOverlay", 100, transform);
         var root = overlay.transform;
-        UIKit.Panel("Dim", root, UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.6f) : new Color(0f, 0f, 0f, 0.7f)).raycastTarget = true;
-        if (UIKit.Washi)
+        // 主畫面風格（MenuSkin）：所有選單（暫停、Game Over、通關）都寫在一張直的破皮紙上，按鈕是破布（選到時被風吹）
+        bool skin = MenuSkin.Available;
+        UIKit.Panel("Dim", root, skin ? MenuSkin.Dim : UIKit.Washi ? new Color(0.05f, 0.03f, 0.02f, 0.6f) : new Color(0f, 0f, 0f, 0.7f)).raycastTarget = true;
+        Text skinTitle = null;
+        // 皮紙風格的排法：排得緊一點，整張紙（6 個按鈕時約 710 高）在比較扁的畫面（看得到的高度約 950）也放得下
+        const float SkinTitleY = 300f, SkinStartY = 150f, SkinStep = 74f, SkinButtonH = 62f;
+        if (skin)
+        {
+            float top = SkinTitleY + 90f;
+            float bottom = buttons.Length == 0 ? 40f : SkinStartY - (buttons.Length - 1) * SkinStep - SkinButtonH * 0.5f - 70f;
+            MenuSkin.TallParchment(root, new Vector2(0f, (top + bottom) * 0.5f), new Vector2(660f, top - bottom));
+            MenuSkin.TitleStroke(root, new Vector2(0f, SkinTitleY - 2f), new Vector2(400f, 100f));
+            skinTitle = UIKit.Label("Title", root, title, 80, titleColor, new Vector2(0f, SkinTitleY), new Vector2(600f, 104f), TextAnchor.MiddleCenter, FontStyle.Bold);
+            if (UIKit.Washi) UIKit.Seal(root, "休", new Vector2(180f, SkinTitleY + 20f), 42f);
+            UIKit.Label("Subtitle", root, subtitle, 26, Color.white, new Vector2(0f, buttons.Length == 0 ? 170f : SkinTitleY - 70f),
+                        new Vector2(580f, buttons.Length == 0 ? 120f : 40f));
+        }
+        else if (UIKit.Washi)
         {
             // 漁村風格：一幅掛軸，標題是墨色的大字、旁邊蓋一個朱印，下面寫在哪裡
             float bottom = -((buttons.Length > 3 ? 0f : -40f) - (buttons.Length - 1) * (buttons.Length > 5 ? 88f : buttons.Length > 3 ? 98f : 110f)) + 70f;
@@ -559,12 +602,22 @@ public class GameManager : MonoBehaviour
 
         Button first = null;
         // 按鈕多的時候（暫停選單）往上挪、間距縮小，才不會超出畫面
-        float startY = buttons.Length > 3 ? 0f : -40f, step = buttons.Length > 5 ? 88f : buttons.Length > 3 ? 98f : 110f;
+        float startY = skin ? SkinStartY : buttons.Length > 3 ? 0f : -40f;
+        float step = skin ? SkinStep : buttons.Length > 5 ? 88f : buttons.Length > 3 ? 98f : 110f;
         for (int i = 0; i < buttons.Length; i++)
         {
             var b = UIKit.Button("Button_" + i, root, buttons[i].label, new Vector2(0f, startY - i * step),
-                                 UIKit.Washi ? new Vector2(420f, 72f) : new Vector2(440f, 84f), buttons[i].action, UIKit.Washi ? 32 : 36);
+                                 skin ? new Vector2(400f, SkinButtonH) : UIKit.Washi ? new Vector2(420f, 72f) : new Vector2(440f, 84f), buttons[i].action,
+                                 skin ? 30 : UIKit.Washi ? 32 : 36);
             if (first == null) first = b;
+        }
+        if (skin)
+        {
+            MenuSkin.Apply(root);
+            // 標題：Game Over 這種紅色的標題寫成朱紅，其他都是墨色
+            if (skinTitle != null && titleColor.r > titleColor.g * 1.8f) skinTitle.color = MenuSkin.Cinnabar;
+            var sub = root.Find("Subtitle")?.GetComponent<Text>();
+            if (sub != null) sub.color = new Color(0.42f, 0.31f, 0.2f);
         }
         if (first != null) first.Select(); // 可以直接按 Enter
     }
