@@ -289095,7 +289095,6 @@ MonoBehaviour:
   - {fileID: 1792821037}
   - {fileID: 996620750}
   flightSpeed: 11
-  twistSeconds: 1.3
   outdoorSway: 1.65
   indoorSway: 0.18
 --- !u!1 &2050636430

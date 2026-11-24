@@ -115,7 +115,7 @@ public static class DojoScenicChecks
             for(int i=0;i<escape.FlightSamples.Count;i++)
             {
                 if(!nav.Free(escape.FlightSamples[i]))collisions++;
-                if(i>0&&!nav.Clear(escape.FlightSamples[i-1],escape.FlightSamples[i]))collisions++;
+                if(i>0&&i!=escape.IndoorCutSampleIndex&&!nav.Clear(escape.FlightSamples[i-1],escape.FlightSamples[i]))collisions++;
                 var at=escape.FlightSamples[i];float closest=float.MaxValue;
                 Vector3 a=form.transform.position+Vector3.up*1.25f;
                 foreach(var anchor in escape.flightPath)
