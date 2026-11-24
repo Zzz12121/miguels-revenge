@@ -6,11 +6,12 @@ using UnityEngine.InputSystem.Controls;
 /// 遊戲手把的固定操作（不能改鍵的部分）和瞄準準心。可以改鍵的動作（跳躍、攻擊、互動……）在 InputBindings。
 ///
 ///   左搖桿 移動          右搖桿 轉鏡頭（技能瞄準時改成移動準心）
-///   A / ×  對話下一句、選單確認      B / ○  取消瞄準、離開商店
+///   A / ×  對話下一句、選單確認      B / ○  取消瞄準、離開商店（○ 同時也是預設的互動鍵）
 ///   Start  暫停          十字鍵 ← ↑ → = 能力植物的選項 1 2 3
 ///   對話的選項、商店：十字鍵 ↑ ↓ 或左搖桿上下移動游標（按住會連續移動），A 選、B / Y 離開（MerchantNPC）
-/// 預設可改鍵的手把按鍵：A 跳躍、B 翻滾、X 攻擊、Y 互動、LB 衝刺、RB 牽引、LT 格擋、
-///   十字鍵 ← ↑ → ↓ 技能 1~4、R3 治癒藥水、L3 精力藥水、Select 小地圖
+/// 預設可改鍵的手把按鍵（PS4）：△ 跳躍、× 翻滾、□ 攻擊、○ 互動、L1 格擋 / 盾反、R1 牽引、L2 拉弓瞄準、
+///   R2 衝刺（按住）/ 瞄準確認 / 射箭、十字 ↑ 技能 1（選好後按住 L1 蓄力瞄準、R1 發射）、十字 ↓ 切換武器、
+///   R3 治癒藥水、L3 精力藥水、SHARE 小地圖；技能 2~4 手把預設不綁
 /// 設定選單選「只用鍵盤滑鼠」時，這裡全部回傳沒按。
 /// </summary>
 public static class PadInput
@@ -167,11 +168,11 @@ public static class PadInput
         }
     }
 
-    /// <summary>瞄準的確認鍵：滑鼠左鍵 / 手把的「攻擊」鍵（預設 X）</summary>
-    public static bool PointerPressed => (PointerMouse?.leftButton.wasPressedThisFrame ?? false) || InputBindings.PadPressed(GameAction.Attack);
-    public static bool PointerHeld => (PointerMouse?.leftButton.isPressed ?? false) || InputBindings.PadHeld(GameAction.Attack);
+    /// <summary>瞄準的確認鍵：滑鼠左鍵 / 手把的「瞄準確認」鍵（預設 RT / R2）</summary>
+    public static bool PointerPressed => (PointerMouse?.leftButton.wasPressedThisFrame ?? false) || InputBindings.PadPressed(GameAction.AimConfirm);
+    public static bool PointerHeld => (PointerMouse?.leftButton.isPressed ?? false) || InputBindings.PadHeld(GameAction.AimConfirm);
     public static bool PointerReleased => (PointerMouse?.leftButton.wasReleasedThisFrame ?? false)
-        || (Pad != null && (InputBindings.Resolve(InputBindings.PadPath(GameAction.Attack))?.wasReleasedThisFrame ?? false));
+        || (Pad != null && (InputBindings.Resolve(InputBindings.PadPath(GameAction.AimConfirm))?.wasReleasedThisFrame ?? false));
 
     /// <summary>畫出手把準心（瞄準中、用手把時呼叫，放在 OnGUI 裡）</summary>
     public static void DrawPointer()

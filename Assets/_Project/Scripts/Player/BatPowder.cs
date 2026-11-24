@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections;
 using UnityEngine;
 
@@ -11,7 +12,7 @@ using UnityEngine;
 public static class BatPowder
 {
     public const string Item = "StonePowder";
-    public const int Max = 5;
+    public const int Max = 10;
     /// <summary>撒一次的有效時間（秒）</summary>
     public static float Duration = 8f;
     /// <summary>粉塵的半徑（只是外觀；有效期間蝙蝠一律打不到玩家）</summary>
@@ -183,16 +184,70 @@ public sealed class BatPowderCloud : MonoBehaviour
 
 /// <summary>
 /// 地上可以撿的石頭（磨成石粉）：發著淡淡微光、有細粉閃爍，靠近按互動鍵撿起來 = 一份石粉。
-/// 由投降的弓箭手說完話之後在附近生成（PowderStone.Scatter）。
+/// 由投降的弓箭手說完話之後在附近生成（PowderStone.Scatter）；霧海孤島倒下重來時也會撒在樹林邊緣（ForestRetry）。
+/// ShowMarker()：頭上加一顆旋轉、上下飄的黃色菱形提示，遠遠就看得到。
 /// </summary>
 public sealed class PowderStone : MonoBehaviour
 {
     public float pickupRange = 2.2f;
 
-    static Material stoneMat, sparkleMat;
+    static Material stoneMat, sparkleMat, markerMat;
+    static Mesh diamondMesh;
+    static readonly Color MarkerColor = new Color(1f, 0.85f, 0.15f);
     PlayerHealth player;
-    Transform visual;
+    Transform visual, marker;
     float phase;
+
+    /// <summary>頭上加黃色菱形提示（旋轉、上下飄，不受光影影響）</summary>
+    public PowderStone ShowMarker()
+    {
+        if (marker != null) return this;
+        if (diamondMesh == null) diamondMesh = BuildDiamond();
+        if (markerMat == null)
+        {
+            var sh = Shader.Find("Universal Render Pipeline/Unlit");
+            markerMat = new Material(sh != null ? sh : Shader.Find("Unlit/Color")) { name = "M_PowderStoneMarker" };
+            markerMat.SetColor("_BaseColor", MarkerColor);
+            markerMat.SetColor("_Color", MarkerColor);
+        }
+        marker = new GameObject("Marker").transform;
+        marker.SetParent(transform, false);
+        marker.localPosition = Vector3.up * 1.5f;
+        marker.localScale = new Vector3(0.32f, 0.5f, 0.32f);
+        marker.gameObject.AddComponent<MeshFilter>().sharedMesh = diamondMesh;
+        var mr = marker.gameObject.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = markerMat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+        var light = marker.gameObject.AddComponent<Light>();
+        light.type = LightType.Point; light.color = MarkerColor; light.range = 3f; light.intensity = 1.2f; light.shadows = LightShadows.None;
+        return this;
+    }
+
+    /// <summary>上下兩個四角錐拼成的菱形（八面體），平面著色</summary>
+    static Mesh BuildDiamond()
+    {
+        Vector3 top = Vector3.up, bottom = Vector3.down;
+        Vector3[] ring = { new Vector3(1f, 0f, 0f), new Vector3(0f, 0f, 1f), new Vector3(-1f, 0f, 0f), new Vector3(0f, 0f, -1f) };
+        var verts = new List<Vector3>();
+        var tris = new List<int>();
+        for (int i = 0; i < 4; i++)
+        {
+            Vector3 a = ring[i], b = ring[(i + 1) % 4];
+            foreach (var tri in new[] { new[] { top, b, a }, new[] { bottom, a, b } })
+            {
+                tris.Add(verts.Count); verts.Add(tri[0]);
+                tris.Add(verts.Count); verts.Add(tri[1]);
+                tris.Add(verts.Count); verts.Add(tri[2]);
+            }
+        }
+        var m = new Mesh { name = "PowderStoneDiamond" };
+        m.SetVertices(verts);
+        m.SetTriangles(tris, 0);
+        m.RecalculateNormals();
+        m.RecalculateBounds();
+        return m;
+    }
 
     /// <summary>在 center 附近（minR ~ maxR）撒 count 顆石頭，貼齊地面、避開高低差太大的地方</summary>
     public static int Scatter(Vector3 center, int count, float minR, float maxR, int seed = 0)
@@ -289,6 +344,11 @@ public sealed class PowderStone : MonoBehaviour
     void Update()
     {
         if (visual != null) visual.localPosition = Vector3.up * (0.03f * Mathf.Sin(Time.time * 2f + phase));
+        if (marker != null)
+        {
+            marker.localPosition = Vector3.up * (1.5f + 0.12f * Mathf.Sin(Time.time * 2.4f + phase));
+            marker.localRotation = Quaternion.Euler(0f, Time.time * 90f, 0f);
+        }
         if (player == null) { player = PlayerHealth.Find(); if (player == null) return; }
         if (player.IsDead) return;
         float d = Vector3.Distance(player.transform.position, transform.position);

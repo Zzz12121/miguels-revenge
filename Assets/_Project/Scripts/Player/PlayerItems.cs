@@ -124,7 +124,16 @@ public class PlayerItems : MonoBehaviour
         if (kb == null || Time.time < nextUseTime || !CanUse()) return;
         if (InputBindings.Pressed(GameAction.HealPotion)) DrinkPotion();                 // 預設 Q / 手把 R3
         else if (InputBindings.Pressed(GameAction.StaminaPotion)) DrinkStaminaPotion();  // 預設 G / 手把 L3
-        else if (InputBindings.Pressed(GameAction.BatPowder)) ThrowPowder();             // 預設 F
+        else if (InputBindings.Pressed(GameAction.BatPowder) && !PowderKeyIsInteract()) ThrowPowder();   // 預設 F / 手把 ○
+    }
+
+    /// <summary>撒石粉和互動 / 取消綁在同一顆手把鍵（預設 ○）時：旁邊有可以互動的東西就先互動、瞄準中就是取消，都不撒石粉</summary>
+    static bool PowderKeyIsInteract()
+    {
+        if (!InputBindings.PadPressed(GameAction.BatPowder)) return false;
+        // ○ 也是「取消瞄準」：技能 / 牽引瞄準中、或選了技能 1 時按 ○ 是取消，不撒石粉
+        if (SkillAimCancellation.IsAiming || InputBindings.PadShouldersReserved) return true;
+        return InteractPrompt.HasFocus && InputBindings.PadPath(GameAction.BatPowder) == InputBindings.PadPath(GameAction.Interact);
     }
 
     /// <summary>撒石粉：BatPowder.Duration 秒內蝙蝠打不到玩家（不用花時間，馬上撒出去）</summary>

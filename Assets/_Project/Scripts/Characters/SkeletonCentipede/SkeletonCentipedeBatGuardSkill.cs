@@ -6,6 +6,7 @@ using UnityEngine;
 /// <summary>
 /// 百足駭骨特殊技能「蝠群護體」：血量每掉 20%（80%、60%、40%、20% 各一次）自動發動
 ///   吼叫 → 召喚一群骷髏蝙蝠繞著自己飛 → 期間慢慢回復 15% 最大血量 → 蝙蝠散開
+///   回血期間被玩家打中：這一輪剩下的回血量只剩原本的 1/10（interruptedHealMultiplier）
 ///
 /// 護衛蝙蝠碰到玩家會造成小傷害（走 PlayerHealth.TakeDamage，有受傷無敵時間）。
 /// 需要同一個物件上有 BossHealth。每個門檻只會觸發一次，回血回到門檻以上也不會重複觸發。
@@ -23,6 +24,8 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
     public float healDuration = 4f;
     [Tooltip("回血分幾次")]
     public int healPulses = 6;
+    [Tooltip("回血期間被打中之後，這一輪剩下的每次回血量乘上這個比例（0.1 = 原本的十分之一）")]
+    [Range(0f, 1f)] public float interruptedHealMultiplier = 0.1f;
     [Tooltip("Roar 動畫開始到召喚蝙蝠的時間，要和動畫的 OnRoar 事件一致")]
     public float summonDelay = 0.55f;
 
@@ -52,12 +55,18 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
     BossHealth health;
     readonly List<SkeletonBat> bats = new();
     readonly Queue<float> pending = new();
+    bool healing, healInterrupted;
+    SkeletonCentipedeBossAI ai;
+
+    /// <summary>這一輪回血已經被打斷（回血量降到 interruptedHealMultiplier）</summary>
+    public bool HealInterrupted => healing && healInterrupted;
     float nextThreshold;
     Transform orbitAnchor;
 
     void Awake()
     {
         driver = GetComponent<SkeletonCentipedeAnimationDriver>();
+        ai = GetComponent<SkeletonCentipedeBossAI>();
         health = GetComponent<BossHealth>();
         nextThreshold = 1f - thresholdStep;
         orbitAnchor = new GameObject("BatGuardAnchor").transform;
@@ -75,6 +84,7 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
         StopAllCoroutines();
         Release();
         IsRunning = false;
+        healing = healInterrupted = false;
     }
 
     /// <summary>重新開始戰鬥時呼叫（例如玩家重試），讓門檻重新計算。</summary>
@@ -87,6 +97,11 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
     void OnDamaged(float amount)
     {
         if (health == null || health.IsDead) return;
+        if (healing && !healInterrupted && amount > 0f)
+        {
+            healInterrupted = true;   // 回血被打斷：剩下的回血量降到十分之一
+            CombatVFX.Ring(transform.position, new Color(0.55f, 0.9f, 0.45f), 3f);
+        }
         float ratio = health.Health / Mathf.Max(1f, health.maxHealth);
         // 一次被打掉很多血可能一口氣跨過好幾個門檻：每個門檻都排一次
         while (nextThreshold > 0.001f && ratio <= nextThreshold)
@@ -108,9 +123,10 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
             if (bat == null) continue;
             if ((bat.transform.position - chest).sqrMagnitude > contactRadius * contactRadius) continue;
             if (BatPowder.Active) break;   // 撒了石粉：護體蝙蝠也咬不到玩家
+            if (SkeletonCentipedeBossAI.AnyStunned) break;   // 百足駭骨僵持中：蝙蝠不攻擊
             Vector3 push = bat.transform.position - transform.position;
             push.y = 0f;
-            player.TakeDamage(contactDamage, push.normalized * 4f + Vector3.up * 2f, false, "被骷髏蝙蝠群咬死");
+            player.TakeDamage(contactDamage * SkeletonCentipedeBatSwarmSkill.BatDamageScale, push.normalized * 4f + Vector3.up * 2f, false, "被骷髏蝙蝠群咬死");
             break;
         }
     }
@@ -122,6 +138,7 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
         while (pending.Count > 0)
         {
             float threshold = pending.Dequeue();
+            while (ai != null && ai.Stunned && !driver.IsDead) yield return null;   // 僵持中不能放技能：等僵持結束再吼
             if (driver.IsDead) break;
             Triggered?.Invoke(threshold);
 
@@ -137,12 +154,17 @@ public class SkeletonCentipedeBatGuardSkill : MonoBehaviour
             // 分幾次脈衝回血（BossHealth.SetHealth 每次會閃一下白，剛好當作回血的視覺提示）
             float total = health != null ? health.maxHealth * healFraction : 0f;
             int pulses = Mathf.Max(1, healPulses);
+            healing = true;
+            healInterrupted = false;
             for (int pulse = 0; pulse < pulses; pulse++)
             {
                 yield return new WaitForSeconds(healDuration / pulses);
+                while (ai != null && ai.Stunned && !driver.IsDead) yield return null;   // 僵持中回血暫停
                 if (driver.IsDead || health == null || health.IsDead) break;
-                health.SetHealth(health.Health + total / pulses);
+                float amount = total / pulses * (healInterrupted ? interruptedHealMultiplier : 1f);
+                health.SetHealth(health.Health + amount);
             }
+            healing = false;
             if (heal != null) Destroy(heal, 0.5f);
             Release();
         }

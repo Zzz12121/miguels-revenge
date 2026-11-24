@@ -38,6 +38,12 @@ public class SkeletonCentipedeBatSwarmSkill : MonoBehaviour
     public GameObject batHitEffectPrefab;
     public float batHitEffectScale = 1.2f;
 
+    /// <summary>
+    /// 所有蝙蝠傷害的倍率（蝠群襲擊、蝠群護體都套用）。0.7 = 比 Prefab 上設定的數值低三成。
+    /// 用程式統一調整，不用改 Prefab（PF_SkeletonCentipede_Animated 上 damagePerBat 6、contactDamage 4）。
+    /// </summary>
+    public static float BatDamageScale = 0.7f;
+
     public bool IsRunning { get; private set; }
     public event Action Started;
     /// <summary>有蝙蝠打中玩家（參數：打中的位置、這下有沒有真的扣到血）。</summary>
@@ -125,10 +131,11 @@ public class SkeletonCentipedeBatSwarmSkill : MonoBehaviour
     {
         if (player == null || player.IsDead) return;
         if (BatPowder.Active) { BatPowder.Confuse(bat, player.transform.position); return; }   // 石粉：找不到玩家
+        if (SkeletonCentipedeBossAI.AnyStunned) { BatPowder.Confuse(bat, player.transform.position); return; }   // 百足駭骨被大招打到僵持：蝙蝠也亂了，不攻擊
         Vector3 at = bat.transform.position;
         Vector3 push = player.transform.position - transform.position;
         push.y = 0f;
-        bool hurt = player.TakeDamage(damagePerBat, push.normalized * 3f + Vector3.up * 1.5f, false, "被骷髏蝙蝠群吞噬");
+        bool hurt = player.TakeDamage(damagePerBat * BatDamageScale, push.normalized * 3f + Vector3.up * 1.5f, false, "被骷髏蝙蝠群吞噬");
         Spawn(batHitEffectPrefab, at, batHitEffectScale);
         BatHit?.Invoke(at, hurt);
     }

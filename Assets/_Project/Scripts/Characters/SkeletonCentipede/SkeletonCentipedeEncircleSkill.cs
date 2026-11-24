@@ -97,6 +97,7 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
     void Awake()
     {
         driver = GetComponent<SkeletonCentipedeAnimationDriver>();
+        ai = GetComponent<SkeletonCentipedeBossAI>();
         skins = GetComponentsInChildren<SkinnedMeshRenderer>();
         block = new MaterialPropertyBlock();
 
@@ -118,6 +119,10 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
     void OnDisable()
     {
         Stop();
+        // 殘影是靠 Update 慢慢淡掉的：元件被關掉（例如被玩家大招挑起來、在空中死掉）就不會再淡，
+        // 會一直亮著停在原地，看起來像還有一堆分身沒死。關掉時直接收起來。
+        foreach (var g in activeGhosts) if (g.go != null) { g.go.SetActive(false); ghostPool.Enqueue(g); }
+        activeGhosts.Clear();
     }
 
     void OnDestroy()
@@ -146,6 +151,8 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
             Finished?.Invoke();
         }
     }
+
+    SkeletonCentipedeBossAI ai;
 
     void Update()
     {
@@ -239,8 +246,10 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
             {
                 float u = Mathf.Clamp01((pounceT - leapStart) / Mathf.Max(0.01f, leapEnd - leapStart));
                 Vector3 p = Vector3.Lerp(start, landing, u);
-                float groundY = Mathf.Lerp(GroundY(start), GroundY(landing), u);
-                p.y = groundY + groundOffset + 4f * leapHeight * u * (1f - u);
+                // 跳躍的底線跟著路徑上的地形走（跳過土坡時不會穿過坡）
+                float baseY = ai != null ? ai.RestY(p) : Mathf.Lerp(GroundY(start), GroundY(landing), u) + groundOffset;
+                if (SkeletonCentipedeBossAI.TerrainY(landing, out float lg)) baseY = Mathf.Max(baseY, lg - 3f + groundOffset);   // 從崖邊起跳也不會先掉下去
+                p.y = baseY + 4f * leapHeight * u * (1f - u);
                 transform.position = p;
             }
             if (shown) UpdateTelegraph(zone, Mathf.Clamp01((pounceT - showAt) / Mathf.Max(0.01f, leapEnd - showAt)));
@@ -272,12 +281,28 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
     Vector3 OrbitPoint(Vector3 center, float angleDeg)
     {
         float rad = angleDeg * Mathf.Deg2Rad;
-        return center + new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad)) * orbitRadius;
+        Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+        // 玩家站在島邊 / 懸崖邊：繞圈的點如果在崖下（地面比玩家腳下低 3 公尺以上），半徑縮小，不要繞到懸崖外面掉下去
+        // （整圈都在崖外的話用最小的半徑，高度由 Place 擋住，不會掉進海裡）
+        if (SkeletonCentipedeBossAI.TerrainY(center, out float centerGround))
+        {
+            float r = orbitRadius;
+            for (; r > orbitRadius * 0.3f; r -= orbitRadius * 0.15f)
+                if (!SkeletonCentipedeBossAI.TerrainY(center + dir * r, out float g) || g > centerGround - 3f)
+                    return center + dir * r;
+            return center + dir * Mathf.Max(r, orbitRadius * 0.3f);
+        }
+        return center + dir * orbitRadius;
     }
 
     void Place(Vector3 p)
     {
-        p.y = GroundY(p) + groundOffset;
+        // 有 Boss AI：用它的高度（沿著身體前後取地形最高點，頭 / 尾伸到土坡上也不會埋進去）
+        p.y = ai != null ? ai.RestY(p) : GroundY(p) + groundOffset;
+        // 不要比玩家腳下低 3 公尺以上（玩家站在崖邊時，寧可在崖邊懸空一下，也不要掉下懸崖）
+        var player = PlayerHealth.Find();
+        if (player != null && !player.IsDead && SkeletonCentipedeBossAI.TerrainY(player.transform.position, out float pg))
+            p.y = Mathf.Max(p.y, pg - 3f + groundOffset);
         transform.position = p;
     }
 
@@ -431,6 +456,8 @@ public class SkeletonCentipedeEncircleSkill : MonoBehaviour
 
     float GroundY(Vector3 at)
     {
+        // 在地形上：直接用地形高度。用射線的話，繞圈的點在土坡裡面時（玩家站在坡邊）射線從坡裡面出發、打不到地面，Boss 會埋進坡裡
+        if (SkeletonCentipedeBossAI.TerrainY(at, out float terrainY)) return terrainY;
         var hits = Physics.RaycastAll(at + Vector3.up * 6f, Vector3.down, 40f, ~0, QueryTriggerInteraction.Ignore);
         float best = float.MaxValue, y = at.y - groundOffset;
         foreach (var h in hits)

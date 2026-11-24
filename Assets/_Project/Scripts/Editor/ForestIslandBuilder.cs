@@ -18,7 +18,7 @@ using UnityEngine.Rendering.Universal;
 ///   - 遠方石峰剪影、雲海、林間薄霧、落葉、浮游光點、後製
 ///   - GameplayMarkers：玩家出生點、老者站位、8 個召喚點、戰鬥區中心、橋尾觸發區（只有位置，沒有玩法程式）
 ///
-/// 只放裝飾和碰撞（地形、樹幹、石頭、島邊與橋側的隱形牆）。召喚、Boss 流程、場景切換由隊友的系統接。
+/// 只放裝飾和碰撞（地形、樹幹、石頭、吊橋扶手；島邊不放隱形牆）。召喚、Boss 流程、場景切換由隊友的系統接。
 /// 可重複執行（整個場景重建）；地形、Mesh、貼圖、材質、樹 Prefab 會覆蓋更新。
 /// </summary>
 public static class ForestIslandBuilder
@@ -105,7 +105,7 @@ public static class ForestIslandBuilder
         BuildForestBoulders(env);
         BuildUndergrowth(env);
         BuildDistantPeaks(env, treePrefabs);
-        BuildBoundary(env);
+        // BuildBoundary(env);   // 島邊的隱形牆（空氣牆）取消：走出島邊會掉下去（PlayerHealth.killY）
         BuildAtmosphereVfx(env);
         BuildLighting();
 

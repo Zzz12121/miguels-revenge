@@ -248,7 +248,7 @@ public class PlayerLoadout : MonoBehaviour
 
     // ---------------- 打擊回饋 ----------------
 
-    float hitStopUntil, rumbleUntil = -1f;
+    float hitStopUntil;
 
     void OnDealtHit(float damage, IDamageable target)
     {
@@ -263,12 +263,7 @@ public class PlayerLoadout : MonoBehaviour
             hitStopUntil = Time.unscaledTime + stop + (melee ? 0.15f : 0.05f);
             StartCoroutine(HitStop(stop, melee));
         }
-        var pad = Gamepad.current;
-        if (pad != null && InputBindings.PadEnabled)
-        {
-            pad.SetMotorSpeeds(0.15f + 0.25f * k, 0.3f + 0.4f * k);
-            rumbleUntil = Time.unscaledTime + 0.1f + 0.06f * k;
-        }
+        // 手把震動統一交給 PadRumble（它也掛在 OnDealtHit 上；兩邊各自開關馬達會互相把對方的震動關掉）
     }
 
     const float HitStopScale = 0.05f;
@@ -317,18 +312,11 @@ public class PlayerLoadout : MonoBehaviour
     void Update()
     {
         SnapBowDrawPose();
-        if (rumbleUntil >= 0f && Time.unscaledTime >= rumbleUntil)
-        {
-            rumbleUntil = -1f;
-            Gamepad.current?.SetMotorSpeeds(0f, 0f);
-        }
     }
 
     void OnDisable()
     {
         if (Mathf.Approximately(Time.timeScale, HitStopScale)) Time.timeScale = 1f;
-        if (rumbleUntil >= 0f) Gamepad.current?.SetMotorSpeeds(0f, 0f);
-        rumbleUntil = -1f;
     }
 
     void OnDestroy()
