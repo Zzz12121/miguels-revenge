@@ -229,7 +229,9 @@ public sealed partial class VoidRendSkillDemo
     void DamageOnce(IDamageable damageable, float amount, Vector3 point)
     {
         if (damageable == null || !(damageable is Component owner) || !owner || damageable.IsDead || !hitThisCut.Add(damageable)) return;
-        damageable.TakeDamage(amount, point);
+        // 對百足駭骨這類強敵，一次技能最多打掉 30% 血（SkillDamageCap）；打滿了就不扣、也不震
+        if (SkillDamageCap.Deal(this, damageable, amount, point) <= 0f) return;
+        PadRumble.Hit(amount >= launchDamage ? 1.3f : .8f);   // 手把震動（連斬很多下會自動合併）
     }
     void DamageColliders(Collider[] colliders, float damage, Vector3 hit)
     {

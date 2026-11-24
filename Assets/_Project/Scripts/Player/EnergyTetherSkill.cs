@@ -4,6 +4,7 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 雙極能量牽引：中鍵進入五秒緩速瞄準、左鍵鎖定，滾輪上拉自己、下拉目標。
+/// 手把（PS4）：R1 進入瞄準，準心對著目標直接按 R1 = 拉自己過去、L2 = 把目標拉過來、R2 = 甩出去（不用先鎖定）。
 /// 第一次左鍵鎖定；第二次可在畫面任意位置按住拖甩，放開投擲。
 /// 外觀（look）：Rope = 麻繩 + 三爪鉤爪（TetherRopeVisual），先從右手丟出鉤爪、勾住了才開始拉；Energy = 原本的紅藍能量光束。
 /// 精力：每拉一次（拉自己、拉目標、甩出去）照距離扣精力，貼著目標 minStaminaCost、最遠射程 maxStaminaCost；
@@ -158,6 +159,9 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         if (selectionLocked && CancelIfOutOfRange(locked)) return;
         if (selectionLocked && !ValidPoint(locked)) { selectionLocked=false; dragging=false; }
         UpdateReticle(selectionLocked ? locked : hovered, selectionLocked || ValidPoint(hovered));
+        // 準心對到敵人：整隻變紅（跟技能瞄準一樣；沒對到時 VoidRendAimHighlight 會自己清掉）
+        Transform aimEnemy = AimEnemy(selectionLocked ? locked : hovered);
+        if (aimEnemy != null) VoidRendAimHighlight.Show(aimEnemy, true);
 
         if ((Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) || PadInput.CancelPressed)
         {
@@ -170,7 +174,11 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             return;
         }
 
-        if (PadInput.PointerPressed) // 滑鼠左鍵 / 手把 X、RT
+        // 手把：不用先鎖定，準心對著目標直接選做法——R1 再按一次 = 拉自己過去、L2 = 把目標拉過來、
+        // R2 = 抓住目標（按著推右搖桿再放開甩出；沒推就往鏡頭前方甩）
+        if (!selectionLocked && !dragging && !aimingThrowDestination && PadDirectAction()) return;
+
+        if (PadInput.PointerPressed) // 滑鼠左鍵 / 手把 R2
         {
             if (!selectionLocked)
             {
@@ -233,14 +241,27 @@ public sealed class EnergyTetherSkill : MonoBehaviour
                 StartCoroutine(ThrowTarget(thrownPoint,direction*force));
                 return;
             }
+            if (padThrow && !IsStaticAnchor(locked))
+            {
+                // 手把按了 R2 但沒推右搖桿：往鏡頭前方（稍微往上）甩出，力道取中間
+                AimPoint thrownPoint=locked;
+                Vector3 forward=Vector3.ProjectOnPlane(aimCamera.transform.forward,Vector3.up).normalized;
+                if (forward.sqrMagnitude<.01f) forward=transform.forward;
+                Vector3 direction=(forward+Vector3.up*.35f).normalized;
+                if (!PayStamina(thrownPoint)) return;
+                EndAiming(false);
+                StartCoroutine(ThrowTarget(thrownPoint,direction*Mathf.Lerp(minimumThrowSpeed,maximumThrowSpeed,.5f)));
+                return;
+            }
             Notify("按住左鍵移動滑鼠，再放開甩出");
         }
 
         if (!selectionLocked) return;
         float scroll = mouse != null && InputBindings.KeyboardEnabled ? mouse.scroll.ReadValue().y : 0f;
-        // 手把：牽引鍵（預設 RB）= 滾輪往上（拉自己過去）、衝刺鍵（預設 LB）= 滾輪往下（把目標拉過來）
+        // 手把：牽引鍵（預設 R1）= 滾輪往上（拉自己過去）、拉弓瞄準鍵（預設 L2）= 滾輪往下（把目標拉過來）
+        // （R2 是瞄準確認 / 甩出，不能再拿來拉目標）
         if (InputBindings.PadPressed(GameAction.Tether)) scroll = 1f;
-        else if (InputBindings.PadPressed(GameAction.Sprint)) scroll = -1f;
+        else if (InputBindings.PadPressed(GameAction.BowAim)) scroll = -1f;
         if (Mathf.Abs(scroll) < .01f) return;
         AimPoint chosen = locked;
         if (scroll < 0 && IsStaticAnchor(chosen)) { Notify("無法拖動此目標"); return; }
@@ -250,13 +271,53 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         StartCoroutine(pullSelf ? PullPlayer(chosen) : PullTarget(chosen));
     }
 
+    /// <summary>準心對到的是不是活著的敵人（有血量、不是玩家自己）：是的話回傳整隻敵人</summary>
+    static Transform AimEnemy(AimPoint p)
+    {
+        if (!p.hitSomething || p.collider == null) return null;
+        if (p.collider.GetComponentInParent<PlayerHealth>() != null) return null;
+        var d = p.collider.GetComponentInParent<IDamageable>();
+        if (d == null || d.IsDead || !(d is Component c)) return null;
+        return c.transform;
+    }
+
+    bool padThrow;   // 這次甩出是手把 R2 直接抓的（沒有先鎖定）
+
+    /// <summary>手把直接對準心下的目標出招（R1 拉自己 / L2 拉目標 / R2 抓住準備甩）。回傳 true = 這一幀處理掉了</summary>
+    bool PadDirectAction()
+    {
+        if (!PadInput.Connected) return false;
+        bool pullSelf = InputBindings.PadPressed(GameAction.Tether);
+        bool pullTarget = !pullSelf && InputBindings.PadPressed(GameAction.BowAim);
+        bool grab = !pullSelf && !pullTarget && InputBindings.PadPressed(GameAction.AimConfirm);
+        if (!pullSelf && !pullTarget && !grab) return false;
+        if (CancelIfOutOfRange(hovered)) return true;
+        if (!ValidPoint(hovered)) { Notify("請把準心對準實際物件"); return true; }
+        if ((pullTarget || grab) && IsStaticAnchor(hovered)) { Notify("無法拖動此目標"); return true; }
+        locked = hovered;
+        if (grab)
+        {
+            selectionLocked = true; padThrow = true;
+            aimingStartedAt = Time.unscaledTime;
+            dragging = true; dragStart = dragLast = PadInput.PointerPosition; dragVelocity = Vector2.zero;
+            dragDisplacement = Vector2.zero; dragPeakSpeed = 0f;
+            dragCameraRight = aimCamera.transform.right; dragCameraUp = aimCamera.transform.up;
+            UpdateReticle(locked, true);
+            return true;
+        }
+        if (!PayStamina(locked)) return true;
+        EndAiming(false);
+        StartCoroutine(pullSelf ? PullPlayer(locked) : PullTarget(locked));
+        return true;
+    }
+
     void BeginAiming(bool throwDestination)
     {
         if (!PlayerSkillAvailability.TryUse()) return;
         if (aiming || executing || Time.timeScale <= 0f || !SkillAimCancellation.Register(CancelAiming)) return;
         aiming = true;
         aimingThrowDestination = throwDestination;
-        selectionLocked = false;
+        selectionLocked = false; padThrow = false;
         dragging=false;
         aimingStartedAt = Time.unscaledTime;
         savedTimeScale = Time.timeScale;
@@ -703,7 +764,14 @@ public sealed class EnergyTetherSkill : MonoBehaviour
             alignment = TextAnchor.MiddleCenter,
             normal = { textColor = Color.white }
         };
-        string text = aimingThrowDestination
+        string N(GameAction a) => InputBindings.DisplayName(a, true);
+        string text = PadInput.UsingPadRecently
+            ? aimingThrowDestination
+                ? $"浮空地塊：{N(GameAction.AimConfirm)} 指定投擲位置　{InputBindings.PadName("buttonEast")} 取消"
+                : padThrow
+                    ? $"按住 {N(GameAction.AimConfirm)} 推右搖桿再放開甩出（沒推就往前甩）"
+                    : $"右搖桿對準目標　{N(GameAction.Tether)} 拉自己過去　{N(GameAction.BowAim)} 把目標拉過來　{N(GameAction.AimConfirm)} 甩出去"
+            : aimingThrowDestination
             ? "浮空地塊：左鍵指定投擲位置　Esc 取消"
             : selectionLocked
                 ? "已鎖定：任意位置按住左鍵甩動後放開　滾輪↑ 拉自己／↓ 拉目標"

@@ -176,6 +176,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         }
         if (showSkillHud) DrawTargetingUI();
         DrawChargeUI(); // 蓄力的準心和蓄力條一定要顯示（瞄準要用）
+        DrawPadVoidRendArmedHint();
     }
 
     void OnDisable()
@@ -183,6 +184,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         StopAllCoroutines();
         if (IsTargeting) CancelTargeting();
         if (charging) CancelCharge();
+        SetPadVoidRendArmed(false);
         VoidRendAimHighlight.Clear();
         if(playing) Time.fixedDeltaTime = fixedDeltaStart;
         RestorePose();

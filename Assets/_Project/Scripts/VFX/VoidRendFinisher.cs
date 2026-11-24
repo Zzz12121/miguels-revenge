@@ -245,6 +245,7 @@ public sealed partial class VoidRendSkillDemo
 
     IEnumerator PlaySequence()
     {
+        SkillDamageCap.BeginCast(this);   // 這次施放對強敵的傷害重新計算（一次最多 30%）
         SuspendPracticeControlsForSkill();
         playing = true; priorTimeScale = Time.timeScale; sequenceStart = Time.unscaledTime;
         SetWindupInvulnerability(true);

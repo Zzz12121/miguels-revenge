@@ -292,7 +292,7 @@ public static class GameUI
         get
         {
             var gm = GameManager.Instance;
-            return RangeInputSettings.InputBlocked || (gm != null && gm.IsOverlayOpen);
+            return RangeInputSettings.InputBlocked || (gm != null && gm.IsOverlayOpen) || VictoryCongratulations.Showing;
         }
     }
 }
@@ -341,6 +341,9 @@ public class InteractPrompt : MonoBehaviour
     string pendingText, focusedText;
     bool pendingEnabled, focusedEnabled;
     int pendingFrame = -1;
+
+    /// <summary>現在畫面上有可以按的互動提示（同一顆鍵綁了別的動作時，用來讓互動優先）</summary>
+    public static bool HasFocus => host != null && host.focusedOwner != null && host.focusedEnabled && !Blocked;
 
     static InteractPrompt Host
     {

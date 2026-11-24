@@ -85,7 +85,9 @@ public class PlayerCombat : MeleeCombat
     /// <summary>正在按住右鍵舉盾格擋</summary>
     public bool IsBlocking { get; private set; }
     /// <summary>盾牌舉著（格擋或盾擊中）：正面攻擊會被擋下</summary>
-    public bool ShieldUp => IsBlocking || IsShieldBashing || IsShieldCountering;
+    public bool ShieldUp => IsBlocking || IsShieldBashing || IsShieldCountering || SkillShield;
+    /// <summary>技能自己舉盾（例如 × □ × 的滑剷繞背斬）：只負責讓盾牌顯示出來，不會真的格擋</summary>
+    [System.NonSerialized] public bool SkillShield;
     /// <summary>這一輪連續擋了幾下（放下盾牌或破防就歸零）</summary>
     public int BlockStreak { get; private set; }
     /// <summary>盾擊開始時通知外面（模型動畫用）</summary>
@@ -284,8 +286,7 @@ public class PlayerCombat : MeleeCombat
             lastBlockBroke = true;
             guardBrokenUntil = Time.time + guardBreakTime;
             SetBlocking(false, false);
-            GameAudio.Play("SFX/RPG/metalPot1", shieldPoint, 1f, 0.6f, 0.05f, 1f, 35f);
-            CombatVFX.Impact(shieldPoint, new Color(1f, 0.45f, 0.3f));
+            CombatVFX.Impact(shieldPoint, new Color(1f, 0.45f, 0.3f));   // 盾牌不放金屬聲
             ThirdPersonCamera.ShakeMain(0.2f, 0.2f);
             OnBlockedHit?.Invoke(true);
             return damage;
@@ -296,7 +297,6 @@ public class PlayerCombat : MeleeCombat
         {
             Vector3 parryPoint = transform.position + Vector3.up * 1.1f + transform.forward * 0.7f;
             var attacker = FindParryTarget(from.normalized);
-            GameAudio.Play("SFX/RPG/metalPot3", parryPoint, 1f, 0.85f, 0.05f, 1f, 35f);
             OnShieldParry?.Invoke(parryPoint, from.normalized);
             OnBlockedHit?.Invoke(false);
             if (attacker != null)
@@ -306,7 +306,6 @@ public class PlayerCombat : MeleeCombat
             }
             return 0f;
         }
-        GameAudio.Play("SFX/RPG/metalPot3", shieldPoint, 1f, 1.2f, 0.05f, 1f, 30f);
         CombatVFX.Impact(shieldPoint, new Color(1f, 0.95f, 0.7f));
         ThirdPersonCamera.ShakeMain(0.06f, 0.1f);
         OnBlockedHit?.Invoke(false);
@@ -451,6 +450,21 @@ public class PlayerCombat : MeleeCombat
     /// <summary>打中東西的瞬間（近戰、盾擊、箭）：傷害、打中的目標（箭射中時是 null）。打擊回饋（震動）用</summary>
     public event System.Action<float, IDamageable> OnDealtHit;
 
+    /// <summary>技能自己造成傷害之後呼叫：跟普攻打中一樣算進打擊回饋（頓幀、震動、音效、戰鬥紀錄、能力加成）</summary>
+    /// <param name="countsAsSkill">true = 技能打的（不累積技能條）；false = 一般招式（例如 × □ × 滑剷繞背斬），跟普攻一樣累積</param>
+    public void ReportSkillHit(float dealt, IDamageable target, Vector3 point, bool heavy, bool countsAsSkill = true)
+    {
+        ReportingSkillHit = countsAsSkill;   // 技能條（SkillGauge）只算普攻 / 一般招式：技能打的不累積
+        try
+        {
+            AfterHit(dealt, target);
+            OnHitLanded?.Invoke(target, point, dealt, heavy);
+        }
+        finally { ReportingSkillHit = false; }
+    }
+    /// <summary>正在回報技能造成的傷害（OnDealtHit 的接收者用來分辨普攻 / 技能）</summary>
+    public static bool ReportingSkillHit { get; private set; }
+
     void AfterHit(float dealt, IDamageable target)
     {
         if (perks != null) perks.OnDealtDamage(dealt, target);
@@ -579,8 +593,7 @@ public class PlayerCombat : MeleeCombat
                 enemyMove.AddImpulse(push.normalized * shieldBashKnockback + Vector3.up * 2.5f);
             }
 
-            GameAudio.Play("SFX/RPG/metalPot2", point, 1f, 0.7f, 0.05f, 1f, 35f);
-            CombatVFX.Impact(point, new Color(0.85f, 0.9f, 1f));
+            CombatVFX.Impact(point, new Color(0.85f, 0.9f, 1f));   // 盾擊打中：不放金屬聲
             ThirdPersonCamera.ShakeMain(0.15f, 0.15f);
         }
     }
@@ -590,7 +603,7 @@ public class PlayerCombat : MeleeCombat
     void UpdateBow()
     {
         bool locked = Cursor.lockState == CursorLockMode.Locked;
-        bool aim = locked && InputBindings.Held(GameAction.Block);
+        bool aim = locked && InputBindings.Held(GameAction.BowAim);   // 預設 滑鼠右鍵 / 手把 L2
         if (aim != IsAimingBow)
         {
             IsAimingBow = aim;
@@ -600,7 +613,9 @@ public class PlayerCombat : MeleeCombat
         }
         if (IsAimingBow) FaceCamera();
 
-        if (locked && InputBindings.Pressed(GameAction.Attack) && Time.time >= nextArrowTime)
+        // 射箭：攻擊鍵（滑鼠左鍵 / □），或拉弓瞄準中按「瞄準確認」（手把 R2；沒瞄準時 R2 是衝刺，不射）
+        bool fire = InputBindings.Pressed(GameAction.Attack) || (IsAimingBow && InputBindings.PadPressed(GameAction.AimConfirm));
+        if (locked && fire && Time.time >= nextArrowTime)
             ShootArrow();
     }
 

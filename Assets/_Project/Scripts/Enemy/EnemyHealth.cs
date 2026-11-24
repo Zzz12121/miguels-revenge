@@ -118,9 +118,12 @@ public class EnemyHealth : MonoBehaviour, IDamageable
             LastHitDirection = away.sqrMagnitude > 0.0001f ? away.normalized : -transform.forward;
         }
 
-        // 受傷音效：盔甲 / 骨頭被打中的聲音（音高隨機一點，連續打不會聽起來一樣）
-        GameAudio.PlayAt(GameAudio.Pick(hurtSounds, "SFX/RPG/metalPot1", "SFX/RPG/metalPot2", "SFX/RPG/metalPot3"),
-                         transform.position, 0.75f, Random.Range(0.75f, 0.95f), 1f, 35f);
+        // 受傷音效：盔甲被打中的聲音（音高隨機一點，連續打不會聽起來一樣）
+        // 骷髏兵沒有盔甲，不放預設的金屬聲（玩家的打擊音效照樣有）；有指定 hurtSounds 的照用
+        bool skeleton = name.IndexOf("Skeleton", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!skeleton || (hurtSounds != null && hurtSounds.Length > 0))
+            GameAudio.PlayAt(GameAudio.Pick(hurtSounds, "SFX/RPG/metalPot1", "SFX/RPG/metalPot2", "SFX/RPG/metalPot3"),
+                             transform.position, 0.75f, Random.Range(0.75f, 0.95f), 1f, 35f);
         OnDamaged?.Invoke(amount);
         if (Health <= 0f) Die();
     }

@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 骷髏士兵舉盾格擋：
 ///   - 玩家在面前揮刀時，有機會舉起盾牌（EnemyVisual 播 Block → BlockIdle）
-///   - 舉盾期間，從正面打來的攻擊會被擋掉：不扣血、不硬直，噴火花＋金屬聲，玩家的刀被彈開往後退一點
+///   - 舉盾期間，從正面打來的攻擊會被擋掉：不扣血、不硬直，噴火花（不放金屬聲），玩家的刀被彈開往後退一點
 ///   - 從背後 / 側面打、或是技能的無視格擋傷害，照樣打得到
 ///   - 預設不畫盾牌（只播格擋動作）；想要的話勾 showShieldProp，會在左前臂做一面簡單的圓盾
 ///
@@ -129,8 +129,7 @@ public class EnemyShieldBlock : MonoBehaviour
         Vector3 spark = shieldProp != null ? shieldProp.position : transform.position + Vector3.up * 1.2f + transform.forward * 0.5f;
         CombatVFX.Impact(spark, sparkColor);
         CombatVFX.Impact(spark, sparkColor);
-        GameAudio.Play("SFX/RPG/metalClick", spark, 0.9f, 0.7f, 0.1f, 1f, 35f);
-        GameAudio.Play("SFX/RPG/metalPot2", spark, 0.7f, 1.3f, 0.1f, 1f, 35f);
+        // 舉盾擋下：不放金屬聲（只留火花、鏡頭晃動）
         ThirdPersonCamera.ShakeMain(0.06f, 0.1f);
         if (visual != null) visual.PlayBlockImpact();
         // 玩家的刀被彈開
