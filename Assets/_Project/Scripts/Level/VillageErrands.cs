@@ -89,7 +89,7 @@ public class FlowerGirlGift : MonoBehaviour
                 StoryProgress.Set(Flag);
                 VillageWallet.Add(VillageWallet.HerbKey, herbs);
                 GameAudio.Play("SFX/RPG/cloth1", transform.position, 0.7f, 1.2f, 0.08f, 0.3f);
-                VictoryBanner.ShowSmall($"草藥 +{herbs}", $"持有 {VillageWallet.Get(VillageWallet.HerbKey)}　可以拿去給藥師換藥水", GameUI.Good);
+                ItemToast.Show("草藥", herbs, $"持有 {VillageWallet.Get(VillageWallet.HerbKey)}　可以拿去給藥師換藥水");
                 return new[] { "嘿嘿，說不定是什麼好東西呢！" };
             },
         };
@@ -209,7 +209,7 @@ public class ErrandRun : MonoBehaviour
         StoryProgress.Set(Picked);
         if (parcel != null) parcel.SetActive(false);
         GameAudio.Play("SFX/RPG/handleSmallLeather", pickupAt, 0.8f, 1f, 0.05f, 0.3f);
-        VictoryBanner.ShowSmall("拿到包裹", "送到海邊那排最西邊的房子", GameUI.Accent);
+        ItemToast.Show("跑腿的包裹", 0, "送到海邊那排最西邊的房子");
         AutoSave.Request("拿到跑腿的包裹");
     }
 
@@ -223,7 +223,7 @@ public class ErrandRun : MonoBehaviour
         {
             StoryDialogue.L("海邊人家", null, true, "哎呀，是那孩子託你送來的？從東邊盡頭一路走到這裡，辛苦你了。", color),
             StoryDialogue.L("海邊人家", null, true, $"這是跑腿錢，{reward} 文，收下吧。", color),
-        }, () => VictoryBanner.ShowSmall("跑腿完成", $"錢 +{reward} 文（共 {VillageWallet.Coins} 文）", GameUI.Good));
+        }, () => ItemToast.Show("錢", reward, $"跑腿完成　持有 {VillageWallet.Coins} 文", "文"));
     }
 
     // ---------------------------------------------------------------- 房子、包裹

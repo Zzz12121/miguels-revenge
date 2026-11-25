@@ -4,16 +4,22 @@ using UnityEngine;
 /// 玩家的動作音效（只加聲音，不改任何動作）：
 ///   起跳：一陣上揚的風聲；二段跳：再高一點的風聲
 ///   落地：在空中待夠久才有「咚」一聲，掉得越快越重
-///   揮刀：在原本的刀聲底下墊一層風切聲
+///   揮刀：武士刀的揮砍聲（katana_swing_*，風切 + 刀身的細哨音），在刀真正揮下去的那一刻播（抬手之後）；
+///         取代 MeleeCombat 原本的 knifeSlice（給它一段靜音）。空揮比較高（whiffPitch），這一刀砍進敵人身上的當下
+///         把正在播的聲音音高往下拉（hitPitch），聽得出砍中和空揮不同；大刀 / 長槍 / 小刀各自再高低一點
 ///   打中：在原本的「砍中」聲底下墊一層悶響，傷害高的換成更重的那種
-/// 音效檔在 Resources/Audio/SFX/Gen/（`Art/Audio/synth_sfx.py` 合成的）。PlayerCombat 開場時自動掛上。
+/// 音效檔在 Resources/Audio/SFX/Gen/（`Art/Audio/synth_sfx.py`、刀聲是 `Art/Audio/synth_blade_sfx.py` 合成的）。PlayerCombat 開場時自動掛上。
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class PlayerSfx : MonoBehaviour
 {
     [Range(0f, 2f)] public float jumpVolume = 0.55f;
     [Range(0f, 2f)] public float landVolume = 0.7f;
-    [Range(0f, 2f)] public float swingVolume = 0.45f;
+    [Range(0f, 2f)] public float swingVolume = 0.85f;
+    [Tooltip("空揮時揮砍聲的音高（比較高、比較利）")]
+    public float whiffPitch = 1.12f;
+    [Tooltip("砍進敵人身上時把揮砍聲的音高拉到這裡（比較低、比較沉，約低 6 個半音）")]
+    public float hitPitch = 0.8f;
     [Range(0f, 2f)] public float hitVolume = 0.9f;
     [Tooltip("傷害超過這個值就用比較重的打擊聲")]
     public float heavyHitDamage = 30f;
@@ -22,7 +28,8 @@ public sealed class PlayerSfx : MonoBehaviour
 
     static readonly string[] Hits = { "SFX/Gen/hit_impact_1", "SFX/Gen/hit_impact_2", "SFX/Gen/hit_impact_3", "SFX/Gen/hit_impact_4" };
     static readonly string[] HeavyHits = { "SFX/Gen/hit_heavy_1", "SFX/Gen/hit_heavy_2" };
-    static readonly string[] Swings = { "SFX/Gen/swing_whoosh_1", "SFX/Gen/swing_whoosh_2", "SFX/Gen/swing_whoosh_3" };
+    static readonly string[] Swings = { "SFX/Gen/katana_swing_1", "SFX/Gen/katana_swing_2", "SFX/Gen/katana_swing_3" };
+    static AudioClip silent;
     static readonly string[] Jumps = { "SFX/Gen/jump_whoosh_1", "SFX/Gen/jump_whoosh_2" };
     static readonly string[] Lands = { "SFX/Gen/jump_land_1", "SFX/Gen/jump_land_2" };
 
@@ -31,6 +38,11 @@ public sealed class PlayerSfx : MonoBehaviour
     MeleeCombat melee;
     PlayerHealth health;
     bool wasGrounded = true;
+    // 這一刀的揮砍聲：什麼時候開始抬手、打中算這一刀的時間窗、有沒有砍中、聲音播了沒（播的那個 AudioSource）
+    AudioSource swingSrc;
+    float swingStart = -10f, swingWindow, swingBase;
+    int swingSerial;
+    bool swingHit, swingPlayed;
     float airborneSince, lastHitSound, lastJumpSound;
     float lowestVy;
 
@@ -40,6 +52,12 @@ public sealed class PlayerSfx : MonoBehaviour
         body = GetComponent<CharacterController>();
         melee = GetComponent<MeleeCombat>();
         health = GetComponent<PlayerHealth>();
+        // MeleeCombat 原本在揮下去時播 knifeSlice：給它一段靜音，揮砍聲由這裡播（才分得出砍中 / 空揮）
+        if (melee != null)
+        {
+            if (silent == null) silent = AudioClip.Create("Silent", 64, 1, 44100, false);
+            melee.swingSounds = new[] { silent };
+        }
     }
 
     void OnEnable()
@@ -94,14 +112,51 @@ public sealed class PlayerSfx : MonoBehaviour
 
     void DoubleJump() => Jump(1.2f);
 
+    /// <summary>OnSwing 在抬手「之前」發出：等抬手時間過了（刀真正揮下去）才播揮砍聲</summary>
     void Swing(int combo)
     {
-        float pitch = 1f + 0.06f * Mathf.Clamp(combo, 0, 4);
-        GameAudio.Play(Swings[Random.Range(0, Swings.Length)], transform.position + Vector3.up, swingVolume, pitch, 0.08f, 1f, 25f);
+        if (melee == null) return;
+        float windup = melee.IsDashSlash ? 0.05f : melee.IsAirSlash ? melee.airSlashWindup : melee.WindupFor(combo);
+        float swing = melee.IsDashSlash ? 0.25f : melee.IsAirSlash ? melee.airSlashSwing : melee.SwingFor(combo);
+        swingSerial++;
+        swingHit = swingPlayed = false;
+        swingSrc = null;
+        swingStart = Time.time;
+        swingWindow = windup + swing + 0.12f;
+        swingBase = WeaponPitch * (combo % 3 == 2 && !melee.IsAirSlash && !melee.IsDashSlash ? 0.93f : 1f) * Random.Range(0.97f, 1.03f);
+        StartCoroutine(PlaySwingAfter(windup, swingSerial));
+    }
+
+    /// <summary>大刀 1、長槍低一點（往前戳的風聲比較粗）、小刀高一點</summary>
+    static float WeaponPitch => PlayerLoadout.Current == WeaponLoadout.Spear ? 0.88f : PlayerLoadout.UsingKnife ? 1.22f : 1f;
+
+    System.Collections.IEnumerator PlaySwingAfter(float windup, int serial)
+    {
+        if (windup > 0f) yield return new WaitForSeconds(windup);   // 跟著遊戲時間（頓幀、慢動作時一起慢）
+        if (serial != swingSerial || swingPlayed || Dead) yield break;
+        PlaySwing();
+    }
+
+    void PlaySwing()
+    {
+        swingPlayed = true;
+        swingSrc = GameAudio.Play(Swings[Random.Range(0, Swings.Length)], transform.position + Vector3.up, swingVolume,
+                                  swingBase * (swingHit ? hitPitch : whiffPitch), 0f, 1f, 25f);
+    }
+
+    /// <summary>這一刀砍中了：揮砍聲已經在播就當下把音高往下拉，還沒播（一揮下去就砍到）就直接用砍中的音高播</summary>
+    void SwingConnected()
+    {
+        if (swingHit || Time.time - swingStart > swingWindow) return;
+        swingHit = true;
+        if (!swingPlayed) { PlaySwing(); return; }
+        if (swingSrc != null && swingSrc.isPlaying && swingSrc.clip != null && swingSrc.clip.name.StartsWith("katana_swing"))
+            swingSrc.pitch = swingBase * hitPitch;
     }
 
     void HitLanded(IDamageable target, Vector3 point, float damage, bool flag)
     {
+        if (target != null) SwingConnected();
         // 一刀砍中好幾個敵人時只墊一次，不然會疊得很大聲
         if (Time.time - lastHitSound < 0.05f) return;
         lastHitSound = Time.time;

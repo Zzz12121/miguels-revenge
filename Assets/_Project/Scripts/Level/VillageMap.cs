@@ -75,7 +75,7 @@ public static class VillageMap
     {
         if (Owned) return false;
         VillageWallet.Set(ItemKey, 1);
-        VictoryBanner.ShowSmall("獲得：漁村地圖", $"按【{InputBindings.DisplayName(GameAction.VillageMap)}】打開", new Color(1f, 0.88f, 0.6f));
+        ItemToast.Show("漁村地圖", 0, $"按【{InputBindings.DisplayName(GameAction.VillageMap)}】打開");
         GameAudio.Play("SFX/RPG/bookOpen", Camera.main != null ? Camera.main.transform.position : Vector3.zero, 0.7f, 1f, 0.05f, 0.3f);
         return true;
     }

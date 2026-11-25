@@ -53,7 +53,7 @@ public class LootPickup : MonoBehaviour
     {
         VillageWallet.Add(resourceKey, amount);
         GameAudio.Play("SFX/RPG/dropLeather", transform.position, 0.8f, 1.1f, 0.05f, 0.3f);
-        VictoryBanner.ShowSmall($"{displayName} +{amount}", "可以拿去鐵匠鋪升級武器", GameUI.Good);
+        ItemToast.Show(displayName, amount, "可以拿去鐵匠鋪升級武器");
         Destroy(gameObject);
     }
 }

@@ -37,7 +37,10 @@ public enum WeaponLoadout
 public class PlayerLoadout : MonoBehaviour
 {
     public const int MaxArrows = 20;
-    const float ArrowDamage = 14f;
+    /// <summary>一支箭的基本傷害（原本 14）：拉弓的力道再乘 0.6 ~ 2.2 倍（ChargeTime 秒拉滿）</summary>
+    const float ArrowDamage = 22f;
+    /// <summary>拉弓力道 0（剛搭上弦）→ 1（拉滿）的傷害倍率</summary>
+    const float DrawDamageMin = 0.6f, DrawDamageMax = 2.2f;
 
     public static WeaponLoadout Current { get; private set; } = WeaponLoadout.Greatsword;
     public static int Arrows { get; private set; } = MaxArrows;
@@ -57,6 +60,7 @@ public class PlayerLoadout : MonoBehaviour
         Current = WeaponLoadout.Greatsword;
         Arrows = MaxArrows;
         BowUnlocked = false;
+        ReboundKick = 0f;
         lastMelee = WeaponLoadout.Greatsword;
         Changed = null;
         Instance = null;
@@ -181,17 +185,13 @@ public class PlayerLoadout : MonoBehaviour
     {
         if (Current != WeaponLoadout.BowKnife || Arrows >= MaxArrows || count <= 0) return false;
         bool wasEmpty = Arrows <= 0;
+        int before = Arrows;
         Arrows = Mathf.Min(MaxArrows, Arrows + count);
-        if (Instance != null)
-        {
-            Instance.pickupNotice = Time.unscaledTime;
-            if (wasEmpty) Instance.Apply(); // 小刀 → 弓
-        }
+        if (Instance != null && wasEmpty) Instance.Apply(); // 小刀 → 弓
+        ItemToast.Show("箭", Arrows - before, $"撿回來了　{Arrows} / {MaxArrows}");   // 跟其他拿到東西的提示同一套（連著撿會合在一起）
         Changed?.Invoke();
         return true;
     }
-
-    float pickupNotice = -1f;
 
     // ---------------- 各武器的數值（相對原本大刀的判定 / 出手時間） ----------------
 
@@ -206,7 +206,7 @@ public class PlayerLoadout : MonoBehaviour
     // 原本：判定中心在前方 1.3 m、半徑 1.4 m（最遠 2.7 m）
     static readonly Stats GreatswordStats = new Stats(1.25f, 1.15f, 1f, 1f);   // 前方 1.6 m、半徑 1.6 m：最遠約 3.2 m，比原本多 0.5 m
     static readonly Stats KnifeStats = new Stats(0.72f, 0.75f, 0.6f, 0.7f);    // 最遠約 2 m；出手快 40%、每下傷害 70%
-    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 0.8f, 0.85f);   // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄；出手快 20%、每下傷害 85%
+    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 0.62f, 0.85f);  // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄；出手快 38%（戳得快、收得快）、每下傷害 85%
 
     static Stats StatsFor(Melee m) => m == Melee.Knife ? KnifeStats : m == Melee.Spear ? SpearStats : GreatswordStats;
 
@@ -255,6 +255,8 @@ public class PlayerLoadout : MonoBehaviour
         Instance = this;
         combat = GetComponent<PlayerCombat>();
         if (GetComponent<WeaponForgeGlow>() == null) gameObject.AddComponent<WeaponForgeGlow>(); // 升級過的武器發橘光
+        if (GetComponent<BladeRebound>() == null) gameObject.AddComponent<BladeRebound>();       // 砍到石頭、木頭、牆壁：刀被彈回來
+        if (GetComponent<AttackFlow>() == null) gameObject.AddComponent<AttackFlow>();           // 攻擊輸入緩衝：招式一個接一個
         presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         archerBow = GetComponent<PlayerArcherBow>();
         combat.OnSwing += i => { swingAt = Time.time; swingIndex = i; };
@@ -272,28 +274,40 @@ public class PlayerLoadout : MonoBehaviour
         float k = Mathf.Clamp01(damage / 30f);
         ThirdPersonCamera.ShakeMain(0.05f + 0.07f * k, 0.12f);
         // 頓幀：一下打中好幾個也只頓一次；別的東西正在改時間（暫停、慢動作）就不頓
-        // 刀、長槍砍中敵人（target 不是 null；箭是 null）：刀停在砍中的地方久一點（0.09 ~ 0.14 秒），接著一小段加速，像把刀從肉裡快速抽出來
+        // 刀、長槍砍中敵人（target 不是 null；箭是 null）：刀砍進身體時慢下來、卡在肉裡停一下（0.09 ~ 0.14 秒）、再慢慢抽出來，
+        // 砍進去、抽出來各比平常多花約 0.05 秒（加起來多 0.1 秒）。空揮沒有打中東西，不頓、照平常的速度
         bool melee = target != null && !(Current == WeaponLoadout.BowKnife && Arrows > 0 && combat.IsAimingBow);
         if (Time.unscaledTime >= hitStopUntil && Time.timeScale >= 0.99f)
         {
             float stop = melee ? 0.09f + 0.05f * k : 0.04f + 0.03f * k;
-            hitStopUntil = Time.unscaledTime + stop + (melee ? 0.15f : 0.05f);
+            hitStopUntil = Time.unscaledTime + stop + (melee ? EnterTime + PullOutTime + 0.05f : 0.05f);
             StartCoroutine(HitStop(stop, melee));
         }
         // 手把震動統一交給 PadRumble（它也掛在 OnDealtHit 上；兩邊各自開關馬達會互相把對方的震動關掉）
     }
 
     const float HitStopScale = 0.05f;
+    // 砍進身體：實際 0.07 秒只走 0.02 秒（多 0.05 秒）；抽出來：實際 0.1 秒只走 0.05 秒（多 0.05 秒）
+    const float EnterScale = 0.28f, EnterTime = 0.07f;
+    const float PullOutScale = 0.5f, PullOutTime = 0.1f;
 
-    const float PullOutScale = 1.7f, PullOutTime = 0.07f;
+    static bool OurScale => Mathf.Approximately(Time.timeScale, HitStopScale) || Mathf.Approximately(Time.timeScale, EnterScale) || Mathf.Approximately(Time.timeScale, PullOutScale);
 
-    System.Collections.IEnumerator HitStop(float seconds, bool pullOut = false)
+    System.Collections.IEnumerator HitStop(float seconds, bool melee = false)
     {
+        if (melee)
+        {
+            // 刀砍進身體：慢下來
+            Time.timeScale = EnterScale;
+            yield return new WaitForSecondsRealtime(EnterTime);
+            if (!Mathf.Approximately(Time.timeScale, EnterScale)) yield break; // 別的東西改了時間（暫停、技能慢動作）：交給它
+        }
+        // 卡在肉裡停一下
         Time.timeScale = HitStopScale;
         yield return new WaitForSecondsRealtime(seconds);
-        if (!Mathf.Approximately(Time.timeScale, HitStopScale)) yield break; // 別的東西改了時間（暫停、技能慢動作）：交給它
-        if (!pullOut) { Time.timeScale = 1f; yield break; }
-        // 抽刀：一小段時間走得比平常快（刀從砍中的地方快速抽出來），再回到正常
+        if (!Mathf.Approximately(Time.timeScale, HitStopScale)) yield break;
+        if (!melee) { Time.timeScale = 1f; yield break; }
+        // 抽刀：慢慢從砍中的地方抽出來，再回到正常
         Time.timeScale = PullOutScale;
         yield return new WaitForSecondsRealtime(PullOutTime);
         if (Mathf.Approximately(Time.timeScale, PullOutScale)) Time.timeScale = 1f;
@@ -333,7 +347,7 @@ public class PlayerLoadout : MonoBehaviour
 
     void OnDisable()
     {
-        if (Mathf.Approximately(Time.timeScale, HitStopScale)) Time.timeScale = 1f;
+        if (OurScale) Time.timeScale = 1f;
     }
 
     void OnDestroy()
@@ -782,6 +796,8 @@ public class PlayerLoadout : MonoBehaviour
     /// </summary>
     public struct SpearArtPose { public float weight, pull, extend, raise; public Vector3 dir; }
     public static SpearArtPose ArtPose;
+    /// <summary>長槍戳到牆被彈回來的程度（0 ~ 1，BladeRebound 每幀設定、慢慢減到 0）</summary>
+    public static float ReboundKick;
     Transform hipsBone, lUpperArm, lForeArm, lHandBone, rPalmBone, lPalmBone;
 
     /// <summary>手掌中心（手腕往手指方向 60%）：槍桿要穿過這裡，看起來才是握在手裡</summary>
@@ -817,8 +833,13 @@ public class PlayerLoadout : MonoBehaviour
         if (hipsBone == null || lUpperArm == null) return;
 
         Phase(out _, out float pull, out float strike, out float recover);
+        // 出得快、收得快：出手時間的前 60% 就戳到底，收招的前 40% 就收回架式（後面停在架式上等下一招）
+        strike = Mathf.Clamp01(strike * 1.65f);
+        recover = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(recover / 0.4f));
         float extend = strike * (1f - recover);
         pull *= 1f - strike;
+        // 戳到石頭、木頭、牆壁被彈回來（BladeRebound）：雙手一下子往回收
+        if (ReboundKick > 0f) { extend *= 1f - ReboundKick; pull = Mathf.Max(pull, ReboundKick); }
         float t = thrustWeight, w = spearHoldW;
         if (artOn)
         {
@@ -1160,27 +1181,28 @@ public class PlayerLoadout : MonoBehaviour
 
     /// <summary>從腰間抽箭搭上弦要多久 (秒)</summary>
     public const float FetchTime = 0.5f;
-    /// <summary>大圓從最大收到跟小圓重合要多久 (秒)</summary>
-    public const float ChargeTime = 1.1f;
+    /// <summary>拉滿弓要多久 (秒)：大圓同時從最大收到跟小圓重合。拉越久越強，拉滿之後一直維持最強（不會因為拉太久變差、手也不會抖）</summary>
+    public const float ChargeTime = 1.5f;
     const float BigRing = 70f, SmallRing = 12f; // 圓的半徑（像素，1080p）
-    const float HipSpread = 9f, WorstAimSpread = 6f;
+    const float HipSpread = 9f, WorstAimSpread = 4f;
+    bool fullDrawn;
 
     bool wasAiming;
     float fetchStart = -1f, chargeStart = -1f;
     GameObject quiver, quiverArrows, handArrow;
     Texture2D ringTex;
 
-    /// <summary>蓄力準不準：0 = 最差，1 = 大圓剛好跟小圓重合（最準、威力最大）</summary>
+    /// <summary>拉弓的力道：0 = 剛搭上弦（最弱、最不準），1 = 拉滿（大圓跟小圓重合，最準、威力最大）；拉滿之後一直是 1</summary>
     public float ChargeQuality { get; private set; }
     /// <summary>正在從腰間抽箭</summary>
     public bool Fetching => fetchStart >= 0f;
 
-    /// <summary>大圓現在的半徑（像素，1080p）：從 BigRing 往內收，ChargeTime 秒剛好收到 SmallRing，之後繼續收（太晚放）</summary>
+    /// <summary>大圓現在的半徑（像素，1080p）：從 BigRing 往內收，ChargeTime 秒剛好收到 SmallRing，之後停在那裡</summary>
     float RingRadius()
     {
         if (chargeStart < 0f) return BigRing;
-        float t = (Time.time - chargeStart) / ChargeTime;
-        return Mathf.Max(3f, SmallRing + (BigRing - SmallRing) * (1f - t));
+        float t = Mathf.Clamp01((Time.time - chargeStart) / ChargeTime);
+        return SmallRing + (BigRing - SmallRing) * (1f - t);
     }
 
     void ResetBowTuning()
@@ -1219,18 +1241,21 @@ public class PlayerLoadout : MonoBehaviour
             chargeStart = Time.time; // 箭搭好了：開始蓄力，大圓往內收
         }
 
-        // 準不準：大圓跟小圓差多少
-        if (aiming && chargeStart >= 0f)
-        {
-            float diff = Mathf.Abs(RingRadius() - SmallRing) / (BigRing - SmallRing);
-            ChargeQuality = Mathf.Clamp01(1f - diff * 1.6f);
-        }
+        // 拉弓的力道：拉越久越強（跟拉的時間成正比，ChargeTime 秒拉滿），拉滿之後一直維持最強
+        if (aiming && chargeStart >= 0f) ChargeQuality = Mathf.Clamp01((Time.time - chargeStart) / ChargeTime);
         else ChargeQuality = 0f;
         float q = ChargeQuality;
+        if (q >= 1f && !fullDrawn)
+        {
+            fullDrawn = true;   // 拉滿：弓弦繃緊的一聲
+            GameAudio.Play("SFX/RPG/handleSmallLeather", transform.position, 0.5f, 1.35f, 0.04f, 1f, 15f);
+        }
+        if (q < 1f) fullDrawn = false;
         combat.hipFireSpread = HipSpread;
         combat.aimedSpread = Mathf.Lerp(WorstAimSpread, 0f, q);
-        combat.arrowDamage = (aiming ? ArrowDamage * Mathf.Lerp(0.5f, 1.6f, q) : ArrowDamage * 0.6f) * WeaponForge.DamageScale; // 鐵匠鋪升級過再多一點
-        combat.arrowSpeed = baseArrowSpeed * (aiming ? Mathf.Lerp(0.75f, 1.2f, q) : 0.85f);
+        // 傷害：拉越久越高（0.6 → 2.2 倍）；沒瞄準直接射 0.6 倍。鐵匠鋪升級過再多一點
+        combat.arrowDamage = (aiming ? ArrowDamage * Mathf.Lerp(DrawDamageMin, DrawDamageMax, q) : ArrowDamage * DrawDamageMin) * WeaponForge.DamageScale;
+        combat.arrowSpeed = baseArrowSpeed * (aiming ? Mathf.Lerp(0.75f, 1.3f, q) : 0.85f);
 
         PoseFetch(aiming);
     }
@@ -1448,7 +1473,7 @@ public class PlayerLoadout : MonoBehaviour
         else if (aiming && chargeStart >= 0f && handArrow != null)
         {
             // 拉弓：右手從弓上（搭箭的地方）沿著箭的方向直直往後拉到臉頰旁（靠弦點）；
-            // 大概在兩個圓重合前拉滿；拉太久（太晚放）手開始抖
+            // 大概在兩個圓重合前拉滿，之後穩穩停在靠弦點（不抖）
             float since = Time.time - chargeStart;
             float draw = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(since / (ChargeTime * 0.85f)));
             if (cam != null) { Vector3 cf = cam.transform.forward; cf.y = 0f; if (cf.sqrMagnitude > 0.01f) { fwd = cf.normalized; side = Vector3.Cross(up, fwd); } }
@@ -1462,8 +1487,6 @@ public class PlayerLoadout : MonoBehaviour
             float reach = Mathf.Max(0.3f, Vector3.Dot(grip - anchor, line));
             Vector3 nock = anchor + line * (reach - 0.16f);
             Vector3 target = Vector3.Lerp(nock, anchor, draw); // 整段都在箭的線上
-            float over = Mathf.Clamp01((since - ChargeTime) / 0.6f);
-            if (over > 0f) target += (up * Mathf.Sin(Time.time * 37f) + side * Mathf.Sin(Time.time * 29f)) * 0.007f * over;
             // 手肘往外屈、抬到跟肩膀一樣高（水平），拉滿時再往後收一點；不會垂下去。
             // pole 是「手肘要往哪邊彎」：從右肩往外側、稍微往後，高度跟肩膀一樣（不往下）
             Vector3 flatLine = Vector3.ProjectOnPlane(line, Vector3.up).normalized;
@@ -1525,6 +1548,8 @@ public class PlayerLoadout : MonoBehaviour
     static readonly RaycastHit[] aimHits = new RaycastHit[32];
     Vector3 aimPoint;
     int aimPointFrame = -1;
+    // 準心那一點的距離（倒數，平滑過）：弓、拉弓的手對著它
+    float aimInvDist = -1f, aimInvVel;
 
     /// <summary>
     /// 準心對著的那一點：跟 PlayerCombat.ShootArrow 一樣從鏡頭正中央打一條線，第一個不是自己、不是自己的船的東西；
@@ -1537,8 +1562,7 @@ public class PlayerLoadout : MonoBehaviour
         var cam = Camera.main;
         if (cam == null) return aimPoint = transform.position + Vector3.up * 1.4f + transform.forward * 150f;
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        aimPoint = ray.GetPoint(150f);
-        float best = float.MaxValue;
+        float best = 150f;
         Transform boat = transform.parent;
         int n = Physics.RaycastNonAlloc(ray, aimHits, 150f, ~0, QueryTriggerInteraction.Ignore);
         for (int i = 0; i < n; i++)
@@ -1546,9 +1570,16 @@ public class PlayerLoadout : MonoBehaviour
             var h = aimHits[i];
             if (h.collider.transform.IsChildOf(transform)) continue;
             if (boat != null && h.collider.transform.IsChildOf(boat)) continue;
-            if (h.distance < best) { best = h.distance; aimPoint = h.point; }
+            if (h.distance < best) best = h.distance;
         }
-        return aimPoint;
+        // 距離平滑一下（用倒數平滑：弓轉的角度大約跟距離的倒數成正比，轉起來才均勻）：
+        // 準心掃過遠近不同的東西（身邊的石頭 → 遠處的天空、跑來跑去的敵人）時，弓和拉弓的手不會一下跳好幾度（瞄準時的晃動）。
+        // 只影響拉弓的姿勢；射出去的箭還是照準心實際打到的那一點飛（AlignShotWithDraw）
+        float inv = 1f / Mathf.Max(0.5f, best);
+        bool aiming = combat != null && (combat.IsAimingBow || PreviewAimPose);
+        if (aimInvDist < 0f || !aiming) { aimInvDist = inv; aimInvVel = 0f; }
+        else aimInvDist = Mathf.SmoothDamp(aimInvDist, inv, ref aimInvVel, 0.12f, Mathf.Infinity, Time.unscaledDeltaTime);
+        return aimPoint = ray.GetPoint(1f / Mathf.Max(1f / 150f, aimInvDist));
     }
 
     /// <summary>
@@ -1639,6 +1670,8 @@ public class PlayerLoadout : MonoBehaviour
         return ringTex;
     }
 
+    GUIStyle powerStyle;
+
     /// <summary>畫面中央的兩個圓：小圓固定、大圓往內收；重合時變成金色</summary>
     void DrawAimRings()
     {
@@ -1662,16 +1695,27 @@ public class PlayerLoadout : MonoBehaviour
             GUI.DrawTexture(new Rect(c.x - rb, c.y - rb, rb * 2f, rb * 2f), tex);
             if (q > 0.92f)
             {
-                // 重合（最強）：小圓外面一圈光快速閃動，再一圈一圈往外擴散
+                // 拉滿（最強）：小圓外面一圈穩定的光（不閃、不忽大忽小，準心不晃），再一圈一圈慢慢往外擴散
                 float k = (q - 0.92f) / 0.08f;
-                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 26f);
-                float rg = rs * (1.3f + 0.25f * pulse);
-                GUI.color = new Color(1f, 0.95f, 0.7f, k * (0.45f + 0.55f * pulse));
+                float rg = rs * 1.35f;
+                GUI.color = new Color(1f, 0.95f, 0.7f, k * 0.8f);
                 GUI.DrawTexture(new Rect(c.x - rg, c.y - rg, rg * 2f, rg * 2f), tex);
-                float wave = Mathf.Repeat(Time.unscaledTime * 3.2f, 1f);
-                float rw = rs * (1.2f + 1.6f * wave);
-                GUI.color = new Color(gold.r, gold.g, gold.b, k * (1f - wave) * 0.9f);
+                float wave = Mathf.Repeat(Time.unscaledTime * 1.2f, 1f);
+                float rw = rs * (1.3f + 1.4f * wave);
+                GUI.color = new Color(gold.r, gold.g, gold.b, k * (1f - wave) * 0.6f);
                 GUI.DrawTexture(new Rect(c.x - rw, c.y - rw, rw * 2f, rw * 2f), tex);
+            }
+            // 準心下面：現在的威力（傷害倍率），拉越久越高
+            if (chargeStart >= 0f && fetchStart < 0f)
+            {
+                powerStyle ??= new GUIStyle(GameUI.Small) { alignment = TextAnchor.MiddleCenter, fontSize = 15 };
+                float mult = Mathf.Lerp(DrawDamageMin, DrawDamageMax, q);
+                var r = new Rect(c.x - 60f, c.y + BigRing * ui + 6f, 120f, 22f);
+                powerStyle.normal.textColor = new Color(0f, 0f, 0f, 0.7f);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(r.x + 1f, r.y + 1f, r.width, r.height), $"威力 ×{mult:F1}", powerStyle);
+                powerStyle.normal.textColor = Color.Lerp(new Color(1f, 1f, 1f, 0.85f), gold, q);
+                GUI.Label(r, $"威力 ×{mult:F1}", powerStyle);
             }
         }
         GUI.color = prev;
@@ -1716,13 +1760,6 @@ public class PlayerLoadout : MonoBehaviour
             hudStyle ??= new GUIStyle(GameUI.Small) { fontSize = 17, alignment = TextAnchor.MiddleRight };
             GUI.color = new Color(GameUI.Accent.r, GameUI.Accent.g, GameUI.Accent.b, Mathf.Clamp01(3f - (Time.unscaledTime - notice)));
             GUI.Label(new Rect(box.x - 140f, box.y - 30f, box.width + 130f, 26f), "箭射完了，換成小刀（撿回地上的箭，或回鐵匠鋪補箭）", hudStyle);
-        }
-        else if (pickupNotice >= 0f && Time.unscaledTime - pickupNotice < 1.2f)
-        {
-            hudStyle ??= new GUIStyle(GameUI.Small) { fontSize = 17, alignment = TextAnchor.MiddleRight };
-            float age = Time.unscaledTime - pickupNotice;
-            GUI.color = new Color(GameUI.Good.r, GameUI.Good.g, GameUI.Good.b, Mathf.Clamp01((1.2f - age) / 0.4f));
-            GUI.Label(new Rect(box.x - 140f, box.y - 30f - age * 10f, box.width + 130f, 26f), $"撿回一支箭（{Arrows} / {MaxArrows}）", hudStyle);
         }
         GUI.color = prev;
     }

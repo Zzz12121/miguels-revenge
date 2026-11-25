@@ -27,7 +27,7 @@ public class BlacksmithShop : MonoBehaviour
             case WeaponLoadout.BowKnife:
                 return new[]
                 {
-                    $"弓與小刀：按住右鍵瞄準、左鍵放箭，對手還沒走近就打得到他。不過箭只有 {PlayerLoadout.MaxArrows} 支，射完就只剩腰上的小刀。",
+                    $"弓與小刀：按住右鍵瞄準、左鍵放箭，對手還沒走近就打得到他。弓拉得越久，箭射得越重、越準。不過箭只有 {PlayerLoadout.MaxArrows} 支，射完就只剩腰上的小刀。",
                     "小刀搆不遠，得貼到對手面前，可是出手比大刀快得多。箭用完了回來找我，再幫你補滿。拿著弓的時候沒辦法舉盾，小心點。",
                 };
             case WeaponLoadout.Spear:
