@@ -752,7 +752,7 @@ public class PlayerLoadout : MonoBehaviour
         if (!attacking || swingAt < attackStart) return false;
         float t = Time.time - swingAt;
         float wu = Mathf.Max(0.02f, combat.WindupFor(index)), sw = Mathf.Max(0.02f, combat.SwingFor(index));
-        float rec = combat.stepRecovery != null && index < combat.stepRecovery.Length ? combat.stepRecovery[index] : combat.recoveryTime;
+        float rec = combat.RecoveryFor(index);
         if (t < wu) { pull = Mathf.SmoothStep(0f, 1f, t / wu); return true; }
         pull = 1f;
         t -= wu;

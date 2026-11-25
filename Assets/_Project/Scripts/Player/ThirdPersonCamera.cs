@@ -262,11 +262,14 @@ public partial class ThirdPersonCamera : MonoBehaviour
     void LateUpdate() // 在角色 Update 移動完之後才更新鏡頭，避免抖動
     {
         if (target == null || cameraTarget == null) return;
+        float yawBeforeInput = yaw;
         HandleInput();
+        NoteManualLook(yawBeforeInput);
 
         // 注視點（平滑跟隨）
         Vector3 pivot = target.position + FramedOffset() + ClimbPivotShift();
         if (targetMotor == null && target != null) targetMotor = target.GetComponent<ThirdPersonController>();
+        AutoBehind();   // 進攻 / 翻滾 / 跳躍時轉到背後（ThirdPersonCamera.AutoBehind.cs）
         bool rolling = targetMotor != null && targetMotor.IsRolling;
         currentFollowSmooth = Mathf.MoveTowards(currentFollowSmooth <= 0f ? followSmoothTime : currentFollowSmooth,
             rolling ? Mathf.Max(followSmoothTime, rollFollowSmoothTime) : followSmoothTime, Time.deltaTime * (rolling ? 2f : .4f));

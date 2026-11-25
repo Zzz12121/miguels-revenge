@@ -192,7 +192,7 @@ public class PlayerVisual : MonoBehaviour
 
         if (Time.time < busyUntil) return;
         if (combat != null && (combat.IsAttacking || combat.IsShieldBashing)) return;
-        if (combat != null && combat.IsBlocking)
+        if (combat != null && combat.IsBlocking && !combat.swordParry)
         {
             animator.speed = 1f;
             Go("BlockIdle", 0.12f);
@@ -288,7 +288,7 @@ public class PlayerVisual : MonoBehaviour
 
     void OnBlockChanged(bool blocking)
     {
-        if (!HasAnimator || dead || !blocking || Time.time < busyUntil) return;
+        if (!HasAnimator || dead || !blocking || Time.time < busyUntil || (combat != null && combat.swordParry)) return;
         animator.speed = 1f;
         Go("BlockIdle", 0.1f);
     }
@@ -298,6 +298,7 @@ public class PlayerVisual : MonoBehaviour
     {
         if (!HasAnimator || dead || broke) return;
         if (combat != null && combat.IsShieldBashing) return; // 盾擊中擋到不打斷盾擊動畫
+        if (combat != null && combat.swordParry) return;      // 刀劍格擋：不播盾牌擋下的動畫
         animator.speed = 1.2f;
         Go("BlockHit", 0.05f, true);
         busyUntil = Time.time + 0.3f;

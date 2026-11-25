@@ -5,9 +5,10 @@ using UnityEngine.InputSystem;
 /// <summary>
 /// 玩家的攻擊：
 /// - 滑鼠左鍵：近戰揮劍連擊（三段連擊），攻擊方向 = 鏡頭朝向
-/// - 滑鼠右鍵（按一下）：舉盾 blockTapWindow 秒後自動放下，長按沒有額外效果。舉盾本身不會傷到敵人（盾擊衝撞預設關閉：shieldBashEnabled）。
-///   正面的攻擊完全擋下 → 盾反：把攻擊的敵人彈開（硬直），接著自動往前突刺，造成兩倍傷害。
-///   連續擋第 3 下會破防（那一下照樣扣血、盾牌放下一會兒）
+/// - 滑鼠右鍵（按一下）：格擋 blockTapWindow 秒後自動放下，長按沒有額外效果。格擋本身不會傷到敵人（盾擊衝撞預設關閉：shieldBashEnabled）。
+///   swordParry（預設開）：不拿盾牌，用刀擋＋側身。擋到時刀身噴火花、時間變 0.8 倍、敵人往後仰，玩家身體往側邊倒開（腳不動），接著原地反手斜斬（兩倍傷害）。
+///   swordParry 關掉：原本的舉盾格擋，擋下後彈開敵人再往前突刺。
+///   blockHitsBeforeBreak > 0 時連續擋到那一下會破防（預設 0 = 不限次數）
 /// - shieldBashEnabled 打開時，右鍵按一下 = 舊的舉盾衝撞（盾擊）
 /// - 弓箭（bowMode：船戰登船，或拿到弓箭技能 / 鐵匠鋪換弓）：右鍵按住瞄準、左鍵射箭，陸地和船上的敵人都射得到
 /// </summary>
@@ -16,6 +17,9 @@ public class PlayerCombat : MeleeCombat
     [Header("測試與倍率")]
     [Tooltip("玩家攻擊力倍率")]
     public float damageMultiplier = 1f;
+    [Tooltip("攻擊速度倍率：1 = 原本，1.3 = 快 30%。抬手、揮刀、收招、空中刀、揮刀動畫一起變快（判定和畫面一直對得上），接招容錯時間不變")]
+    [Range(0.5f, 2f)] public float attackSpeed = 1.3f;
+    public override float AttackSpeed => attackSpeed;
 
     [Header("盾擊（右鍵按一下，在陸地上）")]
     [Tooltip("打開：右鍵按一下 = 往前頂的盾擊（會傷到敵人）。關閉（預設）：舉盾不會造成傷害，傷害只來自盾反突刺")]
@@ -70,6 +74,23 @@ public class PlayerCombat : MeleeCombat
     public float counterReach = 1.7f, counterRadius = 0.9f;
     [Tooltip("突刺傷害 = 第一段揮砍傷害 × 這個倍率（固定被打幾下就死的敵人：算這麼多下）")]
     public float counterDamageMultiplier = 2f;
+
+    [Header("刀劍格擋（取代盾牌）")]
+    [Tooltip("開著（預設）：格擋不拿盾牌，改用刀擋＋側身躲開；擋到時噴火花、時間變慢、敵人往後仰，接著反手一刀。\n關掉 = 原本的盾牌格擋與盾反突刺")]
+    public bool swordParry = true;
+    [Tooltip("擋到攻擊時時間變成幾倍（0.8 = 慢 20%）")]
+    [Range(0.3f, 1f)] public float parrySlowScale = 0.8f;
+    [Tooltip("慢動作維持幾秒（真實時間）")]
+    public float parrySlowSeconds = 0.7f;
+    [Tooltip("被擋下的敵人上身往後仰幾度")]
+    public float enemyRecoilDegrees = 14f;
+    [Tooltip("刀劍格擋時，敵人被推開的力道 = parryKnockback × 這個（盾反是整個彈飛；刀擋只推開一點，敵人留在反擊打得到的距離）")]
+    [Range(0f, 1f)] public float swordParryPush = 0.3f;
+    /// <summary>刀劍格擋擋到攻擊、往側邊跨步（+1 = 往右、-1 = 往左）：姿勢用</summary>
+    public event System.Action<float> OnSwordSidestep;
+    float nextSidestepSide = 1f;
+    /// <summary>要不要顯示盾牌：刀劍格擋時只有技能（盾滑）和盾擊會拿出盾牌</summary>
+    public bool ShowShield => swordParry ? (SkillShield || IsShieldBashing) : ShieldUp;
 
     /// <summary>正在盾反突刺（彈開敵人後往前刺）</summary>
     public bool IsShieldCountering { get; private set; }
@@ -297,10 +318,11 @@ public class PlayerCombat : MeleeCombat
         lastBlockBroke = false;
         if (parryEnabled && !IsShieldCountering && !IsShieldBashing)
         {
-            Vector3 parryPoint = transform.position + Vector3.up * 1.1f + transform.forward * 0.7f;
+            Vector3 parryPoint = swordParry ? SwordContactPoint() : transform.position + Vector3.up * 1.1f + transform.forward * 0.7f;
             var attacker = FindParryTarget(from.normalized);
             OnShieldParry?.Invoke(parryPoint, from.normalized);
             OnBlockedHit?.Invoke(false);
+            if (swordParry) SwordBlockFeedback(parryPoint, from.normalized, attacker);
             if (attacker != null)
             {
                 ParryPush(attacker);
@@ -308,10 +330,44 @@ public class PlayerCombat : MeleeCombat
             }
             return 0f;
         }
+        if (swordParry) { shieldPoint = SwordContactPoint(); SwordBlockFeedback(shieldPoint, from.normalized, null); }
         CombatVFX.Impact(shieldPoint, new Color(1f, 0.95f, 0.7f));
         ThirdPersonCamera.ShakeMain(0.06f, 0.1f);
         OnBlockedHit?.Invoke(false);
         return 0f;
+    }
+
+    // ---------------- 刀劍格擋 ----------------
+
+    /// <summary>刀擋到攻擊的位置：刀身中段（找不到刀就用胸口前方）</summary>
+    Vector3 SwordContactPoint()
+    {
+        var presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
+        if (presenter != null && presenter.BladeTip != null && presenter.BladePivot != null && presenter.IsDrawn)
+            return Vector3.Lerp(presenter.BladePivot.position, presenter.BladeTip.position, 0.55f);
+        return transform.position + Vector3.up * 1.35f + transform.forward * 0.6f;
+    }
+
+    /// <summary>刀擋到攻擊：金屬火花 + 慢動作 + 側步 + 敵人往後仰</summary>
+    void SwordBlockFeedback(Vector3 point, Vector3 from, Component attacker)
+    {
+        // 火花（ShieldParryVFX 的閃光 / 火花 / 震波由 OnShieldParry 播；這裡再補一團刀碰刀的白熱火星和金屬聲）
+        CombatVFX.Impact(point, new Color(1f, 0.85f, 0.45f));
+        CombatVFX.Slash(point, from, new Color(1f, 0.7f, 0.3f));
+        GameAudio.Play("SFX/RPG/metalLatch", point, 0.9f, Random.Range(1.35f, 1.55f), 0f, 1f, 30f);
+        GameAudio.Play("SFX/RPG/metalClick", point, 0.7f, Random.Range(0.75f, 0.9f), 0f, 1f, 30f);
+        ParrySlowMotion.Play(parrySlowScale, parrySlowSeconds);
+
+        // 側身躲開：身體往左右交替倒開（SwordParryPose 擺姿勢）。腳不移動：嚴禁在地上滑
+        float side = nextSidestepSide;
+        nextSidestepSide = -nextSidestepSide;
+        OnSwordSidestep?.Invoke(side);
+
+        if (attacker != null)
+        {
+            Vector3 away = attacker.transform.position - transform.position;
+            ParryRecoil.Play(attacker, away, enemyRecoilDegrees);
+        }
     }
 
     // ---------------- 盾反（擋下 → 彈開 → 突刺） ----------------
@@ -340,7 +396,8 @@ public class PlayerCombat : MeleeCombat
         Vector3 push = attacker.transform.position - transform.position; push.y = 0f;
         push = push.sqrMagnitude > 0.001f ? push.normalized : transform.forward;
         var move = attacker.GetComponent<ThirdPersonController>();
-        if (move != null) move.AddImpulse(push * parryKnockback + Vector3.up * 2f);
+        // 刀劍格擋：只推開一點點（後仰交給 ParryRecoil），敵人留在反擊打得到的地方；盾反照舊把敵人彈飛
+        if (move != null) move.AddImpulse(swordParry ? push * parryKnockback * swordParryPush : push * parryKnockback + Vector3.up * 2f);
         var ai = attacker.GetComponent<EnemyAI>();
         if (ai != null) ai.Parried(parryStagger);
     }
@@ -351,14 +408,19 @@ public class PlayerCombat : MeleeCombat
         if (IsBlocking) SetBlocking(false, false);
         controller.lockRotation = true;
         controller.speedMultiplier = 0f;
-        float total = counterDelay + counterActive + counterRecovery;
+        // 刀劍格擋：反擊 = 第一刀的斜斬（抬手 / 揮 / 收的時間跟揮刀動畫一樣，也跟著攻擊速度）
+        float delay = swordParry ? Mathf.Max(counterDelay, WindupFor(0)) : counterDelay;
+        float active = swordParry ? SwingFor(0) : counterActive;
+        float recovery = swordParry ? RecoveryFor(0) * 0.7f : counterRecovery;
+        float radius = swordParry ? Mathf.Max(counterRadius, hitRadius) : counterRadius;
+        float total = delay + active + recovery;
         OnShieldCounter?.Invoke(total);
         float start = Time.time;
         var presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         if (presenter != null) presenter.DrawForSeconds(total + 0.3f);
 
         // 轉向被彈開的敵人，稍微蓄勢
-        while (Time.time - start < counterDelay)
+        while (Time.time - start < delay)
         {
             FaceTarget(target);
             CounterProgress = (Time.time - start) / total;
@@ -367,12 +429,12 @@ public class PlayerCombat : MeleeCombat
 
         // 刺出：往前衝 + 判定（同一個敵人只算一次）
         FaceTarget(target);
-        controller.AddImpulse(transform.forward * counterLunge);
+        if (!swordParry) controller.AddImpulse(transform.forward * counterLunge);   // 刀劍格擋：原地反手一刀，不往前滑
         GameAudio.Play("SFX/RPG/drawKnife2", transform.position + Vector3.up, 0.9f, 1.25f, 0.05f, 1f, 30f);
         var hit = new HashSet<object>();
-        while (Time.time - start < counterDelay + counterActive)
+        while (Time.time - start < delay + active)
         {
-            CounterHitCheck(hit);
+            CounterHitCheck(hit, radius);
             CounterProgress = (Time.time - start) / total;
             yield return null;
         }
@@ -393,10 +455,10 @@ public class PlayerCombat : MeleeCombat
         if (d.sqrMagnitude > 0.01f) controller.FaceDirection(d.normalized);
     }
 
-    void CounterHitCheck(HashSet<object> alreadyHit)
+    void CounterHitCheck(HashSet<object> alreadyHit, float radius)
     {
         Vector3 center = transform.position + Vector3.up * 1.1f + transform.forward * counterReach;
-        int n = Physics.OverlapSphereNonAlloc(center, counterRadius, parryOverlap, ~0, QueryTriggerInteraction.Collide);
+        int n = Physics.OverlapSphereNonAlloc(center, radius, parryOverlap, ~0, QueryTriggerInteraction.Collide);
         for (int i = 0; i < n; i++)
         {
             var c = parryOverlap[i];
