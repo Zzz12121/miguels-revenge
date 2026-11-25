@@ -106,9 +106,9 @@ public static class JapaneseVillageBuilder
     const string BlacksmithModel = "Assets/_Project/Models/JapaneseVillage/Blacksmith/Blacksmith.fbx";
     const float BlacksmithHeight = 1.7f;
     // 老漁夫（坐在棧橋末端釣魚）、砍竹人：Tripo 生成、Mixamo 骨架
-    // 竹林裡的雙尾虎（TigerBeast）：石階西側的竹林空地，打跑了往竹林深處逃
+    // 竹林裡的雙尾虎（TigerBeast）：平常在石階西側的竹林空地附近走動，打跑了逃回竹林深處的巢穴（TigerDen）
     static readonly Vector2 TigerLair = new Vector2(-24f, 84f);
-    static readonly Vector2 TigerFlee = new Vector2(-75f, 126f);
+    static readonly Vector2 TigerDen = new Vector2(-70f, 122f);
     const string TigerModel = "Assets/_Project/Models/JapaneseVillage/Tiger/Tiger.fbx";
     const float TigerLength = 3.64f; // 原本 2.6 m 再大 1.4 倍
     const float FishermanHeight = 1.66f, WoodcutterHeight = 1.72f, MerchantHeight = 1.68f, MasterHeight = 1.66f, ChildGirlHeight = 1.6f, GrannyHeight = 1.55f, ErrandBoyHeight = 1.62f;
@@ -123,6 +123,10 @@ public static class JapaneseVillageBuilder
     // 長椅（Tripo 模型，沒有椅背）：茶屋、村長家櫻花樹下、女書生的長椅都用這個；坐面高 BenchSeatHeight
     const string BenchModel = "Assets/_Project/Models/JapaneseVillage/Bench/Bench.fbx";
     const float BenchSeatHeight = 0.48f;
+    // StoneStep_01（Garden 的踏石，沒有碰撞）：高 0.47 m。房子門口的踏石埋一半，露出 StepStoneShow（比玩家跨得上去的 0.35 m 矮）
+    const float StepStoneHeight = 0.47f, StepStoneShow = 0.28f;
+    // 行商（NPC_Merchant）的位置和面向：玩家的出生點在他面前（開新遊戲的開場 VillageOpening 也放在這裡）
+    const float MerchantX = -7.2f, MerchantZ = -33.4f, MerchantYaw = 150f;
     const float ArrowLength = 0.94f;
 
     static HumanModel TripoLook(string name, float height, string label) => new HumanModel
@@ -1959,11 +1963,12 @@ public static class JapaneseVillageBuilder
         else if (spec.veranda)
             JVGarden.Place("Lantern_Paper_01", t, new Vector3(door + 2.5f, JapaneseVillageHouses.Floor + 0.03f, frontZ + 0.5f), 0f);
 
-        // 石階：門前放一塊踏石
+        // 石階：門前放一塊踏石。埋一半在土裡（露出 StepStoneShow，跨得上去），加上貼著石頭的碰撞，腳才不會穿進石頭裡
         if (!spec.veranda || rng.NextDouble() < 0.7)
         {
             var world = t.TransformPoint(new Vector3(door, 0f, frontZ + (spec.veranda ? 1.6f : 1.2f)));
-            JVGarden.Place("StoneStep_01", t, t.InverseTransformPoint(new Vector3(world.x, Ground(world.x, world.z) - 0.02f, world.z)), 90f);
+            var stepStone = JVGarden.Place("StoneStep_01", t, t.InverseTransformPoint(new Vector3(world.x, Ground(world.x, world.z) + StepStoneShow - StepStoneHeight, world.z)), 90f);
+            FitBoxCollider(stepStone);
         }
 
         // 屋角的水缸、柴堆、灌木
@@ -2590,22 +2595,16 @@ public static class JapaneseVillageBuilder
         AddHollowHouseColliders(shrine, spec);
         var t = shrine.transform;
 
-        // 前後門的階梯：看得到的是石階，走的是斜坡
+        // 前後門的階梯：兩階石階，每一階都是真的碰撞（貼著石頭；一階高 0.27 m，跨得上去），腳不會穿進石頭裡
         foreach (float side in new[] { 1f, -1f })
         {
             float edge = side > 0f ? halfD + JapaneseVillageHouses.VerandaDepth : halfD;
-            const float run = 2.3f;
             for (int i = 0; i < 2; i++)
             {
-                var stone = JVGarden.Place("StoneStep_01", t, new Vector3(0f, floor * (2 - i) / 3f - 0.47f, side * (edge + 0.42f + i * 0.72f)), 90f);
+                var stone = JVGarden.Place("StoneStep_01", t, new Vector3(0f, floor * (2 - i) / 3f - StepStoneHeight, side * (edge + 0.42f + i * 0.72f)), 90f);
                 stone.transform.localScale = new Vector3(0.75f, 1f, 3.6f / 2.31f);
+                FitBoxCollider(stone);
             }
-            var ramp = new GameObject(side > 0f ? "FrontRamp" : "BackRamp");
-            ramp.transform.SetParent(t, false);
-            ramp.transform.localPosition = new Vector3(0f, floor * 0.5f - 0.1f, side * (edge + run * 0.5f));
-            ramp.transform.localRotation = Quaternion.Euler(side * Mathf.Atan2(floor, run) * Mathf.Rad2Deg, 0f, 0f);
-            ramp.AddComponent<BoxCollider>().size = new Vector3(3.6f, 0.2f, Mathf.Sqrt(run * run + floor * floor));
-            ramp.isStatic = true;
         }
 
         // 後門：師父答應之前關著
@@ -3514,6 +3513,7 @@ public static class JapaneseVillageBuilder
             if (Mathf.Abs(x) < 6.5f && z > StairStartZ - 4f && z < StairEndZ + 6f) return true;
             if (new Vector2(x, z - ClearingZ).magnitude < 17f) return true;
             if (new Vector2(x - TigerLair.x, z - TigerLair.y).magnitude < 16f) return true; // 雙尾虎的空地
+            if (new Vector2(x - TigerDen.x, z - TigerDen.y).magnitude < 8f) return true;    // 雙尾虎的巢穴
             return TerraceDistance(x, z) < 2.5f; // 祠堂和習武場
         }
 
@@ -3644,7 +3644,7 @@ public static class JapaneseVillageBuilder
             EnsureHumanImport($"Assets/_Project/Models/JapaneseVillage/{n}/{n}.fbx", $"Assets/_Project/Models/JapaneseVillage/{n}/T_JV_{n}_Normal.png", $"Assets/_Project/Models/JapaneseVillage/{n}/T_JV_{n}_MetallicSmooth.png");
         villagerController = VillagerController();
         monkController = MonkController();
-        NpcAt(parent, "NPC_Merchant", new Vector3(-7.2f, 0f, -33.4f), 150f, new JapaneseVillageMeshes.NpcSpec
+        NpcAt(parent, "NPC_Merchant", new Vector3(MerchantX, 0f, MerchantZ), MerchantYaw, new JapaneseVillageMeshes.NpcSpec
         {
             robe = JVMat.ClothOchre, obi = JVMat.ClothBrown, hair = JVMat.Hair, hat = JapaneseVillageMeshes.NpcHat.Kasa, backpack = true,
         }, "行商", false, true,
@@ -4475,7 +4475,8 @@ public static class JapaneseVillageBuilder
     }
 
     /// <summary>
-    /// 雙尾虎：趴在竹林空地裡，玩家走近就怒吼衝過來決鬥（飛撲、揮爪），打中 8 下就逃往竹林深處，原地留下虎皮、虎牙（TigerLoot，執行時生成；下面的三株草藥現在一直藏著）。
+    /// 雙尾虎：平常在竹林空地附近走動、趴著休息，玩家走近就怒吼衝過來決鬥（飛撲、揮爪），打中 8 下就逃回竹林深處的巢穴（BuildTigerDen），
+    /// 原地留下虎皮、虎牙（TigerLoot，執行時生成；下面的三株草藥現在一直藏著）。
     /// 模型是 Tripo 的四足骨架（沒有動畫），動作都在 TigerBeast 用程式擺骨頭。
     /// </summary>
     static void BuildTiger()
@@ -4544,9 +4545,60 @@ public static class JapaneseVillageBuilder
         var tiger = root.AddComponent<TigerBeast>();
         tiger.model = model.transform;
         tiger.bodyLength = TigerLength;
-        tiger.fleeTarget = G(TigerFlee.x, TigerFlee.y);
+        tiger.fleeTarget = G(TigerDen.x, TigerDen.y);
         tiger.herbs = herbs;
+        BuildTigerDen(root.transform.parent);
         Debug.Log($"[JapaneseVillage] 雙尾虎：位置 {root.transform.position}，模型原始長 {raw:F2}、轉正 {turn:F0}°、高 {b.size.y:F2} m");
+    }
+
+    /// <summary>
+    /// 雙尾虎的巢穴（TigerDen）：竹林深處，空地往西北走約 60 m。上坡那一邊幾塊大石頭圍成半圈擋風，中間一圈乾草鋪成的窩，
+    /// 窩邊散著幾根啃過的骨頭。老虎被打跑時逃回這裡趴著（TigerBeast.fleeTarget）；竹子在這附近讓開（NearPath）。
+    /// </summary>
+    static void BuildTigerDen(Transform parent)
+    {
+        var root = new GameObject("TigerDen").transform;
+        root.SetParent(parent, false);
+        root.position = G(TigerDen.x, TigerDen.y);
+
+        // 乾草窩：壓扁的大橢球 + 一圈草堆成的邊
+        var nest = new JVMeshKit();
+        nest.Ellipsoid(JVMat.Straw, new Vector3(0f, 0.02f, 0f), new Vector3(1.9f, 0.16f, 1.4f), 5, 14);
+        for (int i = 0; i < 12; i++)
+        {
+            float a = i * Mathf.PI * 2f / 12f;
+            var c = new Vector3(Mathf.Cos(a) * 1.85f, 0.1f, Mathf.Sin(a) * 1.35f);
+            nest.Ellipsoid(JVMat.Straw, c, new Vector3(0.55f, 0.2f, 0.35f), 4, 8);
+        }
+        var nestGo = Instance("TigerDen_Nest", root, nest, root.position + Vector3.down * 0.05f, Quaternion.Euler(0f, 20f, 0f));
+        nestGo.transform.position = new Vector3(nestGo.transform.position.x, Ground(TigerDen.x, TigerDen.y) - 0.05f, nestGo.transform.position.z);
+
+        // 骨頭：細長的圓柱，兩頭鼓起來
+        var bones = new JVMeshKit();
+        foreach (var (x, z, len, yaw) in new[] { (2.4f, 0.6f, 0.7f, 30f), (2.1f, -0.9f, 0.5f, 110f), (-2.5f, 0.3f, 0.6f, 75f), (0.6f, -1.9f, 0.45f, 160f), (-1.2f, -1.8f, 0.55f, 20f) })
+        {
+            var dir = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
+            Vector3 a = new Vector3(x, 0.05f, z) - dir * len * 0.5f, b = a + dir * len;
+            bones.Cylinder(JVMat.White, a, b, 0.035f, 0.03f, 6);
+            bones.Ellipsoid(JVMat.White, a, new Vector3(0.06f, 0.05f, 0.06f), 3, 6);
+            bones.Ellipsoid(JVMat.White, b, new Vector3(0.06f, 0.05f, 0.06f), 3, 6);
+        }
+        Instance("TigerDen_Bones", root, bones, new Vector3(root.position.x, Ground(TigerDen.x, TigerDen.y), root.position.z), Quaternion.identity);
+
+        // 上坡那一邊（北邊、西邊）的大石頭：圍成半圈
+        foreach (var (dx, dz, name, s, yaw) in new[]
+        {
+            (-1.5f, 3.6f, "LandscapeStone_01", 1.3f, 20f), (2.2f, 3.4f, "Stone_04", 2.2f, 140f), (-3.8f, 1.2f, "Stone_04", 1.9f, 260f),
+            (4.2f, 1.8f, "Stone_03", 2.4f, 80f), (-3.6f, -2.2f, "Stone_03", 2f, 310f),
+        })
+        {
+            float x = TigerDen.x + dx, z = TigerDen.y + dz;
+            var go = JVGarden.Place(name, root, root.InverseTransformPoint(new Vector3(x, Ground(x, z) + (name.StartsWith("Landscape") ? 0.9f : 0.12f), z)), yaw);
+            go.transform.localScale *= s;
+            var c = go.AddComponent<SphereCollider>();
+            c.radius = name == "Stone_03" ? 0.28f : 0.75f;
+        }
+        Debug.Log($"[JapaneseVillage] 雙尾虎的巢穴：{root.position}");
     }
 
     /// <summary>竹林石階旁的草藥（和 Planet 一樣按 E 採集，拿去給藥師換藥水）</summary>
@@ -4570,6 +4622,38 @@ public static class JapaneseVillageBuilder
     }
 
     // ---------------------------------------------------------------- 邊界與玩家
+
+    /// <summary>
+    /// 照模型的外框加一個 BoxCollider（外框算在 go 自己的座標裡，縮放、旋轉都跟著）；頂面往下收 topInset，
+    /// 天然石頭的頂不平，碰撞貼著最高點的話腳會浮起來。Garden 的踏石、石階模型本身沒有碰撞，用這個補
+    /// </summary>
+    static BoxCollider FitBoxCollider(GameObject go, float topInset = 0.04f)
+    {
+        var toLocal = go.transform.worldToLocalMatrix;
+        bool any = false;
+        var b = new Bounds();
+        foreach (var mf in go.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if (mf.sharedMesh == null) continue;
+            var m = toLocal * mf.transform.localToWorldMatrix;
+            var mb = mf.sharedMesh.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = mb.center + Vector3.Scale(mb.extents, new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f));
+                var p = m.MultiplyPoint3x4(corner);
+                if (!any) { b = new Bounds(p, Vector3.zero); any = true; }
+                else b.Encapsulate(p);
+            }
+        }
+        if (!any) return null;
+        var top = b.max;
+        top.y -= Mathf.Min(topInset, b.size.y * 0.25f);
+        b.max = top;
+        var col = go.AddComponent<BoxCollider>();
+        col.center = b.center;
+        col.size = b.size;
+        return col;
+    }
 
     static void BoundsBox(Transform parent, string name, Vector3 center, Vector3 size, Quaternion rotation)
     {
@@ -4630,9 +4714,10 @@ public static class JapaneseVillageBuilder
         var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
         var rig = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
         rig.name = "PlayerRig";
-        // 主街南端，面向村莊和後山
-        const float x = 0f, z = -46f;
-        rig.transform.SetPositionAndRotation(new Vector3(x, Ground(x, z) + 1.1f, z), Quaternion.identity);
+        // 行商面前 2.3 m，面對他（主角在這裡醒來，什麼都不記得）
+        Vector3 f = Quaternion.Euler(0f, MerchantYaw, 0f) * Vector3.forward;
+        float x = MerchantX + f.x * 2.3f, z = MerchantZ + f.z * 2.3f;
+        rig.transform.SetPositionAndRotation(new Vector3(x, Ground(x, z) + 1.1f, z), Quaternion.Euler(0f, MerchantYaw + 180f, 0f));
         var player = rig.transform.Find("Player");
         if (player != null) player.localPosition = Vector3.zero;
     }

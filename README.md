@@ -4,16 +4,31 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
 
 ## 遊戲流程
 
-`MainMenu`（主選單）→ 按「開始遊戲」→ 漁村（`JapaneseVillage`）↔ 道場；沙漠起的三個關卡（`GameManager.levels`）從 Game Over / 通關的「重新開始」進
+`MainMenu`（主選單）→ 按「開始遊戲」→ 選一個存檔 → 漁村（`JapaneseVillage`）↔ 道場 → 吊橋 → 霧海孤島（`ForestIsland`，打倒百足 → 工作人員名單 → 回漁村）；沙漠起的三個關卡（`GameManager.levels`）從 Game Over / 通關的「重新開始」進
 
 - **MainMenu**（`Scripts/Core/MainMenu.cs`、`Scenes/MainMenu.unity`，Build Settings 第一個）：水墨風格的標題畫面，構圖參考 Hades II——
   左邊是「Miguel's Revenge」標題（「Miguel」被三道朱紅的爪痕抓破、「Revenge」被一刀斜斜砍開，刀口上半截滑開一點）、副標「神使之復仇」和三個選項（開始遊戲、選項、離開遊戲），右邊是主角舉刀
   （第三批人物照的去背圖），背後一團潑墨、一輪朱紅的日，和一尊巨大的道士水墨法相（第二批道士拿巨筆的去背照轉成墨：衣服的深淺變成墨的濃淡、輪廓暈開、下半身散成霧；巨筆劃過紅日）；背景是舊宣紙上淡淡的遊戲裡的古畫（祠堂的海上鬥龍、百足現世、與民同醉）和弔玄清的詩，墨點慢慢飄。
   進場時墨從中間暈開 → 日、道士法相、主角浮現 → 標題浮現 → 一爪抓破 Miguel → 一刀砍開 Revenge（每一下標題震一下）→ 選項依序出現；潑墨和法相一直慢慢呼吸、主角輕輕起伏。選到的選項後面刷上一筆朱紅
   （滑鼠移上去、方向鍵 / W S、手把十字鍵或左搖桿選，Enter / 空白鍵 / 手把 A 確定）。「開始遊戲」墨潑滿畫面後，換成主畫面的舊宣紙，下方一長條破布當載入進度條，進度的部分染成朱紅（偶爾會倒退一截，退掉的那段留下淡淡的紅、停一下再繼續；跑完才切到漁村，`StoryLoadingScreen`），再進漁村（`GameManager.StartStoryGame`），
-  「選項」是跟暫停選單同一個設定畫面，外觀跟主畫面同一套：整個設定寫在一張撕得破破爛爛的皮紙上（裂口、小洞、脫線），每個按鈕是一塊破布，選到或滑鼠移上去時像被微風吹（`ClothFlutter`），字用主畫面的字（英文 Bookman Old Style、中文標楷體）；圖用 `python Art/MainMenu/make_settings_art.py` 產生。不再顯示規則、操作說明和「繼續遊戲」（存檔從暫停選單讀）。
+  「選項」是跟暫停選單同一個設定畫面，外觀跟主畫面同一套：整個設定寫在一張撕得破破爛爛的皮紙上（裂口、小洞、脫線），每個按鈕是一塊破布，選到或滑鼠移上去時像被微風吹（`ClothFlutter`：只有布的網格在飄、擺動、放大，按鈕上的字不動），字用主畫面的字（英文 Bookman Old Style、中文標楷體）；圖用 `python Art/MainMenu/make_settings_art.py` 產生。不再顯示規則、操作說明和「繼續遊戲」（存檔從暫停選單讀）。
   圖都在 `Resources/MainMenu`，用 `python Art/MainMenu/make_menu_art.py` 產生（加 `--preview` 另外拼一張預覽圖）；匯入設定由 `Scripts/Editor/MainMenuArtTools.cs` 自動處理。
-  在編輯器裡直接從 `JapaneseVillage` 按 Play 時會先跳到主畫面，按「開始遊戲」才進村子；選單 **GeminiGrowUp > 主畫面 > 直接測試漁村** 打勾可以跳過。
+  在編輯器裡直接從 `JapaneseVillage` 按 Play 時會先跳到主畫面，按「開始遊戲」才進村子；選單 **GeminiGrowUp > 主畫面 > 直接測試漁村** 打勾可以跳過（這樣沒有選存檔欄，不會存檔）。
+  **選擇存檔**：按「開始遊戲」後主畫面暗下來，跳出一張破皮紙「選擇存檔」，上面三塊破布是三個存檔欄（存檔一～三），每一欄寫著存在哪裡、遊玩時間、
+  總共倒下幾次、上次存檔是因為什麼（「來到漁村」「和村長說完話」「打倒了雙尾虎」「手動存檔」……）、存檔時間；空的寫「空白／開始新的旅程」。
+  每次進遊戲都要先選一欄：滑鼠點一下（或 ← → 選好按 Enter / 手把 A）就進去——空的欄位 = 開新遊戲（播開場），有存檔 = 接著存檔的進度（`GameManager.StartSlot`）；
+  之後自動存檔、暫停選單的存檔 / 讀檔都是這一欄。選到 / 移上去的那塊染成朱紅、被風吹，右上角有「清除」（按兩次才刪；鍵盤 Delete / 手把 Y）；
+  Esc / 手把 B / 「返回」關掉面板。游標一打開先停在最近存過的那一欄。
+- **開場**（`Scripts/Level/VillageOpening.cs`，開新遊戲第一次進漁村，自動執行）：上下黑邊，先是漁村的四個空景（漁港、市街、鳥居和石階、村長宅院，鏡頭慢慢移動、
+  之間淡入淡出）→ 白光一閃一閃地閃過以前的沙漠、維京村莊、地下城各一張（褪色、晃一下）→ 白光褪掉，轉到主角身上：主角站在行商面前，
+  下面的字幕（米白色的大字，外圈淡淡的深色邊）一個字一個字出來「我到底發生甚麼事了……／甚麼記憶都沒有……／這裡又是哪裡？」→ 鏡頭飛回玩家背後交還操作、顯示「漁村」。按 Space / Enter / 手把 A 跳過。
+  回憶圖用選單 **GeminiGrowUp > 拍開場回憶圖（沙漠、維京村莊、地下城）**（`Scripts/Editor/OpeningMemoryCapture.cs`）拍：進 Play 依序載入三關（跟拍漁村空拍圖一樣，執行時才擺好、才換上材質的東西才拍得到），
+  每關等 3 秒，從玩家出生點的背後上方往前拍一張（玩家不拍），存成 `Resources/Opening/Memory_*.png`，拍完離開 Play、回到原本開著的場景；
+  拍的那一下 URP 畫不出來的材質（洋紅色）暫時換成 URP Lit（用原本的貼圖和顏色），Console 會列出是哪些物件；還沒拍的話開場裡是褪色的紙上寫地名。
+  主角的出生點在行商（`NPC_Merchant`）面前、面對他（Builder 的 `PlacePlayer`，重建場景才會改；開場本身也會把主角放過去）。
+- **工作人員名單**（`Scripts/Level/CentipedeCredits.cs`，自動掛在 `ForestIsland`）：打倒霧海孤島的百足本體（`SkeletonCentipedeBossAI.OnDefeated`，分身不算；
+  只訂閱事件，沒改隊友的 Boss）→ 等死亡動畫和消散播完 → 畫面暗下來，舊宣紙上由下往上捲過「Miguel's Revenge／神使之復仇／製作團隊：LinLeo109、Zzz12121、isc777、kevin2-111110
+  （GitHub repo 的成員帳號）／github.com/Zzz12121/miguels-revenge／感謝遊玩」，配主畫面的音樂；捲了 2 秒以後按 Space / Enter / A 跳到最後 → 回到漁村（帶著玩家的狀態，自動存檔）。
 - **生命**：玩家有 3 條命（`GameManager.maxLives`），倒下扣一條命並在檢查點復活，用完 → **Game Over**
   （重新挑戰本關 / 從第一關重新開始 / 回主選單）。
 - **通關**：打倒第三關 Boss → 通關畫面（通關時間、剩餘生命；重新開始 / 回主選單）。
@@ -21,8 +36,15 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
 - **用手把選選項**（`MerchantNPC`，村民對話的選項和所有對話框商店）：十字鍵 ↑ ↓ 或左搖桿上下移動游標（亮起來的那一格，推著不放會連續移動），A 選，B / Y 離開或選最後一項（`PadInput.NavigatePressed`）；鍵盤照樣按數字鍵。
 - **血量延續**（`Scripts/Core/PlayerState.cs`）：換到下一關時血量、最大生命、能力升級（跑速 / 攻擊）、背包都會帶過去；
   「重新開始本關」和 Game Over 後「重新挑戰」會回到進入這一關時的狀態。
-- **存檔**（`Scripts/Core/SaveSystem.cs`）：進入每一關自動存檔，暫停選單可以手動存檔。存的是關卡、剩餘生命、遊玩時間和玩家狀態，
-  讀檔時從那一關的起點開始。檔案在 `Application.persistentDataPath/save.json`。從暫停選單讀檔。
+- **存檔**（`Scripts/Core/SaveSystem.cs`）：三個存檔欄（按「開始遊戲」時選），存到選的那一欄；暫停選單可以手動存檔 / 讀檔（暫停選單副標寫著現在是哪一欄）。
+  **自動存檔**：進入每一關（「來到漁村」，被抬回村子是「倒下後被抬回漁村」、打完百足是「打倒百足，回到漁村」），還有 `Scripts/Core/AutoSave.cs`：
+  跟村民 / 商人說完話（`MerchantNPC` 對話、商店關掉）、劇情對話播完（`StoryDialogue`）、一場戰鬥結束（`CombatLog.Recorded`：勝利 / 敗北 / 脫離，木人和過招這種練習不算）
+  都會存，原因寫成「和村長說完話」「打倒了雙尾虎」「敗給了道場老師父」。等到能安全存的時候才存（沒在載入、沒開選單、沒在對話 / 戰鬥 / 過場、玩家活著，
+  換了場景就不存），兩次至少隔 4 秒；存好時右下角淡淡顯示「已自動存檔　和村長說完話」。
+  每個存檔記下**上次存檔的原因**（`SaveData.lastEvent`）和**總共倒下幾次**（`StoryProgress.defeats`，`GameManager.OnPlayerDied` 每倒下一次加一），主畫面選存檔時看得到。
+  存的是關卡、剩餘生命、遊玩時間、玩家狀態（血量、能力、背包：錢、地圖、虎皮、鍛造、造型），和劇情進度 `StoryProgress`（村長家後院的門開了沒、
+  手上的武器、有沒有弓、剩幾支箭、看過開場了沒、打倒百足了沒）；讀檔時從那一關的起點開始，進度放回去。檔案在 `Application.persistentDataPath/save_1.json` ~ `save_3.json`
+  （舊版的 `save.json` 第一次用到時搬進存檔一，當成已經看過開場）。
 - **小地圖**（`Scripts/Core/Minimap.cs`）：右上角圓形小地圖，跟著玩家和鏡頭方向轉動；紅點敵人、藍點傳送門、黃點檢查點。
   按 `M` 顯示 / 隱藏，進入關卡時自動建立。
 - **玩家**（`Scripts/Player/PlayerVisual.cs`）：Mixamo 聖騎士模型，待機 / 走 / 跑 / 跳 / 空中 / 落地 / 三段連擊（左鍵）/ 舉盾衝撞（右鍵按一下）/ 舉盾格擋（右鍵按住：正面攻擊完全擋下，連續擋到第 3 下破防扣血）/ 受擊 / 死亡、在船上拉弓都有動畫。
@@ -81,7 +103,7 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
 選單 **GeminiGrowUp > 建立日式村莊場景** 會產生整個場景（`Scripts/Editor/JapaneseVillage*.cs`），重新執行會覆蓋場景和產生出來的資產，所以大改配置請改 Builder。
 
 - **素材**：建築、石燈籠、石階、竹子來自 `ThirdParty/URP 3D Sample Garden`（Unity 官方範本 `com.unity.template.urp-sample` 的 Garden 場景，只複製用得到的檔案）；松、楓、櫻、鳥居、岩石、地面貼圖來自 `Assets/Waldemarst`（Asset Store 的 Japanese Garden Pack，和隊友的道場場景共用，它的樹是舊管線材質，Builder 會另外做 URP 材質）。漁船、曬網架、暖簾和大部分村民這兩包沒有，仍是程式產生；長椅（茶屋兩張、村長家櫻花樹下、女書生）是 Tripo 模型 `Models/JapaneseVillage/Bench`（Builder 的 `PlaceBench`，坐面高 `BenchSeatHeight` = 0.48 m）；茶屋的大紅傘是 Tripo 和傘 `Models/JapaneseVillage/Parasol`（`PlaceParasol`：模型是斜拿著的，用傘面的法線轉直、放大到直徑 3 m，傘柄底下補一根竹竿）；日式道具組 `Models/JapaneseVillage/JpProps`（11 樣，`PlaceKitPiece` 拆開擺、`alignLong` 把斜放的轉正）分散在村裡：茶屋旁兩個酒樽和一塊立招牌、行商攤子旁的包鐵角木箱和米草包、砍竹人旁的一捆竹子和竹籬笆、鐵匠鋪門口的兵器架和刀架、女書生長椅旁的小石燈籠、藥師陶爐旁的陶甕和木板屏風（部分村民改用 Tripo 模型，見下面「村民」）。
-- **房屋**：`JapaneseVillageHouses` 用 Garden 模組組成 Prefab（`Prefabs/JapaneseVillage/Houses`），改 `BuildHouseRows` 裡的款式清單就能換寬度和門窗配置。村長家在三排房屋東側盡頭，直接用道場場景的主殿 `PF_MainDojo_Complete`（縮小 85%，可以走進去），外觀和最終決戰的道場一致；宅院東邊的後院有一道大門，就是通往道場的傳送門。主殿中軸是一條通道（`Scripts/Editor/ChiefHouseRearPassage.cs`，Builder 建村長家時呼叫）：從宅院大門進主殿、穿過內殿入口，從後牆正中間的後門出去，走後緣的石階下到後院，飛石和土路直直通到後院大門。後門跟內殿入口一樣寬（6 × 0.85 ≈ 5.1 m）：中柱拿掉、兩旁兩格紙門裁短、門邊補門框、門頂補橫楣；後面的石階是正面石階前後鏡射。主殿外觀是按材質合併好的大 Mesh，所以複製一份來改（存進 `JV_Meshes.asset`，隊友的 Prefab 和最終決戰場景不受影響），碰撞跟著改（中柱關掉、紙門的碰撞框縮到門邊、石階另外放）。
+- **房屋**：`JapaneseVillageHouses` 用 Garden 模組組成 Prefab（`Prefabs/JapaneseVillage/Houses`），改 `BuildHouseRows` 裡的款式清單就能換寬度和門窗配置。村長家在三排房屋東側盡頭，直接用道場場景的主殿 `PF_MainDojo_Complete`（縮小 85%，可以走進去），外觀和最終決戰的道場一致；宅院東邊的後院有一道大門，就是通往道場的傳送門。房子門口的踏石（Garden 的 `StoneStep_01`，模型本身沒有碰撞）埋一半在土裡（露出 0.28 m，玩家跨得上去的上限是 0.35 m），加上貼著石頭的碰撞；祠堂前後門的兩階石階也從「看得到的是石階、走的是斜坡」改成每一階都是真的碰撞（一階 0.27 m），腳不會穿進石頭裡（Builder 的 `FitBoxCollider`）。主殿中軸是一條通道（`Scripts/Editor/ChiefHouseRearPassage.cs`，Builder 建村長家時呼叫）：從宅院大門進主殿、穿過內殿入口，從後牆正中間的後門出去，走後緣的石階下到後院，飛石和土路直直通到後院大門。後門跟內殿入口一樣寬（6 × 0.85 ≈ 5.1 m）：中柱拿掉、兩旁兩格紙門裁短、門邊補門框、門頂補橫楣；後面的石階是正面石階前後鏡射。主殿外觀是按材質合併好的大 Mesh，所以複製一份來改（存進 `JV_Meshes.asset`，隊友的 Prefab 和最終決戰場景不受影響），碰撞跟著改（中柱關掉、紙門的碰撞框縮到門邊、石階另外放）。
 - **樹**：Terrain Tree（`Prefabs/JapaneseVillage/Trees`），可以用 Terrain 筆刷再刷。
 - **村民**：都是 `MerchantNPC`（`sellsGoods` 關掉就是一般對話）；會走路的另外掛 `Scripts/Level/VillagerWalker.cs`，路線在 `PlaceWalkers` 裡設定。所有村民（含師父、僧侶）都是原本的 1.2 倍大（Builder 的 `NpcScale`）。村莊裡的人物頭上不顯示任何文字或指引標記。
   - 6 位成年男性村民（賣魚的阿伯、巡邏的村丁、收網的漁夫、宅院的家僕、年輕漁夫、砍竹人）用 Tripo 生成、已綁人形骨架的模型 `Models/JapaneseVillage/Villager/Villager_Peasant.fbx`（約 1.1 萬面），在 `WalkerAt` / `NpcAt` 傳 `villager: "Grey"`（或 `Indigo`、`Brown`、`Olive`）就會換成這個模型；僧侶和村長也是 Tripo 模型（僧侶見下面「祠堂的試煉」）；其他人（婦人、小孩、老奶奶、師父、行商、老漁夫）仍是程式產生。
@@ -96,10 +118,14 @@ Unity 6000.6.3f1（URP）第三人稱動作遊戲。
   - 跑腿的男孩（`Models/JapaneseVillage/ErrandBoy`，走得快所以播跑步動畫，`VillagerWalker.runFrom`；跑步用的是原地跑的副本 `Animations/JapaneseVillage/JV_Run_InPlace.anim`，原本的動畫把往前的位移烤在姿勢裡，會一直卡頓）、散步的老奶奶（`Models/JapaneseVillage/Granny`）、巡邏的村丁（`Models/JapaneseVillage/Guard`，武士打扮；模型右手本來拿著一根長棍，走路時會跑位，所以拿掉了：Builder 的 `WeaponMask` 用綁定姿勢找出長棍的頂點，遊戲開始時 `StripMeshParts` 把那些三角形刪掉；腰上的刀和衣服長在一起，留著當服裝）也是 Tripo 模型：村裡的人物現在全部都有模型了。
   - 女書生（`NPC_Scholar`，`Models/JapaneseVillage/Scholar`）：從京城來抄錄傳說的書生，坐在鳥居西南邊（北街和石階之間）的長椅上捧著書看，看一陣子會走到鳥居前站著翻書對照，再走回長椅（`NpcRoutine` 的 `Read`，`seatY` 大於 0 就坐著看；書是 `NpcRoutine.book`，用 Tripo 古書組 `Models/JapaneseVillage/Books` 裡攤開的那本，只有看書的時候才出現，大約每 7 秒翻一頁；組裡闔著的書和卷軸擺在長椅兩頭）。沒在看書的時候右手拿著摺扇（`Models/JapaneseVillage/Fan`，`NpcRoutine.fan`）在臉旁慢慢搧。跟她說話會聊玄清道人的傳說，提示祠堂裡的古畫和詩。跟她說到第三次話，她會偷偷告訴玩家已經把村長家後院的門打開了，要玩家保密；這次對話結束時門就解鎖並推開（`SecretGateOpener`），不用等祠堂的試煉做完（試煉做完、門已經開了的話就講別的話）。
   - 女村民（挑水的婦人、賣花的姑娘、茶屋老闆娘）用 Tripo 模型 `Models/JapaneseVillage/VillagerWoman/VillagerWoman.fbx`（`WomanLook`）。
+  - **兩個小支線**（`Scripts/Level/VillageErrands.cs`，進漁村時自動掛上，不用重建場景；進度記在存檔的 `StoryProgress.flags`）：
+    賣花的姑娘（`Walker_Girl`，`FlowerGirlGift`）第一次說完話會說「這是我在後山摘花的時候順手拔的……這不知道是什麼草，送你吧！」，給兩株草藥（只送一次）。
+    跑腿的男孩（`Walker_Boy`，`ErrandRun`）請玩家幫忙跑腿：到東邊盡頭那間房子（中間那排 `Row_B` 最東邊）門口拿包裹（程式做的藍染布包，放在房子朝海那面的屋簷外），
+    送到海邊那排（`Row_A`）最西邊的房子，收件的「海邊人家」給 100 文。任務進行中畫面右邊（小地圖下面）寫著現在要做什麼和還有幾公尺，要去的地方頭上有金色的「▼」記號。
   - 動畫：`Animations/JapaneseVillage/AC_Villager.controller`，Speed 0 = `unarmed idle 01`（Lite Longbow Pack）、1 = `Walk_N`（StarterAssets）。`VillagerWalker.animationWalkSpeed`（1.72 m/s）是 Walk_N 在這個模型上原本的前進速度，用來調播放速度，腳步才不會滑。
   - 衣服顏色：`Art/JapaneseVillage/make_villager_textures.py` 從灰色原圖只改衣服的顏色（皮膚、頭髮不動）。換新的 Tripo 模型時：FBX 覆蓋 `Villager_Peasant.fbx`，再執行 `python make_villager_textures.py <BaseColor.png> <Normal_Bake.png>`。
 - **漁村地圖**（`Scripts/Level/VillageMap.cs`）：跟巡邏的村丁（`Walker_Watchman`）說話，講完會問要不要收下地圖（`VillageMapGiver`，執行時自動掛上，不用重建場景），收下 = 背包裡 `VillageMap` = 1。在漁村按「漁村地圖」鍵（`GameAction.VillageMap`，預設 N，手把預設不綁，可以在設定裡改）打開：遊戲暫停，左邊是空拍圖，右邊是區域清單——全村，加上漁港、市街、村長宅院、竹林與石階、山頂祠堂各一張放大的空拍圖（點一下、數字鍵 0~5、手把十字鍵切換），圖上標出重要地點（金色點）和玩家的位置、面向（紅色），每一區有一段說明；Esc / 手把 B 先回全村、再按一次關掉，N 直接關掉。有地圖的時候畫面左下角（操作說明上面）擺著一張稍微斜放的摺紙地圖（程式畫的羊皮紙：不規則的舊紙邊、摺痕、墨線畫的海岸和海浪、道路、房子、村長宅院、後山和石階、竹林、祠堂的紅色記號），右下角寫著打開的按鍵；劇情、選單、轉場時不顯示。空拍圖是預先拍好的：編輯器選單 **GeminiGrowUp/拍漁村地圖空拍圖**（`Scripts/Editor/VillageMapCapture.cs`，也可以批次模式 `-executeMethod VillageMapCapture.Run`）會進 Play、照地點物件的位置算每一區的範圍，用正上方的正交攝影機拍，存成 `Resources/VillageMap/Map_*.png` 和 `VillageMap.json`；Builder 重建村子、地點換了位置就再拍一次。
-- **雙尾虎**（`Scripts/Level/TigerBeast.cs`，Builder 的 `BuildTiger`）：趴在石階西側竹林的空地（約 (-24, 84)），玩家走近就怒吼衝過來決鬥：遠一點伏低蓄力飛撲（翻滾的無敵時間可以躲開），近身揮爪，越近揮得越頻繁（左右爪交替連揮最多三下，破綻和冷卻也越短），出招後有破綻；在撲的距離內冷卻時沿著圓弧繞著玩家走（身體朝走的方向、頭轉過去盯著玩家），貼很近時橫著小步挪。步伐照實際的移動算：每條腿往那隻腳實際移動的方向擺（身體的速度加上轉身造成的速度，原地轉身時前後腳往相反方向踏），橫著走、轉身都是四隻腳一步步踏出去。玩家死了就在原地趴下，不追也不走開，玩家再走近才又起來。被打中 8 下就再吼一聲逃往竹林深處，原地留下一張虎皮和一對虎牙（`Scripts/Level/TigerLoot.cs`：模型、貼圖都是程式做的，地上的戰利品微微發光；按 E 撿起來存進背包 `TigerPelt` / `TigerFang`），拿去鐵匠鋪升級武器（以前掉的三株草藥 `TigerHerb_*` 現在一直藏著）。身長約 3.6 m，腿比模型原本長 1.22 倍（`TigerBeast.legLength`：遊戲開始時把膝蓋、腳踝的骨頭往外移，身體跟著抬高、腳還是踩在地上），身體往左右加寬 1.2 倍（`bodyWidth`），四條腿往外張開 9 度（`legSplay`），關節照貓科用腳趾站的力學微彎（`legBend`：後腳大腿往前、小腿往後、蹠骨往前的 Z 字形，前腳手肘、手腕微彎，腳掌平貼地面，身體壓低彎掉的高度），腳踩地用兩節骨頭的 IK（`PlantFeet`：在地上時每隻腳都放到地面上（地形或石階、石頭，往下打射線）、腳掌方向不變，後腳一定踩著；飛撲、趴下、揮爪舉起來的那隻不管；模型放大得不均勻，量一次修一次最多三次；後腳伸直了還踩不到地就把身體壓低；模型原本右後腳比較短、膝蓋彎著，遊戲開始時 `EqualizeLegs` 單獨把它拉長），走路時往前跨的那半圈才收起關節把腳抬起來（前腳手腕往後折、後腳膝蓋和腳踝一起折，`swingFold`），踩在地上往後推時腿撐直、剛落地時膝蓋微微一沉，步伐節奏放慢、每一步跨大（`strideScale`），吼聲用 dragon_roar 降低音調，動作（蓄力 0.8 秒、飛撲高 2.4 m、出招後破綻 1.2 秒）都比較慢、幅度大（飛撲時前腳往前伸直、略低於水平）、姿勢之間會慢慢混合。決鬥時畫面上方有血條。模型是 Tripo 四足骨架（`Models/JapaneseVillage/Tiger`，用 Generic 匯入保留蒙皮），沒有動畫，所有動作都是程式擺骨頭。
+- **雙尾虎**（`Scripts/Level/TigerBeast.cs`，Builder 的 `BuildTiger`）：平常在石階西側竹林的空地（約 (-24, 84)）附近走動——趴著休息 7～15 秒（`restTime`）→ 站起來慢慢走到附近（7 m 內，`wanderRadius`）兩三個點、每個點停下來看一看 → 再趴下（`State.Wander`）；玩家走近就怒吼衝過來決鬥：遠一點伏低蓄力飛撲（翻滾的無敵時間可以躲開），近身揮爪，越近揮得越頻繁（左右爪交替連揮最多三下，破綻和冷卻也越短），出招後有破綻；在撲的距離內冷卻時沿著圓弧繞著玩家走（身體朝走的方向、頭轉過去盯著玩家），貼很近時橫著小步挪。步伐照實際的移動算：每條腿往那隻腳實際移動的方向擺（身體的速度加上轉身造成的速度，原地轉身時前後腳往相反方向踏），橫著走、轉身都是四隻腳一步步踏出去。玩家死了就在原地趴下，不追也不走開，玩家再走近才又起來。被打中 8 下就再吼一聲逃回竹林深處的巢穴（Builder 的 `BuildTigerDen`，約 (-70, 122)：上坡那邊幾塊大石頭圍成半圈、中間一圈乾草窩、窩邊散著啃過的骨頭，竹子在附近讓開），回到窩裡就趴著休息、不再起來打（`State.Den`），原地留下一張虎皮和一對虎牙（`Scripts/Level/TigerLoot.cs`：模型、貼圖都是程式做的，地上的戰利品微微發光；按 E 撿起來存進背包 `TigerPelt` / `TigerFang`），拿去鐵匠鋪升級武器（以前掉的三株草藥 `TigerHerb_*` 現在一直藏著）。身長約 3.6 m，腿比模型原本長 1.22 倍（`TigerBeast.legLength`：遊戲開始時把膝蓋、腳踝的骨頭往外移，身體跟著抬高、腳還是踩在地上），身體往左右加寬 1.2 倍（`bodyWidth`），四條腿往外張開 9 度（`legSplay`），關節照貓科用腳趾站的力學微彎（`legBend`：後腳大腿往前、小腿往後、蹠骨往前的 Z 字形，前腳手肘、手腕微彎，腳掌平貼地面，身體壓低彎掉的高度），腳踩地用兩節骨頭的 IK（`PlantFeet`：在地上時每隻腳都放到地面上（地形或石階、石頭，往下打射線）、腳掌方向不變，後腳一定踩著；飛撲、趴下、揮爪舉起來的那隻不管；模型放大得不均勻，量一次修一次最多三次；後腳伸直了還踩不到地就把身體壓低；模型原本右後腳比較短、膝蓋彎著，遊戲開始時 `EqualizeLegs` 單獨把它拉長），走路時往前跨的那半圈才收起關節把腳抬起來（前腳手腕往後折、後腳膝蓋和腳踝一起折，`swingFold`），踩在地上往後推時腿撐直、剛落地時膝蓋微微一沉，步伐節奏放慢、每一步跨大（`strideScale`），吼聲用 dragon_roar 降低音調，動作（蓄力 0.8 秒、飛撲高 2.4 m、出招後破綻 1.2 秒）都比較慢、幅度大（飛撲時前腳往前伸直、略低於水平）、姿勢之間會慢慢混合。決鬥時畫面上方有血條。模型是 Tripo 四足骨架（`Models/JapaneseVillage/Tiger`，用 Generic 匯入保留蒙皮），沒有動畫，所有動作都是程式擺骨頭。
 - **鐵匠鋪**（中間那排房子、主街西邊第一間，Builder 的 `BuildSmithy`）：開著大門看得到裡面的爐子，門口有鐵砧和三座武器架。門口的女鐵匠（Tripo 模型 `Models/JapaneseVillage/Blacksmith`，台詞在 `Scripts/Level/BlacksmithShop.cs`）第一次對話說明各種武器，之後每次都可以選要帶哪一組。帶著虎皮 1 張、虎牙 2 顆來，選項裡多一個「升級兵器」（`Scripts/Player/WeaponForge.cs`，只能升級一次，存在背包的 `WeaponForged`，跟著換關卡、存檔）：大刀、小刀、長槍、弓箭的傷害都多 15%（`PlayerLoadout.Apply` 乘上 `WeaponForge.DamageScale`），手上的武器微微發橘光（`WeaponForgeGlow`：用 `Graphics.RenderMesh` 在武器上多畫一層加亮的橘色、外面一圈脹大一點的淡光暈，加一盞小橘色點光，慢慢呼吸；不改武器材質，武器收起來、坐下時光也不見）：
   - 大刀（原本的光劍）：判定距離比原本多約 0.5 m（前方 1.6 m、半徑 1.6 m），可以舉盾。
   - 弓與小刀：和維京村莊海戰同一套弓箭操作（`PlayerCombat.bowMode`：右鍵瞄準、左鍵射箭），箭 20 支、每支 14 傷害（畫面下方不顯示船戰的射箭說明，`PlayerCombat.hideBowHint`）；射完自動換成小刀（判定最遠約 2 m、出手快 40%、每下 70% 傷害）。小刀有自己的三段招式：直刺 → 反手橫斬 → 反握下刺（`PlayerLoadout.KnifeMoves`，程式擺姿勢，蓋在原本揮刀的手臂動作上）。按住右鍵瞄準時，右手先從右腰旁邊（貼著腰間、開口在腰帶高度）的箭筒抽一支箭搭上弦（約 0.5 秒），接著開始蓄力：畫面中央一個大圓往內收、一個小圓固定（半徑 70 / 12 像素，1080p），大圓收到跟小圓重合時（約 1.1 秒）放箭最準、威力最大（傷害 1.6 倍、不偏），太早或太晚都會變差；沒瞄準直接按左鍵射會亂飄（±9°）、傷害 0.6 倍。射出去的箭和搭在弦上的箭是 `Resources/Weapons/JV_Arrow`（Tripo 的箭模型 `Models/JapaneseVillage/Arrow`，長 0.94 m；箭頭朝哪一端是看兩端的金屬度自動判斷的；沒有模型時退回程式做的竹箭），箭筒是 `JV_Quiver`。畫面右下角用弓的圖示 + 20 支箭的小圖表示剩下幾支，射完變成小刀的圖示（圖示在 `Resources/UI`，`python Art/JapaneseVillage/make_ui_icons.py` 產生）。回鐵匠鋪再選一次就補滿。輔助瞄準（`PlayerLoadout.AssistArrow`）：箭射出去的方向離敵人只差一點點（4° 以內，或從敵人身邊 0.75 m 內擦過）、中間沒有東西擋著，就修正成正中敵人身體中間（照距離往上補一點下墜）；本來就會射中、或偏太多（亂射、蓄力時機不對）都不動。弓的模型是 Tripo 的 `Models/JapaneseVillage/Bow`（換掉 Erika 的弓，掛在同一個位置）。

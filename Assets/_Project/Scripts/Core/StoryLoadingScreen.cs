@@ -7,7 +7,7 @@ using UnityEngine.SceneManagement;
 /// （跟選項、暫停選單同一套風格，MenuSkin；圖載不到時是一片墨黑加一條細的朱紅進度條）。
 /// 進度條偶爾會倒退一截（像載到一半又重來一點），停一下再繼續往前；跑到 100% 才切換到漁村。
 ///
-/// 用法：MainMenu 在呼叫 GameManager.StartStoryGame 之前呼叫 StoryLoadingScreen.Begin(gm)。
+/// 用法：MainMenu 在呼叫 GameManager.StartSlot 之前呼叫 StoryLoadingScreen.Begin(gm, 要去的場景)（新遊戲是漁村，讀檔是存檔那一關）。
 /// 它透過 GameManager.HoldSceneActivation 讓漁村先在背景載好，等進度條跑完才切換；
 /// 顯示的進度不會超過實際的載入進度（GameManager.LoadProgress），所以載得慢時也不會先跑到底再卡住。
 /// 進到漁村之後跟著 GameManager 的淡入一起淡掉，然後自己刪掉（DontDestroyOnLoad，換場景時不會被刪）。
@@ -33,14 +33,14 @@ public sealed class StoryLoadingScreen : MonoBehaviour
     float seed;
     GUIStyle label, percent;
 
-    public static StoryLoadingScreen Begin(GameManager gm)
+    public static StoryLoadingScreen Begin(GameManager gm, string target = null)
     {
         if (gm == null || gm.IsLoading) return null;
         var go = new GameObject("StoryLoadingScreen");
         DontDestroyOnLoad(go);
         var s = go.AddComponent<StoryLoadingScreen>();
         s.gm = gm;
-        s.targetScene = gm.StoryStartScene;
+        s.targetScene = string.IsNullOrEmpty(target) ? gm.StoryStartScene : target;
         gm.HoldSceneActivation = s.Ready;
         return s;
     }
