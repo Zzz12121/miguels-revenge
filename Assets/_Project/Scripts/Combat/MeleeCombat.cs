@@ -40,10 +40,18 @@ public abstract class MeleeCombat : MonoBehaviour
 
     float StepValue(float[] arr, int index, float fallback) =>
         arr != null && index >= 0 && index < arr.Length && arr[index] > 0f ? arr[index] : fallback;
-    /// <summary>第 index 段的抬手時間</summary>
-    public float WindupFor(int index) => StepValue(stepWindup, index, windupTime);
-    /// <summary>第 index 段有傷害判定的時間</summary>
-    public float SwingFor(int index) => StepValue(stepSwing, index, swingTime);
+    /// <summary>
+    /// 攻擊速度倍率（1 = 原本，1.3 = 快 30%）：抬手、揮劍、硬直、空中刀全部一起縮短。
+    /// 敵人都是 1；玩家由 PlayerCombat.attackSpeed 決定。揮刀的動畫（PlayerVisualAnimator）也照這個倍率播，判定和畫面才會對上
+    /// </summary>
+    public virtual float AttackSpeed => 1f;
+    float Fast(float seconds) => seconds / Mathf.Max(0.1f, AttackSpeed);
+    /// <summary>第 index 段的抬手時間（已套用攻擊速度）</summary>
+    public float WindupFor(int index) => Fast(StepValue(stepWindup, index, windupTime));
+    /// <summary>第 index 段有傷害判定的時間（已套用攻擊速度）</summary>
+    public float SwingFor(int index) => Fast(StepValue(stepSwing, index, swingTime));
+    /// <summary>第 index 段揮完之後的硬直（已套用攻擊速度）</summary>
+    public float RecoveryFor(int index) => Fast(StepValue(stepRecovery, index, index >= comboDamage.Length - 1 ? finisherRecoveryTime : recoveryTime));
 
     [Header("判定")]
     [Tooltip("判定球離角色中心往前多遠")]
@@ -54,6 +62,9 @@ public abstract class MeleeCombat : MonoBehaviour
     [Header("手感")]
     [Tooltip("攻擊時的移動速度倍率")]
     [Range(0f, 1f)] public float attackMoveMultiplier = 0.15f;
+    [Tooltip("揮刀時腳踩穩、不移動（忽略 attackMoveMultiplier）：避免揮刀時腳在地上滑")]
+    public bool plantFeetWhenAttacking = true;
+    float AttackMove => plantFeetWhenAttacking ? 0f : attackMoveMultiplier;
     [Tooltip("每一段往前踏步的力道")]
     public float lungeForce = 5f;
 
@@ -234,7 +245,7 @@ public abstract class MeleeCombat : MonoBehaviour
             yield return null;
         }
         float r = 0f;
-        while (r < airSlashRecovery) { r += Time.deltaTime; yield return null; }
+        while (r < Fast(airSlashRecovery)) { r += Time.deltaTime; yield return null; }
         yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.1f);
         IsDashSlash = false;
         controller.speedMultiplier = 1f;
@@ -256,7 +267,7 @@ public abstract class MeleeCombat : MonoBehaviour
             controller.speedMultiplier = airAttackMoveMultiplier;
             yield return AirSlash();
             float r = 0f;
-            while (r < airSlashRecovery) { r += Time.deltaTime; yield return null; }
+            while (r < Fast(airSlashRecovery)) { r += Time.deltaTime; yield return null; }
             yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.1f);
             IsAirSlash = false;
             controller.speedMultiplier = 1f;
@@ -266,7 +277,9 @@ public abstract class MeleeCombat : MonoBehaviour
             yield break;
         }
 
-        controller.speedMultiplier = attackMoveMultiplier;
+        // 出刀時腳踩住：把跑過來的慣性清掉、揮刀中不移動（不然腳踩著地面往前滑）
+        controller.StopHorizontalMotion();
+        controller.speedMultiplier = AttackMove;
 
         int index = 0;
         while (true)
@@ -274,7 +287,7 @@ public abstract class MeleeCombat : MonoBehaviour
             yield return Swing(index);
 
             bool last = index >= comboDamage.Length - 1;
-            float recovery = StepValue(stepRecovery, index, last ? finisherRecoveryTime : recoveryTime);
+            float recovery = RecoveryFor(index);
             float t = 0f;
             while (t < recovery)
             {
@@ -295,7 +308,8 @@ public abstract class MeleeCombat : MonoBehaviour
                     g += Time.deltaTime;
                     yield return null;
                 }
-                controller.speedMultiplier = attackMoveMultiplier;
+                controller.StopHorizontalMotion();
+                controller.speedMultiplier = AttackMove;
                 controller.lockRotation = true;
             }
             if (!last && WantsNextHit()) { index++; continue; }
@@ -395,7 +409,7 @@ public abstract class MeleeCombat : MonoBehaviour
         OnSwing?.Invoke(0);
 
         Vector3 from = new Vector3(-70f, 10f, 0f), to = new Vector3(70f, -10f, 0f);
-        yield return RotateWeapon(weaponPivot.localEulerAngles, from, airSlashWindup);
+        yield return RotateWeapon(weaponPivot.localEulerAngles, from, Fast(airSlashWindup));
 
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
                          transform.position + Vector3.up, soundVolume * 0.6f,
@@ -404,12 +418,13 @@ public abstract class MeleeCombat : MonoBehaviour
         float damage = (comboDamage.Length > 0 ? comboDamage[0] : 0f) * airSlashDamageScale;
         float t = 0f;
         bool struck = false;
-        while (t < airSlashSwing)
+        float airSwing = Fast(airSlashSwing);
+        while (t < airSwing)
         {
             t += Time.deltaTime;
-            weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / airSlashSwing)));
+            weaponPivot.localRotation = Quaternion.Euler(Vector3.Lerp(from, to, Mathf.Clamp01(t / airSwing)));
             DoHitCheck(damage);
-            if (!struck && t >= airSlashSwing * .5f) { struck = true; OnStrikeMoment(HitCenter(), hitRadius, 0, false); }
+            if (!struck && t >= airSwing * .5f) { struck = true; OnStrikeMoment(HitCenter(), hitRadius, 0, false); }
             yield return null;
         }
     }

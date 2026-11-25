@@ -70,6 +70,26 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     Vector3 visualRootRestPosition;
     Quaternion visualRootRestRotation;
     float slashStartedAt = float.NegativeInfinity;
+    /// <summary>
+    /// 這一刀揮了多久（秒，已乘上攻擊速度）：刀路的時間軸（Prepare / Cut / hold / 收刀）都是照原本速度寫的，
+    /// 攻擊速度變快時時間走得比較快，動畫跟 MeleeCombat 的判定一起變快。幻影突進的兩刀不是連擊，照原本速度
+    /// </summary>
+    float SlashClock => slashSide <= -2 || combat == null ? 1f : Mathf.Max(0.1f, combat.AttackSpeed);
+
+    // ---- 連段銜接（圓弧接刀）----
+    // 上一刀還沒收完就接下一刀時，不回到站姿再重新抬手：從上一刀停住的位置，沿著繞肩膀的圓弧把刀帶到反方向的起手位置，
+    // 身體的扭轉、前壓、兩腳的前後也從上一刀的姿勢接過去（不會一下子跳回站姿），整個連段像一筆畫下來。
+    // last*：每一幀記下這一刀擺出來的姿勢（角色自己的座標）；chain*：新的一刀開始時接手的姿勢
+    int lastSlashPoseFrame = -10;
+    float lastSlashWeight, lastSlashTwist, lastSlashHipTwist, lastSlashPitch, lastSlashLeftStep, lastSlashRightStep;
+    Vector3 lastSlashHandLocal, lastSlashBladeLocal;
+    bool slashChained;
+    float chainWeight, chainTwist, chainHipTwist, chainPitch, chainLeftStep, chainRightStep;
+    Vector3 chainHandLocal, chainBladeLocal;
+    float chainK = 1f;   // 這一幀新刀接手了多少（0 = 還是上一刀的姿勢，1 = 完全是新的一刀）
+    // 圓弧往外鼓多少 (m)：手繞過肩膀外側再回來
+    const float ChainArcBulge = .24f;
+    float SlashAge => (Time.time - slashStartedAt) * SlashClock;
     // 袈裟斬的節奏 (秒)：抬手 → 斬下 → 收刀。改這三個數字就能調揮刀快慢
     const float SlashPrepare = .2f, SlashCut = .34f, SlashRecover = .24f;
     const float SlashTotal = SlashPrepare + SlashCut + SlashRecover; // 不含揮到底停住的 hold、也不含額外蓄力
@@ -447,7 +467,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void UpdateIdleCycle(float speed, bool grounded)
     {
-        if (Time.time - slashStartedAt < CurrentSlash.Total + .3f || (controller != null && controller.IsRolling)) return;
+        if (SlashAge < CurrentSlash.Total + .3f || (controller != null && controller.IsRolling)) return;
         if (!grounded || speed > 0.035f || Time.unscaledTime < nextIdleChange) return;
         AnimatorStateInfo current = animator.GetCurrentAnimatorStateInfo(0);
         if (current.IsName("Attack_1") || current.IsName("Attack_2") || current.IsName("Attack_3") ||
@@ -484,6 +504,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         bool air = dash || (combat != null && combat.IsAirSlash);
         // 幻影突進的兩刀有自己的全身動畫（橫砍 / 剪刀斬）；其他空中的刀還是只疊揮刀
         int dashStyle = dash ? Mathf.Clamp(combat.DashSlashStyle, 0, 1) : 0;
+        // 上一刀（地面、程式擺的刀）還沒收完：新的一刀從它停住的姿勢接過去
+        bool prevSlashLive = slashSide >= 0 && slashClipIndex < 0 && lastSlashPoseFrame >= Time.frameCount - 2 && lastSlashWeight > .05f;
         int clipIndex = dash ? PhantomSlashClip + dashStyle : comboIndex % 3;
         bool useClip = dash ? HasSlashClip(clipIndex)
                             : !air && (combat == null || !combat.IsPlunging) && HasSlashClip(clipIndex);
@@ -497,6 +519,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         else if (!air) animator.CrossFadeInFixedTime("Idle", 0.025f, 0, 0f);
         slashSide = dash ? (dashStyle == 1 ? -3 : -2) : air ? -1 : comboIndex;
         slashStartedAt = Time.time;
+        slashChained = prevSlashLive && !air && !dash && !useClip;
+        if (slashChained)
+        {
+            chainWeight = lastSlashWeight;
+            chainTwist = lastSlashTwist; chainHipTwist = lastSlashHipTwist; chainPitch = lastSlashPitch;
+            chainLeftStep = lastSlashLeftStep; chainRightStep = lastSlashRightStep;
+            chainHandLocal = lastSlashHandLocal; chainBladeLocal = lastSlashBladeLocal;
+        }
         plungeSlash = false;
         plungeBlend = 0f;
         if (weaponPresenter != null) weaponPresenter.DrawForSeconds(CurrentSlash.Total + 0.6f);
@@ -594,7 +624,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             foreach (var shin in new[] { leftLowerLeg, rightLowerLeg })
                 if (shin != null) shin.rotation = Quaternion.AngleAxis(DashLegTuck * 1.6f * k, actor.right) * shin.rotation;
             // 雙手往後下方甩（揮刀中的手交給揮刀動作）
-            bool slashing = Time.time - slashStartedAt < CurrentSlash.Total;
+            bool slashing = SlashAge < CurrentSlash.Total;
             if (!slashing)
             {
                 SweepArmBack(leftUpperArm, leftForearm, -1f, k);
@@ -684,7 +714,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             combat.stepSwing[i] = SlashPaths[i % SlashPaths.Length].Cut;
             combat.stepRecovery[i] = i == count - 1 ? FinisherRecovery : SlashRecovery;
         }
-        combat.chainAfter = 1f; // 接受單次緩衝，但完整收招後才能接下一刀。
+        combat.chainAfter = .3f; // 有預約下一刀：收招 30% 就接上去（圓弧接刀，不用等回到站姿，避免頓感）
         combat.comboGraceTime = ComboGrace;
         combat.lungeForce = 0f; // 揮刀時人不往前滑，靠前腳跨步表現往前砍
         combat.airSlashWindup = AirSlash.Prepare;
@@ -744,7 +774,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (slashClipIndex < 0) return;
         if (controller != null && controller.IsRolling) { slashClipIndex = -1; return; }
         var path = CurrentSlash;
-        float age = Time.time - slashStartedAt;
+        float age = SlashAge;
         float[] k = SlashClipKeys[slashClipIndex];
         // 幻影突進的兩刀：砍完停住之後先把收招（動畫最後一段）播完，再混回待機；地面連段是停住結束就開始混
         bool phantom = slashClipIndex >= PhantomSlashClip;
@@ -797,7 +827,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 這裡內建的弓 / 盾和手臂姿勢只在那兩個元件沒準備好時才用
         if (archerBow == null) archerBow = GetComponent<PlayerArcherBow>();
         bool showBow = combat.bowMode && (archerBow == null || !archerBow.Ready);
-        bool showShield = combat.ShieldUp && (paladinShield == null || !paladinShield.Ready);
+        bool showShield = combat.ShowShield && (paladinShield == null || !paladinShield.Ready);
 
         if (showBow && bowProp == null) bowProp = BuildBowProp();
         if (showShield && shieldProp == null) shieldProp = BuildShieldProp();
@@ -1240,7 +1270,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         }
 
         // 手：起跳時往前上方甩上去、慢慢放下；往下掉時微微抬起來平衡（揮刀時手交給揮刀）
-        bool slashing = Time.time - slashStartedAt < CurrentSlash.Total;
+        bool slashing = SlashAge < CurrentSlash.Total;
         if (!slashing)
         {
             float swing = since >= 0f && since < .45f ? Mathf.Sin(Mathf.Clamp01(since / .45f) * Mathf.PI) : 0f;
@@ -1300,7 +1330,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void ApplyShortKesaSlash()
     {
-        float age = Time.time - slashStartedAt;
+        float age = SlashAge;
         var path = CurrentSlash;
         if (age < 0f || age > path.Total) return;
         // 抬手（蓄力）→ 揮 → 揮到底停住 hold 秒（頓一下，最後一刀最久）→ 收刀
@@ -1311,7 +1341,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             float freezeAt = prep + path.Cut * .5f;
             if (age > freezeAt)
             {
-                slashStartedAt += age - freezeAt;
+                slashStartedAt += (age - freezeAt) / SlashClock;   // age 是乘過攻擊速度的時間，換回真實秒數
                 age = freezeAt;
             }
             if (weaponPresenter != null) weaponPresenter.DrawForSeconds(path.Total + .6f);
@@ -1323,6 +1353,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         bool airborne = path.airborne || (controller != null && !controller.IsGrounded);
         float weight = prepare * recover;
         Transform actor = controller != null ? controller.transform : transform;
+        // 圓弧接刀：抬手這段從上一刀的姿勢慢慢交給新的一刀（權重不會先掉到 0 再升回來）
+        chainK = slashChained && age < prep ? prepare : 1f;
+        if (chainK < 1f) weight = Mathf.Max(weight, Mathf.Lerp(chainWeight, 1f, prepare));
         if (slashClipIndex >= 0)
         {
             // Tripo 動畫負責身體和手臂：這裡只把刀轉到刀路的方向、左手握在右手下面
@@ -1333,6 +1366,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 身體旋轉：抬手時腰和胸往起刀的那一側扭（蓄力），揮的時候一路扭到收刀那一側（甩身），收刀時回正。
         // 臀部轉一部分、胸口再多轉一部分，上半身合起來約 ±60°；揮到一半身體往前壓（挑斬是先壓低再後仰）
         float twist = Mathf.Lerp(path.twistFrom, path.twistTo, cut) * weight;
+        twist = Mathf.Lerp(chainTwist, twist, chainK);
 
         // 腳踩住地面：先記下腳的位置，臀部轉動 / 蹲下之後再用 IK 把腳放回原位（膝蓋自然彎曲，腳不會在地上滑）
         Vector3 leftFootAt = leftFoot != null ? leftFoot.position : Vector3.zero;
@@ -1354,13 +1388,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
         // 髖部帶頭：比胸口早一點轉過去（右 → 左 / 左 → 右），胸口再跟上
         float hipCut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(cut * 1.3f));
-        float hipTwist = Mathf.Lerp(path.twistFrom, path.twistTo, hipCut) * weight;
+        float hipTwist = Mathf.Lerp(Mathf.Lerp(path.twistFrom, path.twistTo, hipCut) * weight, chainHipTwist, 1f - chainK);
         RotateBoneWorld(hips, actor.up, SlashHipTwist * hipTwist);
         RotateBoneWorld(chest, actor.up, SlashChestTwist * twist);
         float pitch = Mathf.Lerp(path.pitchFrom, path.pitchTo, cut) + 10f * Mathf.Sin(cut * Mathf.PI);
         // 前壓要繞「扭過去之後」的胸口左右軸，不然身體扭 90° 時前壓會變成往側邊倒
         Vector3 pitchAxis = Quaternion.AngleAxis(SlashHipTwist * hipTwist + SlashChestTwist * twist, actor.up) * actor.right;
-        RotateBoneWorld(chest, pitchAxis, pitch * weight);
+        float pitchW = Mathf.Lerp(chainPitch, pitch * weight, chainK);
+        RotateBoneWorld(chest, pitchAxis, pitchW);
         if (head != null) head.rotation = headRot;
 
         // 跳劈：整個刀路平面往斜的方向轉（蓄力中跳起來才慢慢轉過去，不會突然跳一下）
@@ -1376,8 +1411,10 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // 揮刀時兩腳一前一後（前腳往前踏、後腳往後撤），蹲得比較穩
         float leftStep = path.leftFootForward ? SlashStanceForward : -SlashStanceBack;
         float rightStep = path.leftFootForward ? -SlashStanceBack : SlashStanceForward;
-        leftFootAt += actor.forward * (leftStep * weight);
-        rightFootAt += actor.forward * (rightStep * weight);
+        float leftStepW = Mathf.Lerp(chainLeftStep, leftStep * weight, chainK);
+        float rightStepW = Mathf.Lerp(chainRightStep, rightStep * weight, chainK);
+        leftFootAt += actor.forward * leftStepW;
+        rightFootAt += actor.forward * rightStepW;
         // 整體壓低：先多蹲一點，腳跨太開、腿伸到底還碰不到地面時，再把髖部降到兩隻腳都踩得到為止
         if (hips != null && !airborne)
         {
@@ -1411,6 +1448,15 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             // 刀路是一段往前鼓出去的弧線（arc），劍尖畫出半圓
             Vector3 slashGoal = shoulder + Local(Vector3.Lerp(path.handFrom + path.windBack * wind, path.handTo, cut))
                 + actor.forward * (Mathf.Sin(cut * Mathf.PI) * path.arc);
+            if (chainK < 1f)
+            {
+                // 圓弧接刀：手從上一刀停住的位置，繞著肩膀外側畫半圓到這一刀的起手位置（方向整個反過來）
+                Vector3 from = actor.TransformDirection(chainHandLocal);
+                Vector3 to = slashGoal - shoulder;
+                Vector3 mid = from + to;
+                Vector3 bulge = mid.sqrMagnitude > 1e-4f ? mid.normalized : actor.forward;
+                slashGoal = shoulder + Vector3.Lerp(from, to, chainK) + (bulge + actor.up * .35f).normalized * (ChainArcBulge * Mathf.Sin(chainK * Mathf.PI));
+            }
             Vector3 goal = Vector3.Lerp(rightHand.position, slashGoal, weight);
             // Preserve the animation's wrist orientation while solving arm positions.
             // Otherwise both IK rotations accumulate into the hand and roll the blade.
@@ -1418,6 +1464,13 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             SolveArmWorld(rightUpperArm, rightForearm, rightHand, goal, Local(path.pole));
             rightHand.rotation = wrist;
             AimBladeAndSupport(path, cut, wind, weight, actor, tilt);
+
+            // 記下這一幀的姿勢：下一刀接上來時從這裡開始
+            lastSlashPoseFrame = Time.frameCount;
+            lastSlashWeight = weight;
+            lastSlashTwist = twist; lastSlashHipTwist = hipTwist; lastSlashPitch = pitchW;
+            lastSlashLeftStep = leftStepW; lastSlashRightStep = rightStepW;
+            lastSlashHandLocal = actor.InverseTransformDirection(slashGoal - shoulder);
         }
     }
 
@@ -1433,6 +1486,9 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         if (weaponPresenter != null)
         {
             Vector3 blade = Local(Vector3.Slerp(Vector3.Slerp(path.bladeFrom, path.bladeTo, cut), path.windBlade, wind));
+            // 圓弧接刀：刀從上一刀的方向一路轉到這一刀的起手方向
+            if (chainK < 1f && slashChained) blade = Vector3.Slerp(actor.TransformDirection(chainBladeLocal), blade, chainK);
+            lastSlashBladeLocal = actor.InverseTransformDirection(blade);
             Vector3 edge = default;
             if (path.edgeFollowsSwing || path.edgeFlat > 0f)
             {

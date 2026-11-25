@@ -241,11 +241,34 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>僵直 seconds 秒（玩家受傷時使用）</summary>
     public void Stun(float seconds) => stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
 
-    /// <summary>給角色一個瞬間的推力（受擊擊退用）</summary>
-    public void AddImpulse(Vector3 impulse)
+    [Header("擊退：嚴禁在地上滑")]
+    [Tooltip("被推的時候往上的力道至少要這麼大 (m/s)，才會被打飛到空中（帶著水平的力道飛出去，落地就停住）。\n" +
+             "不夠的話就站在原地：水平的推力不算，也不會在地上滑")]
+    public float knockbackLiftThreshold = 2.5f;
+    bool knockbackAirborne;
+
+    /// <summary>
+    /// 給角色一個瞬間的推力（受擊擊退用）。被打只有三種結果：站在原地、被打飛到空中（落地就停住）、倒地（PlayerHealth 自己處理），
+    /// 不會腳踩著地面滑出去：
+    ///   - 在地上、往上的力道小於 knockbackLiftThreshold → 水平推力不算，連原本的移動也停掉（站在原地）
+    ///   - 往上的力道夠大，或本來就在空中 → 照常推出去，落地那一刻水平速度歸零
+    /// allowGroundSlide = true：不是受擊、確定要在地上推的特殊情況（例如敵人踩在玩家頭上要滑下來）
+    /// </summary>
+    public void AddImpulse(Vector3 impulse, bool allowGroundSlide = false)
     {
         if (IsControlImmune) return;
-        horizontalVelocity += new Vector3(impulse.x, 0f, impulse.z);
+        Vector3 flat = new Vector3(impulse.x, 0f, impulse.z);
+        if (!allowGroundSlide && flat.sqrMagnitude > 0.0001f)
+        {
+            bool grounded = controller != null && controller.isGrounded && verticalVelocity <= 0f;
+            if (grounded && impulse.y < knockbackLiftThreshold)
+            {
+                horizontalVelocity = Vector3.zero;   // 站在原地（被打的那一下也不會往前滑）
+                return;
+            }
+            knockbackAirborne = true;                // 飛出去：落地就停住
+        }
+        horizontalVelocity += flat;
         if (impulse.y > 0f) verticalVelocity = Mathf.Max(verticalVelocity, impulse.y);
     }
 
@@ -489,9 +512,15 @@ public class ThirdPersonController : MonoBehaviour
         {
             // 拋物線飛行中：水平速度不變，落地（或撞到東西停下來）才恢復控制
             // 上升中 verticalVelocity > 0，所以起跳那一幀「還在地上」不會誤判成落地
-            if (controller.isGrounded && verticalVelocity <= 0f) ballistic = false;
+            // 落地那一刻水平速度歸零：被打飛的人落地就倒在那裡，不會帶著速度在地上滑
+            if (controller.isGrounded && verticalVelocity <= 0f) { ballistic = false; horizontalVelocity = Vector3.zero; knockbackAirborne = false; }
         }
-        else horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
+        else
+        {
+            // 被打飛（AddImpulse 帶著往上的力道）落地：停住，不滑
+            if (knockbackAirborne && controller.isGrounded && verticalVelocity <= 0f) { horizontalVelocity = Vector3.zero; knockbackAirborne = false; }
+            horizontalVelocity = Vector3.MoveTowards(horizontalVelocity, targetVelocity, accel * dt);
+        }
 
         // ---- 3. 角色轉向移動方向 ----
         if (moveDir.sqrMagnitude > 0.001f && !lockRotation)

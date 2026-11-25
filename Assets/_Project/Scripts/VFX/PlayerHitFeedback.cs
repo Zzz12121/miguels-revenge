@@ -100,9 +100,10 @@ public class PlayerHitFeedback : MonoBehaviour
         if (seconds <= 0f) return;
         hitstopEnd = Mathf.Max(hitstopEnd, Time.unscaledTime + seconds);
         if (hitstopActive) return;
-        // 已經有其他系統在調時間（暫停、慢動作、劇情）就不插手
-        if (Time.timeScale < 0.99f) return;
-        savedTimeScale = Time.timeScale;
+        // 已經有其他系統在調時間（暫停、慢動作、劇情、抽刀加速）就不插手。
+        // 只在時間剛好是 1 的時候開始、結束時一律回到 1：以前會把「抽刀加速 1.7 倍」記下來再還回去，整個遊戲就一直是 1.7 倍
+        if (!Mathf.Approximately(Time.timeScale, 1f)) return;
+        savedTimeScale = 1f;
         hitstopActive = true;
         Time.timeScale = hitstopTimeScale;
         StartCoroutine(HitstopRoutine());

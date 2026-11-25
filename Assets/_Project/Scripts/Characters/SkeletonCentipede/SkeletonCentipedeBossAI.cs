@@ -239,6 +239,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
         // 用 OnEnable 訂閱就永遠收不到死亡 → 本體死了分身不會跟著倒、分身死了也不會沉下去。
         health.OnDied += OnBossDied;
         if (GetComponent<SkeletonCentipedeNoStand>() == null) gameObject.AddComponent<SkeletonCentipedeNoStand>();   // 玩家不能站在身上
+        if (GetComponent<SkeletonCentipedeSeeThrough>() == null) gameObject.AddComponent<SkeletonCentipedeSeeThrough>();   // 擋住玩家時變淡、可透視
     }
 
     void OnDestroy()
@@ -570,6 +571,7 @@ public class SkeletonCentipedeBossAI : MonoBehaviour
             Vector3 pos = ClampToArena(transform.position + transform.right * side * cloneSpawnOffset + transform.forward * 2f);
             pos.y = RestY(pos);
 
+            if (TryGetComponent(out SkeletonCentipedeSeeThrough seeThrough)) seeThrough.ForceOpaque();   // 先換回原本的材質再複製
             var go = Instantiate(gameObject, pos, transform.rotation);
             go.name = $"{name} (Clone {i + 1})";
             go.transform.localScale = transform.localScale * cloneScale;

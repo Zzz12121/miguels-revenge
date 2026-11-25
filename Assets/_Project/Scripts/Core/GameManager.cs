@@ -50,6 +50,7 @@ public class GameManager : MonoBehaviour
     {
         new Level { sceneName = "JapaneseVillage",               title = "漁村" },
         new Level { sceneName = "DojoArena_ArchitecturePreview", title = "道場" },
+        new Level { sceneName = "ForestIsland",                  title = "霧海孤島" },   // 百足駭骨：一樣可以按 Esc / Start 叫出暫停選單（設定、存讀檔）
     };
 
     [Header("背景音樂")]

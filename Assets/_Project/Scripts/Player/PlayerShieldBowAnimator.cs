@@ -26,6 +26,9 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
     PlayerCombat combat;
     PlayerHealth health;
     PlayerWeaponPresenter weaponPresenter;
+    PlayerVisualAnimator visual;
+    /// <summary>刀劍格擋（PlayerCombat.swordParry）：不播舉盾 / 盾牌擋下的動畫，姿勢交給 SwordParryPose</summary>
+    bool SwordParry => combat != null && combat.swordParry;
 
     string current;          // 目前由這裡播的狀態（null = 交給 PlayerVisualAnimator）
     float busyUntil;         // 盾擊 / 擋下 / 放箭還沒播完
@@ -43,6 +46,8 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         weaponPresenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         if (GetComponent<PlayerArcherBow>() == null) gameObject.AddComponent<PlayerArcherBow>();
         if (GetComponent<ShieldCounterPose>() == null) gameObject.AddComponent<ShieldCounterPose>();
+        if (GetComponent<SwordParryPose>() == null) gameObject.AddComponent<SwordParryPose>();   // 刀劍格擋的姿勢
+        visual = GetComponent<PlayerVisualAnimator>();
     }
 
     void OnEnable()
@@ -121,7 +126,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
         // 盾擊 / 擋下播完：還舉著盾就回到格擋姿勢，不然交還
         if (current == "ShieldBash" || current == "BlockHit")
         {
-            if (combat != null && combat.IsBlocking) Play("BlockIdle", 0.1f);
+            if (combat != null && combat.IsBlocking && !SwordParry) Play("BlockIdle", 0.1f);
             else Release();
         }
         else if (current == "BlockIdle" && (combat == null || !combat.IsBlocking))
@@ -140,7 +145,7 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
 
     void HandleBlockChanged(bool blocking)
     {
-        if (blocking && Time.time >= busyUntil) Play("BlockIdle", 0.1f);
+        if (blocking && Time.time >= busyUntil && !SwordParry) Play("BlockIdle", 0.1f);
     }
 
     void HandleBlockedHit(bool broke)
@@ -153,12 +158,20 @@ public sealed class PlayerShieldBowAnimator : MonoBehaviour
             return;
         }
         if (combat.IsShieldBashing) return; // 盾擊中擋到不打斷盾擊動畫
+        if (SwordParry) return;             // 刀劍格擋：架開的動作由 SwordParryPose 擺
         Play("BlockHit", 0.05f, 1.2f);
         busyUntil = Time.time + blockHitDuration;
     }
 
     void HandleShieldCounter(float duration)
     {
+        if (SwordParry)
+        {
+            // 刀劍格擋的反擊：第一刀的斜斬（時間跟 PlayerCombat 的反擊判定一樣）
+            Release();
+            if (visual != null) visual.PlaySwordAttack(0);
+            return;
+        }
         // 身體往前頂（盾擊的動作，播快一點）；右手的突刺姿勢由 ShieldCounterPose 疊上去
         Play("ShieldBash", 0.05f, 1.35f);
         busyUntil = Time.time + duration;
