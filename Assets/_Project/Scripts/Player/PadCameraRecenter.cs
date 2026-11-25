@@ -8,6 +8,7 @@ using UnityEngine.SceneManagement;
 ///   - 只在用手把的時候（PadInput.UsingPadRecently）；滑鼠轉鏡頭不管
 ///   - 搖桿推著的時候不搶；放開 releaseDelay 秒以後才轉回去，轉的途中再推搖桿就停（玩家優先）
 ///   - 瞄準、過場（HUD 藏起來）、選單、對話、時間停住的時候不動
+///   - 進攻、翻滾、跳在空中的時候交給 ThirdPersonCamera 的「自動轉到背後」（autoBehindOnAction），兩邊不搶鏡頭
 /// ThirdPersonCamera 是隊友的，這裡不改它：在它之前（執行順序 -60）調它公開的 yaw / pitch，它接著照平常讀搖桿、算位置。
 /// </summary>
 [DefaultExecutionOrder(-60)]
@@ -39,6 +40,7 @@ public class PadCameraRecenter : MonoBehaviour
 
     PlayerHealth player;
     PlayerCombat combat;
+    ThirdPersonController motor;
     ThirdPersonCamera cam;
     Transform enemy;
     IDamageable enemyHealth;
@@ -63,6 +65,7 @@ public class PadCameraRecenter : MonoBehaviour
         combat = null;
         player = null;
         cam = null;
+        motor = null;
     }
 
     void OnDealtHit(float damage, IDamageable target)
@@ -115,6 +118,12 @@ public class PadCameraRecenter : MonoBehaviour
         if (cam.AimBlend > 0.05f || SkillAimCancellation.IsAiming) return false;
         if (GameUI.OverlayOpen || StoryDialogue.Active || VitalsHud.Hidden || Time.timeScale <= 0f) return false;
         if (Cursor.lockState != CursorLockMode.Locked) return false;
+        // 進攻 / 翻滾 / 跳躍中：鏡頭自己會轉到角色背後（隊友的 AutoBehind），這裡不插手
+        if (cam.autoBehindOnAction)
+        {
+            if (motor == null) motor = player.GetComponent<ThirdPersonController>();
+            if (combat.IsAttacking || combat.IsShieldCountering || (motor != null && (motor.IsRolling || !motor.IsGrounded))) return false;
+        }
         return true;
     }
 

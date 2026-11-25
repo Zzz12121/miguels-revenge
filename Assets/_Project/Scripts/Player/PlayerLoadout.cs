@@ -206,7 +206,8 @@ public class PlayerLoadout : MonoBehaviour
     // 原本：判定中心在前方 1.3 m、半徑 1.4 m（最遠 2.7 m）
     static readonly Stats GreatswordStats = new Stats(1.25f, 1.15f, 1f, 1f);   // 前方 1.6 m、半徑 1.6 m：最遠約 3.2 m，比原本多 0.5 m
     static readonly Stats KnifeStats = new Stats(0.72f, 0.75f, 0.6f, 0.7f);    // 最遠約 2 m；出手快 40%、每下傷害 70%
-    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 0.62f, 0.85f);  // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄；出手快 38%（戳得快、收得快）、每下傷害 85%
+    // time = 出手時間的倍率（相對大刀），乘在 PlayerCombat.attackSpeed（全部武器共用的攻擊速度，現在 1.3 倍）上面
+    static readonly Stats SpearStats = new Stats(1.85f, 0.85f, 0.8f, 0.85f);   // 前方 2.4 m、半徑 1.2 m：1.2 ~ 3.6 m，左右窄；比大刀快 20%（再乘攻擊速度 1.3，約原本的 1.6 倍）、每下傷害 85%
 
     static Stats StatsFor(Melee m) => m == Melee.Knife ? KnifeStats : m == Melee.Spear ? SpearStats : GreatswordStats;
 
@@ -222,7 +223,7 @@ public class PlayerLoadout : MonoBehaviour
 
     float baseOffset, baseRadius;
     bool baseCaptured;
-    float[] baseWindup, baseSwing, baseRecovery, writtenWindup;
+    float baseAttackSpeed = -1f;
 
     Renderer[] saberRenderers;
     Transform tip;
@@ -401,26 +402,15 @@ public class PlayerLoadout : MonoBehaviour
         ShowMelee(melee);
     }
 
-    /// <summary>每段出手時間 = 原本（PlayerVisualAnimator 設定的）× 武器的倍率；別人重新設定過就以新的為準</summary>
+    /// <summary>
+    /// 出手快慢以隊友的攻擊速度（PlayerCombat.attackSpeed）為主：抬手、揮刀、收招和揮刀動畫都照它一起變快，判定跟畫面同步。
+    /// 武器的倍率（長槍、小刀比大刀快）乘在它上面，不再自己改每一段的時間（以前直接縮短 stepWindup 這些，動畫不知道、會對不上）
+    /// </summary>
     void ApplyTiming()
     {
-        if (combat.stepWindup == null || combat.stepSwing == null || combat.stepRecovery == null) return;
-        if (combat.stepWindup != writtenWindup)
-        {
-            baseWindup = (float[])combat.stepWindup.Clone();
-            baseSwing = (float[])combat.stepSwing.Clone();
-            baseRecovery = (float[])combat.stepRecovery.Clone();
-        }
+        if (baseAttackSpeed < 0f) baseAttackSpeed = combat.attackSpeed;
         float k = StatsFor(MeleeFor(Current)).time;
-        var w = new float[baseWindup.Length];
-        var sw = new float[baseSwing.Length];
-        var r = new float[baseRecovery.Length];
-        for (int i = 0; i < w.Length; i++) w[i] = baseWindup[i] * k;
-        for (int i = 0; i < sw.Length; i++) sw[i] = baseSwing[i] * k;
-        for (int i = 0; i < r.Length; i++) r[i] = baseRecovery[i] * k;
-        combat.stepWindup = writtenWindup = w;
-        combat.stepSwing = sw;
-        combat.stepRecovery = r;
+        combat.attackSpeed = baseAttackSpeed / Mathf.Max(0.1f, k);
     }
 
     void OnBowShot()
@@ -525,7 +515,7 @@ public class PlayerLoadout : MonoBehaviour
     {
         if (combat == null) return;
         UpdateWeaponSwitch();
-        if (combat.stepWindup != null && combat.stepWindup != writtenWindup) ApplyTiming(); // PlayerVisualAnimator 重新設定過
+
         // 換關卡 / 船戰之後弓箭模式被別人關掉了：恢復成小刀以外的狀態一致
         if (!boatLevel && managingBow && !combat.bowMode) managingBow = false;
 
@@ -766,7 +756,7 @@ public class PlayerLoadout : MonoBehaviour
         if (!attacking || swingAt < attackStart) return false;
         float t = Time.time - swingAt;
         float wu = Mathf.Max(0.02f, combat.WindupFor(index)), sw = Mathf.Max(0.02f, combat.SwingFor(index));
-        float rec = combat.stepRecovery != null && index < combat.stepRecovery.Length ? combat.stepRecovery[index] : combat.recoveryTime;
+        float rec = combat.RecoveryFor(index);
         if (t < wu) { pull = Mathf.SmoothStep(0f, 1f, t / wu); return true; }
         pull = 1f;
         t -= wu;

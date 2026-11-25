@@ -45,6 +45,8 @@ public sealed class PhantomStrike : MonoBehaviour
     public float strikeDamageScale = 1.4f;
     [Tooltip("分身這一刀的傷害倍率")]
     public float cloneDamageScale = .6f;
+    [Tooltip("分身所有傷害（突進這一刀、跟著揮刀、剪刀斬）再乘上這個：0.5 = 減半")]
+    [Range(0f, 2f)] public float cloneDamageMultiplier = 0.5f;
 
     [Header("分身（誘餌）")]
     [Tooltip("分身留在場上多久 (秒)")]
@@ -95,7 +97,7 @@ public sealed class PhantomStrike : MonoBehaviour
     void MirrorStrike(Vector3 center, float radius)
     {
         if (Busy || decoy == null || !decoy.IsMirrorLure) return; // 突進 / 剪刀斬的那兩刀自己會算分身的傷害
-        combat.StrikeArea(decoy.MirrorPoint(center), radius, BaseDamage() * mirrorAttackDamageScale, new HashSet<object>());
+        combat.StrikeArea(decoy.MirrorPoint(center), radius, BaseDamage() * mirrorAttackDamageScale * cloneDamageMultiplier, new HashSet<object>());
     }
 
     void OnDisable()
@@ -175,7 +177,7 @@ public sealed class PhantomStrike : MonoBehaviour
         // 沿弧線爆衝過去：一開始最快、到位時還帶著速度（arriveSpeed），到位那一刻砍中、急停。
         // 衝到剩 strikeLead 秒時就開始揮刀，不是到位之後才砍。
         var cloneHits = new HashSet<object>();
-        float cloneDamage = BaseDamage() * cloneDamageScale;
+        float cloneDamage = BaseDamage() * cloneDamageScale * cloneDamageMultiplier;
         bool slashed = false;
         float t = 0f;
         while (t < dashTime)
@@ -247,7 +249,7 @@ public sealed class PhantomStrike : MonoBehaviour
         // 拔刀斬的節奏：全速衝到交叉點（剛好是砍中的那一刻），砍過去之後帶著速度滑行、慢慢煞住（殘心）
         combat.BeginDashSlash(scissorDashTime + .06f, dir, scissorDamageScale, 1);
         var cloneHits = new HashSet<object>();
-        float cloneDamage = BaseDamage() * scissorCloneDamageScale;
+        float cloneDamage = BaseDamage() * scissorCloneDamageScale * cloneDamageMultiplier;
         float reach = Mathf.Max(.05f, scissorStrikeAt);                    // 幾秒衝到交叉點
         float toCross = Flat(cross - start).magnitude, after = Flat(end - cross).magnitude;
         // 滑行的時間：讓滑行一開始的速度 = 衝過來的速度（速度連續，不會頓一下）

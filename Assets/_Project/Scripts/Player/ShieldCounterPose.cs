@@ -47,7 +47,7 @@ public sealed class ShieldCounterPose : MonoBehaviour
 
     void LateUpdate()
     {
-        if (combat == null || !combat.IsShieldCountering || !EnsureBones()) return;
+        if (combat == null || combat.swordParry || !combat.IsShieldCountering || !EnsureBones()) return;   // 刀劍格擋：反擊是一般的揮刀，不擺突刺
 
         float total = combat.counterDelay + combat.counterActive + combat.counterRecovery;
         float p = combat.CounterProgress;

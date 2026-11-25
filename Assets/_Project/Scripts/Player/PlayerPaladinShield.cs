@@ -148,7 +148,7 @@ public sealed class PlayerPaladinShield : MonoBehaviour
     void LateUpdate()
     {
         if (!ready) return;
-        bool want = combat != null && combat.ShieldUp && !combat.bowMode && (health == null || !health.IsDead);
+        bool want = combat != null && combat.ShowShield && !combat.bowMode && (health == null || !health.IsDead);
         if (want != shown) SetShown(want);
         if (!want) return;
 

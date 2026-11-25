@@ -823,7 +823,7 @@ public class EnemyAI : MonoBehaviour
             Vector3 dir = to.sqrMagnitude > 0.01f ? to.normalized : transform.forward;
             if (to.magnitude <= pounceRadius && Mathf.Abs(dy) < 2f)
                 playerHealth.TakeDamage(pounceDamage, dir * 6f + Vector3.up * 4f);
-            if (dy < -1f) controller.AddImpulse(-dir * 6f); // 踩在玩家頭上 → 滑下來
+            if (dy < -1f) controller.AddImpulse(-dir * 6f, true); // 踩在玩家頭上 → 滑下來
         }
         if (landed) controller.ResetMotion(); // 落地就站穩，不要往前滑出去
         nextAttackTime = Mathf.Max(nextAttackTime, Time.time + 0.35f);
@@ -886,7 +886,7 @@ public class EnemyAI : MonoBehaviour
                 playerHealth.TakeDamage(stompDamage, dir * 7f + Vector3.up * 6f);
 
             // 剛好踩在玩家頭上 → 滑下來
-            if (dy < -1f) controller.AddImpulse(-dir * 6f);
+            if (dy < -1f) controller.AddImpulse(-dir * 6f, true);
         }
 
         nextAttackTime = Time.time + 0.6f;

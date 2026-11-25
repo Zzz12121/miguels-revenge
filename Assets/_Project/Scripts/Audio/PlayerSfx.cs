@@ -116,8 +116,9 @@ public sealed class PlayerSfx : MonoBehaviour
     void Swing(int combo)
     {
         if (melee == null) return;
-        float windup = melee.IsDashSlash ? 0.05f : melee.IsAirSlash ? melee.airSlashWindup : melee.WindupFor(combo);
-        float swing = melee.IsDashSlash ? 0.25f : melee.IsAirSlash ? melee.airSlashSwing : melee.SwingFor(combo);
+        float speed = Mathf.Max(0.1f, melee.AttackSpeed);   // 空中刀的時間也照攻擊速度縮短（WindupFor / SwingFor 已經算進去了）
+        float windup = melee.IsDashSlash ? 0.05f : melee.IsAirSlash ? melee.airSlashWindup / speed : melee.WindupFor(combo);
+        float swing = melee.IsDashSlash ? 0.25f : melee.IsAirSlash ? melee.airSlashSwing / speed : melee.SwingFor(combo);
         swingSerial++;
         swingHit = swingPlayed = false;
         swingSrc = null;

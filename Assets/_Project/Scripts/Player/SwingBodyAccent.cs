@@ -89,7 +89,7 @@ public sealed class SwingBodyAccent : MonoBehaviour
         {
             float t = Time.time - swingAt;
             float wu = Mathf.Max(0.02f, combat.WindupFor(index)), sw = Mathf.Max(0.02f, combat.SwingFor(index));
-            float rec = combat.stepRecovery != null && index < combat.stepRecovery.Length ? combat.stepRecovery[index] : combat.recoveryTime;
+            float rec = combat.RecoveryFor(index);
             bool spear = PlayerLoadout.Current == WeaponLoadout.Spear;
             var move = spear ? Spear : Greatsword[index % Greatsword.Length];
             float scale = PlayerLoadout.UsingKnife ? 0.6f : 1f;

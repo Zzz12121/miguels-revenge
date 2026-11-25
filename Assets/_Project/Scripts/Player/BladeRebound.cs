@@ -5,7 +5,7 @@ using UnityEngine;
 
 /// <summary>
 /// 刀、長槍、小刀砍到石頭、木頭、牆壁（不是敵人、不是地面）：刀被彈回來（PlayerLoadout.Awake 自動掛上）。
-///   碰到的那一刻頓一下（stopTime），刀沿著原本的刀路彈回去、退回架式（reboundTime），人往後退一步；
+///   碰到的那一刻頓一下（stopTime），刀沿著原本的刀路彈回去、退回架式（reboundTime）；人站在原地（不把人往後推：嚴禁滑步）；
 ///   石頭：火花 + 清脆的「鏘」（blade_stone_*），木頭：木屑 + 悶悶的「咚」（blade_wood_*）；鏡頭、手把震一下。
 ///   這一刀就斷在那裡（MeleeCombat.CancelAttack：不會穿過牆打到後面的東西），彈回去之後可以馬上再出招。
 /// 判斷用刀實際的位置：PlayerWeaponPresenter 的刀柄 → 刀尖這一段，加上刀尖這一幀掃過的路徑。只看一般連擊、空中輕砍「揮下去」的那一段；
@@ -21,8 +21,6 @@ public sealed class BladeRebound : MonoBehaviour
     public float stopTime = 0.08f;
     [Tooltip("刀彈回架式要多久（秒）")]
     public float reboundTime = 0.24f;
-    [Tooltip("人往後退的力道")]
-    public float pushBack = 4f;
 
     /// <summary>正在被彈回去（AttackFlow 等它彈完才接緩衝的攻擊）</summary>
     public static bool Busy { get; private set; }
@@ -110,8 +108,9 @@ public sealed class BladeRebound : MonoBehaviour
         if (presenter == null) presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         if (presenter == null || presenter.BladeTip == null || presenter.BladePivot == null) return;
         float t = Time.time - swingAt;
-        float wu = air ? combat.airSlashWindup : combat.WindupFor(index);
-        float sw = air ? combat.airSlashSwing : combat.SwingFor(index);
+        float speed = Mathf.Max(0.1f, combat.AttackSpeed);   // 空中刀的時間也照攻擊速度縮短
+        float wu = air ? combat.airSlashWindup / speed : combat.WindupFor(index);
+        float sw = air ? combat.airSlashSwing / speed : combat.SwingFor(index);
         if (t < wu || t > wu + sw) { havePrev = false; return; }
         Vector3 tip = presenter.BladeTip.position, grip = presenter.BladePivot.position;
         if (Solid(grip, tip, out var hit) || (havePrev && Solid(prevTip, tip, out hit))) Rebound(hit, t);
@@ -201,9 +200,8 @@ public sealed class BladeRebound : MonoBehaviour
         ThirdPersonCamera.ShakeMain(0.14f, 0.16f);
         if (InputBindings.RumbleEnabled) PadRumble.Pulse(0.55f, 0.8f, 0.12f);
 
-        // 這一刀斷在這裡；人往後退一步
+        // 這一刀斷在這裡（人站在原地，不往後推：腳不會在地上滑）
         combat.CancelAttack();
-        if (motor != null) motor.AddImpulse(-transform.forward * pushBack);
         StartCoroutine(Kick());
 
         // 刀沿原路彈回去（揮刀動作照「開始揮刀的時間」算：把它往回推）
