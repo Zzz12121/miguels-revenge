@@ -89,9 +89,9 @@ public class VillageMapCaptureRunner : MonoBehaviour
         ("村長", "NPC_Elder", "chief", null),
         ("往道場的大門", "Portal_Dojo", "chief", null),
         ("石階", null, "forest", new Vector2(0f, 87f)),           // 石階 z 54 ~ 120 的中間（物件的支點在原點）
-        ("雙尾虎的窩", "TwoTailedTiger", "forest", null),
+        ("雙尾虎出沒的空地", "TwoTailedTiger", "forest", null),
+        ("雙尾虎的巢穴", "TigerDen", "forest", null),               // 竹林深處，打跑了逃回這裡
         ("砍竹人", "NPC_Woodcutter", "forest", null),
-        ("竹林深處", null, "forest", new Vector2(-75f, 126f)),      // 老虎逃走的方向
         ("祠堂", "Shrine", "summit", null),
         ("習武場", null, "summit", new Vector2(-30f, 165f)),       // 院子 z 134 ~ 186 的西半邊（物件的支點在原點）
         ("拉索深溝", "CourseStart", "summit", null),
@@ -103,7 +103,7 @@ public class VillageMapCaptureRunner : MonoBehaviour
         ("harbor", "漁港", "村子南邊的海岸。棧橋末端有老漁夫在釣魚，可以跟他學釣魚、把魚賣掉換錢；行商的攤子在海岸道路旁，賣帽子、圍巾和鉤索的造型。", 120f),
         ("town", "市街", "三排房子和中間的主街。茶屋（甜點、長椅）、鐵匠鋪（換武器、用虎皮虎牙升級）、藥鋪（草藥換藥水）都在這裡，北邊那排主街西側是你暫住的老房子。", 150f),
         ("chief", "村長宅院", "村子東邊盡頭、全村最大的宅院。村長住在主殿裡；後院東牆的大門通往道場。", 90f),
-        ("forest", "竹林與石階", "村子北邊往山上的石階，兩旁是竹林。石階西側的空地住著一頭雙尾虎，打跑牠會留下虎皮和虎牙。", 130f),
+        ("forest", "竹林與石階", "村子北邊往山上的石階，兩旁是竹林。石階西側的空地常有一頭雙尾虎走動，牠的巢穴在竹林更深處；打跑牠會留下虎皮和虎牙。", 130f),
         ("summit", "山頂祠堂", "石階頂端的祠堂，供奉著玄清道人；後面是習武場，東半邊有一道只能用拉索盪過去的深溝。", 170f),
     };
 

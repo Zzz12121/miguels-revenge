@@ -131,6 +131,7 @@ public class VillageReturn : MonoBehaviour
         while (overlay < 0.999f) yield return null;
         yield return new WaitForSecondsRealtime(0.6f);
         var gm = GameManager.Instance;
+        GameManager.NextArrivalEvent = "倒下後被抬回漁村";
         if (gm != null) gm.LoadLevel(VillageScene);
         else SceneManager.LoadScene(VillageScene);
     }

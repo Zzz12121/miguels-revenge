@@ -29,6 +29,10 @@ public class StoryDialogue : MonoBehaviour
 
     static StoryDialogue current;
     public static bool Active => current != null;
+    /// <summary>現在這一句是誰說的、是不是對方（右邊）；沒有在播對話時 name 是 null（自動存檔記「和誰說完話」用）</summary>
+    public static (string name, bool right) CurrentLine =>
+        current != null && current.lines != null && current.index >= 0 && current.index < current.lines.Count
+            ? (current.lines[current.index].name, current.lines[current.index].right) : (null, false);
 
     List<Line> lines;
     System.Action onDone;

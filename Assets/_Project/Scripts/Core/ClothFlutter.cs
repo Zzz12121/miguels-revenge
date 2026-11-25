@@ -5,8 +5,9 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 選項畫面那塊破布按鈕「被微風吹」：選到（手把 / 方向鍵）或滑鼠移上去時，整塊布起伏成波浪、微微擺動、放大一點點；
-/// 離開後慢慢停下來。掛在按鈕（Image）上；按鈕上的字掛另一個 ClothFlutter、driver 指向按鈕的，跟著同一陣風一起飄。
-/// 布（Image）會先切成很多直條再彎，字只把每個字的四個角跟著移（字很小，不用切）。
+/// 離開後慢慢停下來。掛在按鈕（Image）上：只改布的網格（切成很多直條再彎、擺動、放大），不轉按鈕本身，
+/// 所以按鈕上的字完全不動（選到的選項字不飄，比較好讀）。
+/// driver：舊的用法，字也跟著同一陣風飄（現在選單都不用）。
 /// </summary>
 [RequireComponent(typeof(Graphic))]
 public sealed class ClothFlutter : BaseMeshEffect, IPointerEnterHandler, IPointerExitHandler
@@ -17,6 +18,8 @@ public sealed class ClothFlutter : BaseMeshEffect, IPointerEnterHandler, IPointe
     public float amplitude = 4f;
     [Tooltip("布切成直條，每條多寬 (px)")]
     public float segment = 12f;
+    [Tooltip("程式直接指定「選到了」（不靠 EventSystem 的游標 / 選取，例如主畫面的存檔欄）")]
+    public bool forced;
 
     bool hover;
     float amount, lastAmount, phase;
@@ -52,14 +55,11 @@ public sealed class ClothFlutter : BaseMeshEffect, IPointerEnterHandler, IPointe
         if (driver == null)
         {
             var es = EventSystem.current;
-            bool on = hover || (es != null && es.currentSelectedGameObject == gameObject);
+            bool on = forced || hover || (es != null && es.currentSelectedGameObject == gameObject);
             if (selectable != null && !selectable.interactable) on = false;
             // 風來得快、停得慢
             amount = Mathf.MoveTowards(amount, on ? 1f : 0f, Time.unscaledDeltaTime * (on ? 3.5f : 1.6f));
-            float t = Clock;
-            float sway = amount * (1.1f * Mathf.Sin(t * 2.3f) + 0.45f * Mathf.Sin(t * 4.1f + 1.3f));
-            transform.localRotation = Quaternion.Euler(0f, 0f, sway);
-            transform.localScale = Vector3.one * (1f + 0.035f * Mathf.SmoothStep(0f, 1f, amount));
+            // 擺動、放大都只做在布的網格上（ModifyMesh），不轉按鈕：按鈕上的字才不會跟著晃
         }
         float a = Amount;
         if (a > 0.0005f || lastAmount > 0.0005f) graphic.SetVerticesDirty();
@@ -77,6 +77,17 @@ public sealed class ClothFlutter : BaseMeshEffect, IPointerEnterHandler, IPointe
         dst.Clear();
         vh.GetUIVertexStream(src);
         bool split = driver == null;   // 布要切；字不用
+        // 布整塊微微擺動、放大一點點（以布的中心為準）
+        float sway = split ? a * (1.1f * Mathf.Sin(t * 2.3f) + 0.45f * Mathf.Sin(t * 4.1f + 1.3f)) : 0f;
+        float grow = split ? 1f + 0.035f * Mathf.SmoothStep(0f, 1f, a) : 1f;
+        Quaternion spin = Quaternion.Euler(0f, 0f, sway);
+        Vector3 center = r.center;
+        UIVertex Shape(UIVertex v)
+        {
+            v = Bend(v, r, t, a);
+            if (split) v.position = center + spin * ((v.position - center) * grow);
+            return v;
+        }
         // 每 6 個點是一個四邊形（0,1,2 / 2,3,0）：Image 的順序是 左下、左上、右上、右下
         for (int i = 0; i + 5 < src.Count; i += 6)
         {
@@ -84,14 +95,14 @@ public sealed class ClothFlutter : BaseMeshEffect, IPointerEnterHandler, IPointe
             int n = split ? Mathf.Clamp(Mathf.CeilToInt(Mathf.Abs(v3.position.x - v0.position.x) / Mathf.Max(2f, segment)), 1, 64) : 1;
             if (n == 1)
             {
-                for (int k = 0; k < 6; k++) dst.Add(Bend(src[i + k], r, t, a));
+                for (int k = 0; k < 6; k++) dst.Add(Shape(src[i + k]));
                 continue;
             }
-            UIVertex prevBottom = Bend(v0, r, t, a), prevTop = Bend(v1, r, t, a);
+            UIVertex prevBottom = Shape(v0), prevTop = Shape(v1);
             for (int k = 1; k <= n; k++)
             {
                 float f = (float)k / n;
-                UIVertex bottom = Bend(Lerp(v0, v3, f), r, t, a), top = Bend(Lerp(v1, v2, f), r, t, a);
+                UIVertex bottom = Shape(Lerp(v0, v3, f)), top = Shape(Lerp(v1, v2, f));
                 dst.Add(prevBottom); dst.Add(prevTop); dst.Add(top);
                 dst.Add(top); dst.Add(bottom); dst.Add(prevBottom);
                 prevBottom = bottom;

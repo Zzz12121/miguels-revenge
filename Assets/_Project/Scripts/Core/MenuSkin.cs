@@ -66,6 +66,9 @@ public static class MenuSkin
         }
     }
 
+    /// <summary>按鈕用的破布（九宮格）；圖載不到時是 null</summary>
+    public static Sprite Cloth => Available ? clothSprite : null;
+
     /// <summary>進度條用的破布（一長條，不切九宮格）</summary>
     public static Texture2D LoadingCloth => loadingCloth != null ? loadingCloth : loadingCloth = Resources.Load<Texture2D>("MainMenu/Loading_Cloth");
     /// <summary>主畫面的舊宣紙</summary>
@@ -153,9 +156,7 @@ public static class MenuSkin
             c.disabledColor = new Color(0.8f, 0.78f, 0.74f, 0.6f);
             c.colorMultiplier = 1f;
             b.colors = c;
-            var flutter = b.gameObject.AddComponent<ClothFlutter>();
-            foreach (var t in b.GetComponentsInChildren<Text>(true))
-                t.gameObject.AddComponent<ClothFlutter>().driver = flutter;
+            b.gameObject.AddComponent<ClothFlutter>();   // 只有布被風吹，字不動
         }
         var f = Font;
         foreach (var t in root.GetComponentsInChildren<Text>(true))

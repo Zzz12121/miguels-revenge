@@ -13,7 +13,10 @@ using UnityEngine.UI;
 ///   - 進場：墨從中間暈開 → 日、道士法相、主角浮現 → 標題浮現 → 一爪抓破 Miguel → 一刀砍開 Revenge（標題震一下）→ 選項依序出現；
 ///     潑墨和法相一直慢慢呼吸、主角輕輕起伏
 ///   - 選到的選項後面刷上一筆朱紅（從左往右刷開），滑鼠移上去、方向鍵 / W S、手把十字鍵或左搖桿選，Enter / 空白鍵 / 手把 A 確定
-///   - 開始遊戲：墨潑滿整個畫面，接著進入漁村（GameManager.StartStoryGame）
+///   - 開始遊戲：主畫面上跳出「選擇存檔」的面板（皮紙上三塊破布 = 三個存檔欄，SaveSystem），每一欄寫著存在哪裡、玩了多久、
+///     總共倒下幾次、上次存檔是因為什麼（「和村長說完話」「打倒了雙尾虎」）、什麼時候存的；空的寫「空白／開始新的旅程」。
+///     選一欄（滑鼠點、左右鍵 / 十字鍵 + Enter / A）→ 墨潑滿整個畫面，接著進入遊戲（GameManager.StartSlot：空的 = 開新遊戲，有存檔 = 接著玩）。
+///     選到 / 移上去的那塊染成朱紅、被風吹，右上角有「清除」（按兩次才刪；鍵盤 Delete / 手把 Y）；Esc / 手把 B / 「返回」關掉面板
 ///   - 選項：和遊戲中暫停選單的「設定」同一個畫面（ControlsSettingsMenu）
 /// 圖都在 Resources/MainMenu（Art/MainMenu/make_menu_art.py 產生）；畫面全部用程式碼產生，場景裡不用事先擺東西。
 /// 在編輯器裡直接從漁村（JapaneseVillage）按 Play 時，會先跳到這個主畫面（選單 GeminiGrowUp/主畫面/直接測試漁村 可以關掉）。
@@ -42,6 +45,8 @@ public class MainMenu : MonoBehaviour
     Image claws, slash;
     // 標題四件組顯示的高度（make_menu_art.py 的 TITLE_DISPLAY_HEIGHT）：字跟以前一樣大，上下多留空間給爪痕、刀痕
     const float TitleHeight = 270f;
+    // 版面（1920x1080、左上原點的像素）
+    const float TitleY = 250f, SubtitleY = 355f, ItemY0 = 560f, ItemStep = 120f;
     const float ClawAt = 2.1f, SlashAt = 2.55f;
     readonly List<(RawImage img, Vector2 pos, float alpha, float phase)> paintings = new List<(RawImage, Vector2, float, float)>();
     readonly List<Particle> particles = new List<Particle>();
@@ -196,12 +201,12 @@ public class MainMenu : MonoBehaviour
         }
 
         // 左邊：標題（乾淨的 → 被抓破的 → 再被砍開的，三張疊在同一個位置換）、爪痕、刀痕、副標
-        title = Layer("Title", "Title", 540f, 250f, TitleHeight, 0f);
-        titleCut1 = Layer("TitleCut1", "TitleCut1", 540f, 250f, TitleHeight, 0f);
-        titleCut2 = Layer("TitleCut2", "TitleCut2", 540f, 250f, TitleHeight, 0f);
+        title = Layer("Title", "Title", 540f, TitleY, TitleHeight, 0f);
+        titleCut1 = Layer("TitleCut1", "TitleCut1", 540f, TitleY, TitleHeight, 0f);
+        titleCut2 = Layer("TitleCut2", "TitleCut2", 540f, TitleY, TitleHeight, 0f);
         claws = Filled("TitleClaws", Image.FillMethod.Vertical, (int)Image.OriginVertical.Top);       // 從上往下一爪抓下去
         slash = Filled("TitleSlash", Image.FillMethod.Horizontal, (int)Image.OriginHorizontal.Left); // 從左往右一刀砍過去
-        subtitle = Layer("Subtitle", "Subtitle", 470f, 355f, 64f, 0f);
+        subtitle = Layer("Subtitle", "Subtitle", 470f, SubtitleY, 64f, 0f);
 
         // 三個選項：後面一筆朱紅（選到才刷開）
         var strokeTex = Tex("BrushStroke");
@@ -211,7 +216,7 @@ public class MainMenu : MonoBehaviour
         items = new Item[names.Length];
         for (int i = 0; i < names.Length; i++)
         {
-            float y = 560f + i * 120f;
+            float y = ItemY0 + i * ItemStep;
             var strokeGo = new GameObject("Stroke_" + names[i], typeof(RectTransform), typeof(Image));
             strokeGo.transform.SetParent(root, false);
             var stroke = strokeGo.GetComponent<Image>();
@@ -227,6 +232,8 @@ public class MainMenu : MonoBehaviour
             var label = Layer(names[i], names[i], 330f, y, 92f, 0f);
             items[i] = new Item { label = label, stroke = stroke, rect = label.rectTransform, home = Px(330f, y), action = actions[i] };
         }
+
+        BuildSlotPanel();
 
         // 開始遊戲時潑滿整個畫面的墨（平常看不到）
         cover = Layer("InkCover", "InkWash", 960f, 540f, 1400f, 0f);
@@ -247,7 +254,7 @@ public class MainMenu : MonoBehaviour
         img.fillAmount = 0f;
         img.raycastTarget = false;
         img.rectTransform.sizeDelta = new Vector2(t != null ? TitleHeight * t.width / t.height : TitleHeight, TitleHeight);
-        img.rectTransform.anchoredPosition = Px(540f, 250f);
+        img.rectTransform.anchoredPosition = Px(540f, TitleY);
         return img;
     }
 
@@ -315,7 +322,7 @@ public class MainMenu : MonoBehaviour
         titleCut2.color = new Color(1f, 1f, 1f, stage == 2 ? 1f : 0f);
         float hit = Mathf.Max(Hit(t, ClawAt + 0.06f), Hit(t, SlashAt + 0.05f));
         Vector2 jolt = new Vector2(Mathf.Sin(t * 95f), Mathf.Cos(t * 83f)) * 6f * hit;
-        Vector2 titlePos = Px(540f - (1f - titleA) * 60f, 250f) + jolt;
+        Vector2 titlePos = Px(540f - (1f - titleA) * 60f, TitleY) + jolt;
         foreach (var g in new Graphic[] { title, titleCut1, titleCut2, claws, slash }) g.rectTransform.anchoredPosition = titlePos;
         if (t >= ClawAt && t - dt < ClawAt) GameAudio.Play("SFX/RPG/drawKnife3", Vector3.zero, 0.8f, 0.8f, 0f, 0f);
         if (t >= SlashAt && t - dt < SlashAt) GameAudio.Play("SFX/RPG/drawKnife1", Vector3.zero, 0.9f, 1.3f, 0f, 0f);
@@ -323,6 +330,7 @@ public class MainMenu : MonoBehaviour
 
         UpdateParticles(dt, Window(t, 0.6f, 2f));
         UpdateItems(t, dt);
+        UpdatePanel(dt);
         HandleInput(t);
 
         // 開始遊戲：墨潑滿畫面
@@ -365,11 +373,241 @@ public class MainMenu : MonoBehaviour
         }
     }
 
+    // ---------------- 選擇存檔（按「開始遊戲」後跳出來的面板） ----------------
+
+    sealed class SaveSlot
+    {
+        public RectTransform rect;
+        public Image cloth;
+        public ClothFlutter flutter;
+        public Text name, place, time, defeats, lastEvent, savedAt, erase;
+        public Vector2 home;
+        public SaveData data;
+    }
+
+    RectTransform panel, backRect;
+    CanvasGroup panelGroup;
+    Image backCloth;
+    ClothFlutter backFlutter;
+    SaveSlot[] slots;
+    /// <summary>選擇存檔的面板開著（開著的時候主選單的選項不吃輸入）</summary>
+    bool panelOpen, backHover;
+    float panelShow, panelOpenedAt, armedUntil = -1f;
+    int focusSlot, hoverSlot = -1, armedSlot = -1, chosenSlot = -1;
+
+    const float CardW = 380f, CardH = 400f, CardGap = 40f;
+    static readonly Color SlotInk = new Color(0.17f, 0.11f, 0.065f);
+    static readonly Color SlotCinnabar = new Color(0.6f, 0.14f, 0.08f);
+
+    Text SlotText(string name, Transform parent, string text, int size, Vector2 pos, Vector2 box, TextAnchor anchor, FontStyle style = FontStyle.Normal)
+    {
+        var t = UIKit.Label(name, parent, text, size, SlotInk, pos, box, anchor, style);
+        var f = MenuSkin.Font;
+        if (f != null) t.font = f;
+        t.horizontalOverflow = HorizontalWrapMode.Overflow;
+        var sh = t.GetComponent<Shadow>();
+        if (sh != null) { sh.effectColor = new Color(1f, 0.94f, 0.8f, 0.25f); sh.effectDistance = new Vector2(1f, -1f); }
+        return t;
+    }
+
+    /// <summary>「選擇存檔」面板：暗下來的主畫面上一張破皮紙，標題刷一筆朱紅，三塊破布是三個存檔欄（平常藏著）</summary>
+    void BuildSlotPanel()
+    {
+        panel = UIKit.Rect("SlotPanel", root, Vector2.zero, Vector2.one);
+        panelGroup = panel.gameObject.AddComponent<CanvasGroup>();
+        panelGroup.alpha = 0f;
+        panelGroup.blocksRaycasts = false;
+        panelGroup.interactable = false;
+        bool skin = MenuSkin.Available;
+        UIKit.Panel("Dim", panel, skin ? MenuSkin.Dim : new Color(0.06f, 0.04f, 0.025f, 0.6f)).raycastTarget = false;
+        if (skin) MenuSkin.WideParchment(panel, Vector2.zero, 1420f);
+        else UIKit.Box("Parchment", panel, Vector2.zero, new Vector2(1420f, 840f), new Color(0.9f, 0.85f, 0.74f, 0.96f)).raycastTarget = false;
+        MenuSkin.TitleStroke(panel, new Vector2(0f, 300f), new Vector2(400f, 96f));
+        SlotText("Title", panel, "選擇存檔", 64, new Vector2(0f, 302f), new Vector2(600f, 90f), TextAnchor.MiddleCenter, FontStyle.Bold);
+        var hint = SlotText("Hint", panel, "滑鼠點一下、或 ← → 選好按 Enter / 手把 A 進入遊戲　　Delete / 手把 Y 清除存檔", 22,
+                            new Vector2(0f, -262f), new Vector2(1300f, 32f), TextAnchor.MiddleCenter);
+        hint.color = new Color(SlotInk.r, SlotInk.g, SlotInk.b, 0.7f);
+
+        var clothSprite = MenuSkin.Cloth;
+        Image Cloth(RectTransform rt)
+        {
+            var img = rt.gameObject.AddComponent<Image>();
+            img.raycastTarget = false;
+            if (clothSprite != null) { img.sprite = clothSprite; img.type = Image.Type.Sliced; }
+            return img;
+        }
+
+        slots = new SaveSlot[SaveSystem.SlotCount];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var home = new Vector2((i - (slots.Length - 1) * 0.5f) * (CardW + CardGap), 10f);
+            var rt = UIKit.Rect("SaveSlot_" + (i + 1), panel, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), home, new Vector2(CardW, CardH));
+            var img = Cloth(rt);
+            var flutter = rt.gameObject.AddComponent<ClothFlutter>();
+            flutter.amplitude = 6f;
+            var s = new SaveSlot
+            {
+                rect = rt, cloth = img, flutter = flutter, home = home,
+                name = SlotText("Name", rt, GameManager.SlotName(i), 40, new Vector2(0f, 150f), new Vector2(CardW - 40f, 50f), TextAnchor.MiddleCenter, FontStyle.Bold),
+                erase = SlotText("Erase", rt, "清除", 20, new Vector2(CardW * 0.5f - 80f, 176f), new Vector2(130f, 28f), TextAnchor.MiddleRight),
+                place = SlotText("Place", rt, "", 34, new Vector2(0f, 88f), new Vector2(CardW - 40f, 46f), TextAnchor.MiddleCenter, FontStyle.Bold),
+                time = SlotText("Time", rt, "", 24, new Vector2(0f, 38f), new Vector2(CardW - 40f, 34f), TextAnchor.MiddleCenter),
+                defeats = SlotText("Defeats", rt, "", 24, new Vector2(0f, 2f), new Vector2(CardW - 40f, 34f), TextAnchor.MiddleCenter),
+                lastEvent = SlotText("LastEvent", rt, "", 22, new Vector2(0f, -72f), new Vector2(CardW - 56f, 70f), TextAnchor.MiddleCenter),
+                savedAt = SlotText("SavedAt", rt, "", 20, new Vector2(0f, -148f), new Vector2(CardW - 40f, 30f), TextAnchor.MiddleCenter),
+            };
+            s.lastEvent.horizontalOverflow = HorizontalWrapMode.Wrap;   // 原因長的話折成兩行（字不跟著布飄）
+            slots[i] = s;
+        }
+
+        // 返回
+        backRect = UIKit.Rect("Back", panel, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -330f), new Vector2(220f, 62f));
+        backCloth = Cloth(backRect);
+        backFlutter = backRect.gameObject.AddComponent<ClothFlutter>();
+        SlotText("Label", backRect, "返　回", 28, Vector2.zero, new Vector2(200f, 50f), TextAnchor.MiddleCenter);
+        panel.gameObject.SetActive(false);
+    }
+
+    /// <summary>重新讀三個欄位的存檔，更新上面的字</summary>
+    void RefreshSlots()
+    {
+        var gm = GameManager.Instance;
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var s = slots[i];
+            s.data = SaveSystem.Peek(i);
+            if (s.data == null)
+            {
+                s.place.text = "空　白";
+                s.time.text = "開始新的旅程";
+                s.defeats.text = "";
+                s.lastEvent.text = "";
+                s.savedAt.text = "";
+                continue;
+            }
+            var level = gm != null ? gm.FindLevel(s.data.sceneName) : null;
+            string place = level != null ? level.title : s.data.sceneName;
+            int cut = place.LastIndexOf('　');   // 「第二關　維京村莊」→「維京村莊」
+            if (cut >= 0 && cut < place.Length - 1) place = place.Substring(cut + 1);
+            s.place.text = place;
+            s.time.text = $"遊玩 {FormatTime(s.data.playTime)}";
+            int defeats = s.data.story != null ? s.data.story.defeats : 0;
+            s.defeats.text = defeats > 0 ? $"總共倒下 {defeats} 次" : "還沒倒下過";
+            s.lastEvent.text = $"上次存檔：{(string.IsNullOrEmpty(s.data.lastEvent) ? "—" : s.data.lastEvent)}";
+            s.savedAt.text = s.data.savedAt;
+        }
+    }
+
+    static string FormatTime(float seconds)
+    {
+        int t = Mathf.Max(0, Mathf.FloorToInt(seconds));
+        return t >= 3600 ? $"{t / 3600}:{t / 60 % 60:00}:{t % 60:00}" : $"{t / 60}:{t % 60:00}";
+    }
+
+    /// <summary>按「開始遊戲」：跳出選擇存檔的面板，游標先停在最近存過的那一欄</summary>
+    void OpenPanel()
+    {
+        RefreshSlots();
+        focusSlot = 0;
+        string latest = null;
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].data != null && (latest == null || string.CompareOrdinal(slots[i].data.savedAt, latest) > 0)) { latest = slots[i].data.savedAt; focusSlot = i; }
+        armedSlot = -1;
+        hoverSlot = -1;
+        panelOpen = true;
+        panelOpenedAt = Time.unscaledTime;
+        panel.gameObject.SetActive(true);
+        panel.SetAsLastSibling();
+        cover.transform.SetAsLastSibling();
+        GameAudio.Play("SFX/RPG/bookOpen", Vector3.zero, 0.8f, 1f, 0f, 0f);
+    }
+
+    void ClosePanel()
+    {
+        panelOpen = false;
+        armedSlot = -1;
+        GameAudio.Play("SFX/RPG/bookClose", Vector3.zero, 0.7f, 1.1f, 0f, 0f);
+    }
+
+    void FocusSlot(int i)
+    {
+        if (i == focusSlot) return;
+        focusSlot = i;
+        GameAudio.Play("SFX/RPG/bookFlip1", Vector3.zero, 0.45f, 1.25f, 0.05f, 0f);
+    }
+
+    /// <summary>選了一欄：墨潑滿畫面，進入遊戲（空的 = 開新遊戲，有存檔 = 接著玩）</summary>
+    void EnterSlot(int i)
+    {
+        var gm = GameManager.Instance;
+        if (gm == null || gm.IsLoading || leaving) return;
+        chosenSlot = i;
+        focusSlot = i;
+        leaving = true;
+        leaveAt = Time.unscaledTime;
+        GameAudio.Play("SFX/RPG/metalClick", Vector3.zero, 1f, 0.9f, 0f, 0f);
+        cover.transform.SetAsLastSibling();
+        Invoke(nameof(BeginGame), 0.55f);
+    }
+
+    /// <summary>清除存檔：按一次提示「再按一次清除」（3 秒內），再按一次才真的刪掉</summary>
+    void Erase(int i)
+    {
+        if (slots[i].data == null) return;
+        if (armedSlot == i && Time.unscaledTime < armedUntil)
+        {
+            SaveSystem.DeleteSlot(i);
+            armedSlot = -1;
+            RefreshSlots();
+            GameAudio.Play("SFX/RPG/cloth3", Vector3.zero, 0.9f, 0.8f, 0f, 0f);
+            return;
+        }
+        armedSlot = i;
+        armedUntil = Time.unscaledTime + 3f;
+        GameAudio.Play("SFX/RPG/creak2", Vector3.zero, 0.6f, 1.3f, 0f, 0f);
+    }
+
+    void UpdatePanel(float dt)
+    {
+        if (panel == null) return;
+        panelShow = Mathf.MoveTowards(panelShow, panelOpen ? 1f : 0f, dt * (panelOpen ? 5f : 7f));
+        if (panelShow <= 0f) { if (panel.gameObject.activeSelf) panel.gameObject.SetActive(false); return; }
+        float e = Ease(panelShow);
+        panelGroup.alpha = e;
+        panel.localScale = Vector3.one * Mathf.Lerp(0.96f, 1f, e);
+        float now = Time.unscaledTime;
+        if (armedSlot >= 0 && now >= armedUntil) armedSlot = -1;
+        bool skin = slots[0].cloth.sprite != null;
+        Color Ink(float a) => new Color(SlotInk.r, SlotInk.g, SlotInk.b, a);
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var s = slots[i];
+            bool focus = i == focusSlot || i == hoverSlot;
+            s.rect.anchoredPosition = s.home;   // 選到的那塊只有布被風吹、染成朱紅，字不動
+            s.cloth.color = skin ? (focus ? MenuSkin.ClothChosenHover : MenuSkin.ClothNormal)
+                                 : (focus ? new Color(0.6f, 0.14f, 0.08f, 0.35f) : new Color(0.17f, 0.11f, 0.065f, 0.12f));
+            s.flutter.forced = focus;
+            s.name.color = Ink(1f);
+            s.place.color = Ink(s.data != null ? 1f : 0.75f);
+            s.time.color = Ink(0.85f);
+            s.defeats.color = s.data != null && s.data.story != null && s.data.story.defeats > 0 ? new Color(SlotCinnabar.r, SlotCinnabar.g, SlotCinnabar.b, 0.9f) : Ink(0.7f);
+            s.lastEvent.color = Ink(0.85f);
+            s.savedAt.color = Ink(0.6f);
+            bool armed = armedSlot == i;
+            s.erase.text = armed ? "再按一次清除" : "清除";
+            s.erase.color = s.data != null && (focus || armed) ? (armed ? new Color(SlotCinnabar.r, SlotCinnabar.g, SlotCinnabar.b, 1f) : Ink(0.6f)) : new Color(0f, 0f, 0f, 0f);
+        }
+        backCloth.color = skin ? (backHover ? MenuSkin.ClothHover : MenuSkin.ClothNormal) : new Color(0.17f, 0.11f, 0.065f, backHover ? 0.22f : 0.12f);
+        backFlutter.forced = backHover;
+    }
+
     // ---------------- 操作 ----------------
 
     void HandleInput(float t)
     {
         if (leaving || ControlsSettingsMenu.IsOpen || ControlsSettingsMenu.ClosedThisFrame || t < 1.6f) return;
+        if (panelOpen) { HandlePanelInput(); return; }
         var kb = Keyboard.current;
         var pad = Gamepad.current;
         int move = 0;
@@ -400,6 +638,54 @@ public class MainMenu : MonoBehaviour
         if (confirm) Confirm();
     }
 
+    /// <summary>選擇存檔的面板：左右換欄、Enter / A 進入、Delete / Y 清除、Esc / B 返回；滑鼠移上去選、點一下進入</summary>
+    void HandlePanelInput()
+    {
+        if (Time.unscaledTime - panelOpenedAt < 0.2f) return;   // 打開面板的那一下不要直接選到
+        var kb = Keyboard.current;
+        var pad = Gamepad.current;
+        int move = 0;
+        if (kb != null && (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame)) move = 1;
+        if (kb != null && (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame)) move = -1;
+        if (pad != null)
+        {
+            if (pad.dpad.right.wasPressedThisFrame || pad.leftStick.right.wasPressedThisFrame) move = 1;
+            if (pad.dpad.left.wasPressedThisFrame || pad.leftStick.left.wasPressedThisFrame) move = -1;
+        }
+        bool confirm = (kb != null && (kb.enterKey.wasPressedThisFrame || kb.numpadEnterKey.wasPressedThisFrame || kb.spaceKey.wasPressedThisFrame))
+                       || PadInput.ConfirmPressed;
+        bool back = (kb != null && kb.escapeKey.wasPressedThisFrame) || (pad != null && pad.buttonEast.wasPressedThisFrame);
+        bool erase = (kb != null && (kb.deleteKey.wasPressedThisFrame || kb.backspaceKey.wasPressedThisFrame)) || (pad != null && pad.buttonNorth.wasPressedThisFrame);
+
+        var mouse = Mouse.current;
+        hoverSlot = -1;
+        backHover = false;
+        if (mouse != null)
+        {
+            Vector2 mp = mouse.position.ReadValue();
+            bool moved = mouse.delta.ReadValue().sqrMagnitude > 0.01f;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                if (!RectTransformUtility.RectangleContainsScreenPoint(slots[i].rect, mp, null)) continue;
+                hoverSlot = i;
+                if (moved) FocusSlot(i);
+                if (mouse.leftButton.wasPressedThisFrame)
+                {
+                    var er = slots[i].erase;
+                    if (slots[i].data != null && er.color.a > 0.05f && RectTransformUtility.RectangleContainsScreenPoint(er.rectTransform, mp, null)) Erase(i);
+                    else EnterSlot(i);
+                    return;
+                }
+            }
+            backHover = RectTransformUtility.RectangleContainsScreenPoint(backRect, mp, null);
+            if (backHover && mouse.leftButton.wasPressedThisFrame) { ClosePanel(); return; }
+        }
+        if (back) { ClosePanel(); return; }
+        if (move != 0) FocusSlot((focusSlot + move + slots.Length) % slots.Length);
+        if (erase) { Erase(focusSlot); return; }
+        if (confirm) EnterSlot(focusSlot);
+    }
+
     void Select(int i)
     {
         if (i == selected) return;
@@ -412,20 +698,17 @@ public class MainMenu : MonoBehaviour
     void OnStart()
     {
         var gm = GameManager.Instance;
-        if (gm == null || gm.IsLoading || leaving) return;
-        leaving = true;
-        leaveAt = Time.unscaledTime;
-        GameAudio.Play("SFX/RPG/metalClick", Vector3.zero, 1f, 0.9f, 0f, 0f);
-        cover.transform.SetAsLastSibling();
-        Invoke(nameof(BeginGame), 0.55f);
+        if (gm == null || gm.IsLoading || leaving || panelOpen) return;
+        OpenPanel();
     }
 
     void BeginGame()
     {
         var gm = GameManager.Instance;
         if (gm == null) return;
-        StoryLoadingScreen.Begin(gm); // 下方的進度條（偶爾會倒退），跑完才進漁村
-        gm.StartStoryGame();
+        // 下方的進度條（偶爾會倒退），跑完才進去：空的存檔 = 漁村（開新遊戲），有存檔 = 存檔那一關
+        StoryLoadingScreen.Begin(gm, gm.SlotTargetScene(chosenSlot));
+        gm.StartSlot(chosenSlot);
     }
 
     /// <summary>選項：操作方式、鏡頭靈敏度、自訂按鍵（和遊戲中暫停選單的設定是同一個畫面、同一份設定）</summary>

@@ -3,11 +3,13 @@ using UnityEngine;
 
 /// <summary>
 /// 竹林裡的雙尾虎：
-///   平常趴在地上（尾巴慢慢甩）。玩家走近（wakeRadius）或打到牠 → 站起來怒吼 → 衝過來決鬥。
+///   平常在原本那片空地（出生的位置）附近慢慢走動：趴著休息一陣子 → 站起來走到附近幾個點（每個點停下來看一看）→ 再趴下（Wander）。
+///   玩家走近（wakeRadius）或打到牠 → 站起來怒吼 → 衝過來決鬥。
 ///   招式：遠一點就伏低身子蓄力、飛撲過來（高度剛好，翻滾的無敵時間可以躲掉）；貼近了就揮爪，越近揮得越頻繁
 ///   （左右爪連揮最多三下，冷卻也越短）。撲空或揮完會停一下（破綻）。在撲的距離內冷卻時沿著圓弧繞著玩家走（身體朝走的方向、頭看著玩家）。
 ///   玩家死了：在原地趴下，不追、不走開；玩家再走近才又起來。
-///   被打中 fleeHits 下以後再吼一聲，轉身往竹林深處（fleeTarget）跑掉，原地留下一張虎皮和一對虎牙（TigerLoot，拿去鐵匠鋪升級武器）。
+///   被打中 fleeHits 下以後再吼一聲，轉身逃回竹林深處的巢穴（fleeTarget），原地留下一張虎皮和一對虎牙（TigerLoot，拿去鐵匠鋪升級武器）；
+///   回到巢穴就趴在窩裡休息（Den），不再起來打。
 /// 不會死。模型是 Tripo 的四足骨架（沒有動畫），所有動作都是在 LateUpdate 用程式擺骨頭：
 /// 每幀先把骨頭放回原本的姿勢，再依狀態疊上走路 / 奔跑的步伐、趴下、吼叫、飛撲、揮爪。
 /// </summary>
@@ -44,12 +46,20 @@ public class TigerBeast : MonoBehaviour, IDamageable
     public float pounceDamage = 18f, swipeDamage = 12f;
     [Tooltip("被打中幾下就逃走")]
     public int fleeHits = 8;
-    [Tooltip("逃去哪裡（竹林深處）")]
+    [Tooltip("逃去哪裡（竹林深處的巢穴）：逃到了就趴在窩裡休息")]
     public Vector3 fleeTarget;
+
+    [Header("平常（沒在打的時候）")]
+    [Tooltip("在出生的位置（原本那片空地）附近多遠以內走動 (m)")]
+    public float wanderRadius = 7f;
+    [Tooltip("趴著休息多久才起來走走（秒，隨機）")]
+    public Vector2 restTime = new Vector2(7f, 15f);
+    [Tooltip("走動時的速度（prowlSpeed 的倍數）")]
+    public float wanderSpeed = 0.7f;
     [Tooltip("舊版逃走時留下的草藥：現在改成掉虎皮、虎牙（TigerLoot），這些一直藏著")]
     public GameObject[] herbs;
 
-    public enum State { Lying, Waking, Chase, Windup, Pounce, Swipe, Recover, Fleeing, Gone }
+    public enum State { Lying, Wander, Waking, Chase, Windup, Pounce, Swipe, Recover, Fleeing, Den, Gone }
     public State Current { get; private set; } = State.Lying;
     public int Hits { get; private set; }
     public bool IsDead => false;
@@ -69,6 +79,10 @@ public class TigerBeast : MonoBehaviour, IDamageable
     float lastYaw, yawVel;
     Vector3 leapFrom, leapTo;
     GUIStyle nameStyle;
+    // 平常走動：出生的位置、這次要走到哪、在那裡停多久、還要走幾個點、這次趴著要休息多久
+    Vector3 home, wanderTarget;
+    float wanderPause, restFor;
+    int wanderLegs;
 
     // 骨頭
     readonly List<Transform> bones = new List<Transform>();
@@ -95,6 +109,8 @@ public class TigerBeast : MonoBehaviour, IDamageable
         SnapToGround(1f);
         swipeWind = swipeWindup;
         recoverDur = recoverTime;
+        home = transform.position;
+        restFor = Random.Range(restTime.x, restTime.y) * 0.5f;   // 第一次早一點起來走走
         lastPos = transform.position;
         lastYaw = transform.eulerAngles.y;
     }
@@ -321,12 +337,12 @@ public class TigerBeast : MonoBehaviour, IDamageable
 
     public void TakeDamage(float amount, Vector3 hitPoint)
     {
-        if (amount <= 0f || Current == State.Fleeing || Current == State.Gone || Time.time - lastHit < 0.12f) return;
+        if (amount <= 0f || Current == State.Fleeing || Current == State.Den || Current == State.Gone || Time.time - lastHit < 0.12f) return;
         lastHit = Time.time;
         Hits++;
         flinch = 1f;
         CombatVFX.Impact(hitPoint, new Color(1f, 0.75f, 0.35f));
-        if (Current == State.Lying) { Wake(); return; }
+        if (Current == State.Lying || Current == State.Wander) { Wake(); return; }
         if (Hits >= fleeHits) StartFlee();
     }
 
@@ -346,6 +362,28 @@ public class TigerBeast : MonoBehaviour, IDamageable
         TigerLoot.Drop(transform.position, transform.forward, Ground);
     }
 
+    /// <summary>起來走走：在出生位置附近挑 2 ~ 3 個點，一個一個走過去</summary>
+    void StartWander()
+    {
+        SetState(State.Wander);
+        wanderLegs = Random.Range(2, 4);
+        wanderPause = 0f;
+        PickWanderTarget();
+    }
+
+    void PickWanderTarget()
+    {
+        Vector3 best = home;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector2 r = Random.insideUnitCircle * wanderRadius;
+            Vector3 c = home + new Vector3(r.x, 0f, r.y);
+            best = c;
+            if ((c - transform.position).sqrMagnitude > 2.5f * 2.5f) break;   // 不要只挪一兩步
+        }
+        wanderTarget = best;
+    }
+
     void SetState(State s)
     {
         Current = s;
@@ -362,7 +400,8 @@ public class TigerBeast : MonoBehaviour, IDamageable
         stateTime += dt;
         flinch = Mathf.MoveTowards(flinch, 0f, dt * 3f);
         attackCooldown -= dt;
-        lie = Mathf.MoveTowards(lie, Current == State.Lying ? 1f : 0f, dt * (Current == State.Lying ? 0.8f : 2.2f));
+        bool lying = Current == State.Lying || Current == State.Den;
+        lie = Mathf.MoveTowards(lie, lying ? 1f : 0f, dt * (lying ? 0.8f : Current == State.Wander ? 1.4f : 2.2f));
 
         Vector3 toPlayer = player != null ? player.transform.position - transform.position : Vector3.forward * 100f;
         toPlayer.y = 0f;
@@ -381,7 +420,30 @@ public class TigerBeast : MonoBehaviour, IDamageable
         {
             case State.Lying:
                 if (playerOk && dist < wakeRadius) Wake();
+                else if (stateTime > restFor) StartWander();
                 break;
+            case State.Wander:
+            {
+                // 平常在原本那片空地走動：玩家走近一樣起來決鬥
+                if (playerOk && dist < wakeRadius) { Wake(); break; }
+                if (stateTime < 1.1f) break;   // 先慢慢站起來
+                if (wanderPause > 0f)
+                {
+                    // 停下來看一看，再走下一個點；走完就趴下休息
+                    wanderPause -= dt;
+                    if (wanderPause <= 0f)
+                    {
+                        if (--wanderLegs > 0) PickWanderTarget();
+                        else { SetState(State.Lying); restFor = Random.Range(restTime.x, restTime.y); }
+                    }
+                    break;
+                }
+                Vector3 to = wanderTarget - transform.position;
+                to.y = 0f;
+                if (to.magnitude < 0.5f || stateTime > 40f) { wanderPause = Random.Range(1.2f, 3f); break; }
+                speed = Step(to, prowlSpeed * wanderSpeed);
+                break;
+            }
             case State.Waking:
                 Face(toPlayer, 70f);
                 if (stateTime > 2.2f) SetState(State.Chase);
@@ -491,14 +553,16 @@ public class TigerBeast : MonoBehaviour, IDamageable
                 Vector3 away = fleeTarget - transform.position;
                 away.y = 0f;
                 speed = Step(away, runSpeed * 1.25f);
-                if (away.magnitude < 1.5f || stateTime > 9f)
+                if (away.magnitude < 1.5f || stateTime > 16f)
                 {
-                    SetState(State.Gone);
-                    gameObject.SetActive(false);
-                    return;
+                    // 逃回巢穴：趴在窩裡休息，不再起來打（太久還沒跑到的話，已經跑進竹林看不到了，直接放到窩裡）
+                    if (away.magnitude >= 1.5f) transform.position = new Vector3(fleeTarget.x, Ground(fleeTarget), fleeTarget.z);
+                    SetState(State.Den);
                 }
                 break;
             }
+            case State.Den:
+                break;
         }
 
         if (Current != State.Pounce) SnapToGround(dt * 12f);
@@ -645,7 +709,7 @@ public class TigerBeast : MonoBehaviour, IDamageable
         }
 
         // 尾巴：兩條各自慢慢甩，跑的時候往後拉直、生氣時翹高
-        float angry = Current == State.Lying ? 0f : 1f;
+        float angry = Current == State.Lying || Current == State.Wander || Current == State.Den ? 0f : 1f;
         float k = 0f;
         foreach (var tb in tail) { Rot(tb, up, Mathf.Sin(t * 0.9f - k) * 24f); Rot(tb, side, -6f * angry); k += 0.5f; }
         k = 0f;
@@ -753,7 +817,7 @@ public class TigerBeast : MonoBehaviour, IDamageable
     void OnGUI()
     {
         if (player == null || GameUI.OverlayOpen) return;
-        if (Current == State.Lying || Current == State.Gone || Current == State.Fleeing) return;
+        if (Current == State.Lying || Current == State.Wander || Current == State.Den || Current == State.Gone || Current == State.Fleeing) return;
         if ((player.transform.position - transform.position).sqrMagnitude > 45f * 45f) return;
         nameStyle ??= new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold, fontSize = 16, alignment = TextAnchor.MiddleCenter };
         float w = Mathf.Min(460f, Screen.width * 0.5f);

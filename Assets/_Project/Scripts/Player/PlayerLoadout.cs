@@ -115,6 +115,23 @@ public class PlayerLoadout : MonoBehaviour
         if (Instance != null) Instance.bowGrantedNotice = Time.unscaledTime;
     }
 
+    /// <summary>切到弓之前拿的近戰武器（存檔用）</summary>
+    public static WeaponLoadout LastMelee => lastMelee;
+
+    /// <summary>讀檔：武器、弓、箭換成存檔裡的（arrows &lt; 0 = 舊存檔，箭補滿）</summary>
+    public static void RestoreSaved(WeaponLoadout current, WeaponLoadout melee, bool bowUnlocked, int arrows)
+    {
+        BowUnlocked = bowUnlocked;
+        lastMelee = melee == WeaponLoadout.BowKnife ? WeaponLoadout.Greatsword : melee;
+        Current = current == WeaponLoadout.BowKnife && !bowUnlocked ? lastMelee : current;
+        Arrows = arrows < 0 ? MaxArrows : Mathf.Clamp(arrows, 0, MaxArrows);
+        if (Instance != null) Instance.Apply();
+        Changed?.Invoke();
+    }
+
+    /// <summary>開新遊戲：大刀、沒有弓、箭補滿</summary>
+    public static void ResetForNewGame() => RestoreSaved(WeaponLoadout.Greatsword, WeaponLoadout.Greatsword, false, MaxArrows);
+
     /// <summary>近戰武器 ↔ 弓（不補箭；箭射完了換過去是小刀，撿回箭會自動換回弓）</summary>
     public static bool ToggleBow()
     {

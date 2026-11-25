@@ -6,14 +6,15 @@ using UnityEngine.UI;
 
 /// <summary>
 /// 整個遊戲的關卡流程（跨場景存在，不會因為換場景被刪掉）：
-///   - 主選單（MainMenu）按「開始遊戲」→ StartStoryGame()，從漁村開始（StartNewGame() 從第一關沙漠開始，Game Over / 通關的重新開始用）
+///   - 主選單（MainMenu）先在左上選一個存檔欄位，再按「開始遊戲」→ StartSlot()：空的欄位 = StartStoryGame()（從漁村開始、播開場），
+///     有存檔 = LoadSavedGame()（接著存檔的進度）。StartNewGame() 從第一關沙漠開始，Game Over / 通關的重新開始用
 ///   - 記住關卡順序：星球 →（傳送門）→ 維京村莊 →（搭船）→ 地下城（Boss，最後一關）
 ///   - 另一條主線（storyLevels）：漁村 ↔ 道場。跟上面一樣可以暫停（存檔 / 讀檔 / 設定 / 重新開始本關）、
 ///     換場景時帶著玩家的狀態（血量、背包、錢、造型）、進場景時自動存檔；但不算進「下一關」的順序、沒有關卡標題和轉場動畫
 ///   - 傳送門 / 船抵達終點時呼叫 LoadNextLevel() 或 LoadLevel("場景名")
 ///   - 換場景時畫面淡出淡入，進入新關卡會顯示關卡名稱
 ///   - 換到下一關時玩家的血量、能力升級、背包會帶過去（PlayerState）；重新開始本關會回到進關時的狀態
-///   - 存檔（SaveSystem）：進入每一關自動存檔，暫停選單可以手動存檔 / 讀檔，主選單可以「繼續遊戲」
+///   - 存檔（SaveSystem，三個欄位）：進入每一關自動存檔到選的那一欄，暫停選單可以手動存檔 / 讀檔；劇情進度（StoryProgress）一起存
 ///   - 玩家有 maxLives 條命：倒下時扣一條命並在這一關最近碰過的檢查點復活；命用完 → Game Over 畫面幾秒後自動從第一關起點重來（命和時間重算）
 ///   - 打倒最後一關的 Boss（或在最後一關呼叫 LoadNextLevel）→ 通關畫面
 ///   - 通關畫面有「重新開始」「回主選單」按鈕；遊戲中按 Esc 開暫停選單
@@ -186,8 +187,13 @@ public class GameManager : MonoBehaviour
 
     // ================= 存檔 / 讀檔 =================
 
-    /// <summary>存檔：目前這一關 + 命 + 時間 + 玩家現在的狀態</summary>
-    public bool SaveGame()
+    /// <summary>
+    /// 下一次進場景的自動存檔要記的原因（例如「打倒百足，回到漁村」「倒下後被抬回漁村」）；沒設的話是「來到漁村」這種。用一次就清掉
+    /// </summary>
+    public static string NextArrivalEvent;
+
+    /// <summary>存檔：目前這一關 + 命 + 時間 + 玩家現在的狀態 + 劇情進度；reason = 這次為什麼存（主畫面選存檔時顯示「上次存檔」）</summary>
+    public bool SaveGame(string reason = null)
     {
         var level = FindLevel(SceneManager.GetActiveScene().name);
         if (level == null) return false;
@@ -198,7 +204,28 @@ public class GameManager : MonoBehaviour
             lives = Mathf.Max(1, Lives),
             playTime = PlayTime,
             player = state,
+            story = StoryProgress.Capture(),
+            lastEvent = string.IsNullOrEmpty(reason) ? "存檔" : reason,
         });
+    }
+
+    /// <summary>
+    /// 主選單選了一個存檔欄位、按「開始遊戲」：這一欄有存檔就接著玩，空的就開新遊戲（從漁村開始、播開場）。
+    /// 之後自動存檔、暫停選單的存檔 / 讀檔都用這一欄
+    /// </summary>
+    public void StartSlot(int slot)
+    {
+        if (IsLoading || slot < 0 || slot >= SaveSystem.SlotCount) return;
+        SaveSystem.ActiveSlot = slot;
+        if (SaveSystem.HasSave && LoadSavedGame()) return;
+        StartStoryGame();
+    }
+
+    /// <summary>這個欄位按「開始遊戲」會進哪個場景（載入畫面用）</summary>
+    public string SlotTargetScene(int slot)
+    {
+        var data = SaveSystem.Peek(slot);
+        return data != null && FindLevel(data.sceneName) != null ? data.sceneName : StoryStartScene;
     }
 
     /// <summary>讀檔：回到存檔那一關的起點，帶著存檔時的命、時間和玩家狀態</summary>
@@ -210,6 +237,8 @@ public class GameManager : MonoBehaviour
         Lives = Mathf.Max(1, data.lives);
         PlayTime = data.playTime;
         levelEntryState = data.player;
+        StoryProgress.Apply(data.story);
+        VillageOpening.Pending = false;
         LoadScene(data.sceneName, false);
         return true;
     }
@@ -250,6 +279,7 @@ public class GameManager : MonoBehaviour
     public bool OnPlayerDied(string reason, float gameOverDelay)
     {
         if (IsGameOver || IsGameWon) return false;
+        StoryProgress.Current.defeats++;   // 這個存檔總共倒下幾次（下一次存檔時寫進去）
         Lives = Mathf.Max(0, Lives - 1);
         if (Lives > 0) return true;
         IsGameOver = true;
@@ -380,7 +410,12 @@ public class GameManager : MonoBehaviour
             if (levelEntryState != null) levelEntryState.Apply(player);
             else levelEntryState = PlayerState.Capture(player);
             if (sceneName == StoryStartScene) storyStartState = PlayerState.Capture(player);
-            if (autoSaveOnLevelStart) SaveGame();
+            if (autoSaveOnLevelStart)
+            {
+                var arrived = FindLevel(sceneName);
+                SaveGame(!string.IsNullOrEmpty(NextArrivalEvent) ? NextArrivalEvent : $"來到{arrived.title}");
+            }
+            NextArrivalEvent = null;
         }
 
         if (travel && transition != null) yield return transition.End();
@@ -456,6 +491,8 @@ public class GameManager : MonoBehaviour
         PlayTime = 0f;
         levelEntryState = null;
         storyStartState = null;
+        StoryProgress.ResetForNewGame();
+        VillageOpening.Pending = true;   // 第一次進漁村：漁村的景 → 閃過以前的回憶 → 在行商面前醒來
         LoadScene(StoryStartScene, false);
     }
 
@@ -474,7 +511,7 @@ public class GameManager : MonoBehaviour
         {
             // 漁村主線：掛軸風格的暫停選單；重新開始 = 回到漁村
             UIKit.Washi = true;
-            OpenOverlay("暫　停", new Color(0.17f, 0.11f, 0.065f), FindLevel(SceneManager.GetActiveScene().name)?.title ?? "",
+            OpenOverlay("暫　停", new Color(0.17f, 0.11f, 0.065f), (FindLevel(SceneManager.GetActiveScene().name)?.title ?? "") + SlotLabel,
                 ("繼續遊戲", Resume),
                 ("存檔", OnSaveClicked),
                 ("讀取存檔", OnLoadClicked),
@@ -497,10 +534,20 @@ public class GameManager : MonoBehaviour
 
     void OnSaveClicked()
     {
-        bool ok = SaveGame();
-        VictoryBanner.ShowSmall(ok ? "已存檔" : "存檔失敗", ok ? "讀檔時會從這一關的起點開始" : "",
+        if (SaveSystem.ActiveSlot < 0)
+        {
+            VictoryBanner.ShowSmall("沒有選擇存檔", "從主畫面左上選一個存檔再開始遊戲", new Color(1f, 0.5f, 0.45f));
+            return;
+        }
+        bool ok = SaveGame("手動存檔");
+        VictoryBanner.ShowSmall(ok ? $"已存檔（{SlotName(SaveSystem.ActiveSlot)}）" : "存檔失敗", ok ? "讀檔時會從這一關的起點開始" : "",
                                 ok ? new Color(0.6f, 1f, 0.7f) : new Color(1f, 0.5f, 0.45f));
     }
+
+    /// <summary>主畫面「讀取存檔」用的存檔欄名稱：「存檔一」「存檔二」「存檔三」</summary>
+    public static string SlotName(int slot) => "存檔" + (slot switch { 0 => "一", 1 => "二", 2 => "三", _ => (slot + 1).ToString() });
+    /// <summary>暫停選單副標後面接的「　存檔一」（沒選欄位時是空的）</summary>
+    static string SlotLabel => SaveSystem.ActiveSlot >= 0 ? "　" + SlotName(SaveSystem.ActiveSlot) : "";
 
     /// <summary>暫停選單的「設定」：操作方式、鏡頭靈敏度、自訂按鍵。開著的時候先把暫停選單藏起來，返回時再顯示</summary>
     void OpenSettings()
