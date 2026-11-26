@@ -12,6 +12,7 @@ using UnityEngine;
 ///   - TryDamage      ：打到什麼東西才算數（玩家打敵人，小怪只打玩家）
 /// 沒有指定武器模型時，會自動用一個長方體當劍。
 /// </summary>
+[DefaultExecutionOrder(200)]
 [RequireComponent(typeof(ThirdPersonController))]
 public abstract class MeleeCombat : MonoBehaviour
 {
@@ -89,6 +90,19 @@ public abstract class MeleeCombat : MonoBehaviour
     [Tooltip("突進斬（幻影分身突進 / 剪刀斬）的判定半徑倍率（× hitRadius）；人在衝刺，判定球放在身體前面一點、大一點")]
     public float dashSlashRadiusScale = 1.15f;
 
+    public enum AttackPhase { Idle, Anticipation, Active, Recovery }
+    public AttackPhase Phase { get; private set; }
+    public float RecoveryProgress { get; private set; }
+    [Header("動作銜接")]
+    [Range(0f, 1f)] public float dodgeCancelRecovery = .55f;
+    public bool CanDodgeCancel => !IsAttacking || Phase == AttackPhase.Recovery && RecoveryProgress >= dodgeCancelRecovery;
+    protected virtual bool CanContinueAttack => true;
+    protected virtual void FaceAttack(Vector3 direction) => controller.FaceDirection(direction);
+    protected virtual void TrackAnticipation(float deltaTime) { }
+    protected virtual void BeginHitWindow(float damage) { }
+    protected virtual void EndHitWindow() { }
+    protected virtual bool UsesWeaponSweep => false;
+
     public bool IsAttacking { get; private set; }
     /// <summary>這一刀是空中單手輕砍（OnSwing 之前就設好，動畫用）</summary>
     public bool IsAirSlash { get; private set; }
@@ -104,7 +118,7 @@ public abstract class MeleeCombat : MonoBehaviour
     protected virtual bool AllowAirAttacks => true;
 
     protected ThirdPersonController controller;
-    readonly HashSet<object> hitThisSwing = new HashSet<object>();
+    protected readonly HashSet<object> hitThisSwing = new HashSet<object>();
     readonly Collider[] overlap = new Collider[32];
     Coroutine chain;
 
@@ -153,20 +167,26 @@ public abstract class MeleeCombat : MonoBehaviour
     Vector3 HitCenter(float forward = -1f) => transform.position + transform.forward * (forward >= 0f ? forward : hitForwardOffset);
     /// <summary>每一刀開始時通知外面（模型動畫用）</summary>
     public event System.Action<int> OnSwing;
+    public event System.Action<int> OnSwingActive;
+    public event System.Action OnAttackCanceled;
 
     // ---------------- 對外 ----------------
 
     /// <summary>開始一輪連擊；已經在攻擊中就回傳 false</summary>
     protected bool BeginAttack()
     {
-        if (IsAttacking || !isActiveAndEnabled) return false;
+        if (IsAttacking || !isActiveAndEnabled || comboDamage == null || comboDamage.Length == 0) return false;
         chain = StartCoroutine(AttackChain());
         return true;
     }
 
     /// <summary>中斷攻擊（被打到硬直、死亡時使用）</summary>
-    public void CancelAttack()
+    public virtual void CancelAttack()
     {
+        bool wasAttacking = IsAttacking;
+        EndHitWindow();
+        Phase = AttackPhase.Idle;
+        RecoveryProgress = 0f;
         if (chain != null) StopCoroutine(chain);
         chain = null;
         if (weaponPivot != null) weaponPivot.localRotation = Quaternion.Euler(RestPose);
@@ -179,6 +199,7 @@ public abstract class MeleeCombat : MonoBehaviour
         IsAirSlash = false;
         IsDashSlash = false;
         IsPlunging = false;
+        if (wasAttacking) OnAttackCanceled?.Invoke();
     }
 
     /// <summary>
@@ -229,6 +250,7 @@ public abstract class MeleeCombat : MonoBehaviour
         Vector3 from = new Vector3(10f, 120f, 0f), to = new Vector3(10f, -120f, 0f);
         float prep = Mathf.Min(.06f, duration * .2f), cut = Mathf.Max(.08f, duration * .7f);
         yield return RotateWeapon(weaponPivot.localEulerAngles, from, prep);
+        OnSwingActive?.Invoke(0);
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
                          transform.position + Vector3.up, soundVolume * 0.8f,
                          soundPitch * PitchScale * Random.Range(1.1f, 1.25f), 1f, 30f);
@@ -251,6 +273,7 @@ public abstract class MeleeCombat : MonoBehaviour
         controller.speedMultiplier = 1f;
         controller.lockRotation = false;
         IsAttacking = false;
+        Phase = AttackPhase.Idle;
         chain = null;
     }
 
@@ -288,14 +311,19 @@ public abstract class MeleeCombat : MonoBehaviour
 
             bool last = index >= comboDamage.Length - 1;
             float recovery = RecoveryFor(index);
+            Phase = AttackPhase.Recovery;
             float t = 0f;
             while (t < recovery)
             {
                 // 硬直過了 chainAfter（預設 40%）之後，如果要接下一段就提早接
-                if (!last && WantsNextHit() && t >= recovery * chainAfter) break;
+                RecoveryProgress = recovery > 0f ? Mathf.Clamp01(t / recovery) : 1f;
+                if (!CanContinueAttack) { CancelAttack(); yield break; }
+                if (!last && t >= recovery * chainAfter && WantsNextHit()) break;
                 t += Time.deltaTime;
                 yield return null;
             }
+
+            RecoveryProgress = 1f;
 
             // 接招容錯：硬直結束了還沒按，再多等一下；這段時間先把移動還給玩家
             if (!last && !WantsNextHit() && comboGraceTime > 0f)
@@ -316,17 +344,20 @@ public abstract class MeleeCombat : MonoBehaviour
             break;
         }
 
-        // 收刀
-        yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.12f);
+        // Visual settling continues without an extra invisible control lock.
+        controller.speedMultiplier = 1f;
+        controller.lockRotation = false;
+        yield return RotateWeapon(weaponPivot.localEulerAngles, RestPose, 0.06f);
         controller.speedMultiplier = 1f;
         controller.lockRotation = false;
         IsAttacking = false;
+        Phase = AttackPhase.Idle;
         chain = null;
     }
 
     IEnumerator Swing(int index)
     {
-        controller.FaceDirection(GetAimDirection());
+        FaceAttack(GetAimDirection());
         OnSwingStart(index);
         OnSwing?.Invoke(index);
 
@@ -339,6 +370,8 @@ public abstract class MeleeCombat : MonoBehaviour
             default: from = new Vector3(-80f, 0f, 0f); to = new Vector3(80f, 0f, 0f); break;
         }
 
+        Phase = AttackPhase.Anticipation;
+        RecoveryProgress = 0f;
         // 抬手（最後一刀蓄力時如果跳起來，就變成跳劈）
         bool last = index >= comboDamage.Length - 1;
         Vector3 startPose = weaponPivot.localEulerAngles;
@@ -346,6 +379,8 @@ public abstract class MeleeCombat : MonoBehaviour
         float w = 0f;
         while (w < windup)
         {
+            if (!CanContinueAttack) { CancelAttack(); yield break; }
+            TrackAnticipation(Time.deltaTime);
             w += Time.deltaTime;
             weaponPivot.localRotation = Quaternion.Euler(LerpAngles(startPose, from, Mathf.SmoothStep(0f, 1f, w / windup)));
             if (last && AllowAirAttacks && !IsPlunging && controller.VerticalVelocity > 0.5f && !controller.IsGrounded)
@@ -355,6 +390,7 @@ public abstract class MeleeCombat : MonoBehaviour
         weaponPivot.localRotation = Quaternion.Euler(from);
 
         // 揮下去 + 往前踏步 + 判定
+        OnSwingActive?.Invoke(index);
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
                          transform.position + Vector3.up, soundVolume * 0.8f,
                          soundPitch * PitchScale * Random.Range(0.92f, 1.08f) * (index % 3 == 2 ? 0.85f : 1f), 1f, 30f);
@@ -365,6 +401,8 @@ public abstract class MeleeCombat : MonoBehaviour
         float t = 0f;
         float swing = SwingFor(index);
         bool plungeHeld = false, struck = false;
+        Phase = AttackPhase.Active;
+        BeginHitWindow(damage);
         while (t < swing)
         {
             t += Time.deltaTime;
@@ -404,13 +442,14 @@ public abstract class MeleeCombat : MonoBehaviour
     IEnumerator AirSlash()
     {
         IsAirSlash = true;
-        controller.FaceDirection(GetAimDirection());
+        FaceAttack(GetAimDirection());
         OnSwingStart(0);
         OnSwing?.Invoke(0);
 
         Vector3 from = new Vector3(-70f, 10f, 0f), to = new Vector3(70f, -10f, 0f);
         yield return RotateWeapon(weaponPivot.localEulerAngles, from, Fast(airSlashWindup));
 
+        OnSwingActive?.Invoke(0);
         GameAudio.PlayAt(GameAudio.Pick(swingSounds, "SFX/RPG/knifeSlice", "SFX/RPG/knifeSlice2", "SFX/RPG/drawKnife2"),
                          transform.position + Vector3.up, soundVolume * 0.6f,
                          soundPitch * PitchScale * Random.Range(1.05f, 1.2f), 1f, 30f);
@@ -431,6 +470,7 @@ public abstract class MeleeCombat : MonoBehaviour
 
     void DoHitCheck(float damage, float radius = -1f, float forward = -1f)
     {
+        if (UsesWeaponSweep && radius < 0f && forward < 0f && !IsAirSlash && !IsDashSlash && !IsPlunging) return;
         Vector3 center = transform.position + transform.forward * (forward >= 0f ? forward : hitForwardOffset);
         int count = Physics.OverlapSphereNonAlloc(center, radius > 0f ? radius : hitRadius, overlap, ~0, QueryTriggerInteraction.Collide);
         for (int i = 0; i < count; i++)

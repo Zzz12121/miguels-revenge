@@ -131,7 +131,7 @@ public class UpgradePlant : MonoBehaviour
         if (advanced) offered = perks.RollOptions(perks.UpgradePath, 3);
         VictoryBanner.HideCurrent(); // 剛撿草藥之類的標題還在的話先收掉
         menuOpen = true;
-        prevTimeScale = Time.timeScale;
+        prevTimeScale = CombatHitStop.CaptureTimeScale();
         Time.timeScale = 0f;
         if (controller != null) controller.inputEnabled = false;
         
@@ -165,6 +165,7 @@ public class UpgradePlant : MonoBehaviour
         }
 
         menuOpen = false;
+        InputBindings.SuppressActionsThisFrame();
         Time.timeScale = prevTimeScale;
         if (controller != null) controller.inputEnabled = true;
         if (cam != null) cam.enabled = true;
@@ -296,6 +297,7 @@ public class UpgradePlant : MonoBehaviour
     {
         if (!menuOpen) return;
         menuOpen = false;
+        InputBindings.SuppressActionsThisFrame();
         Time.timeScale = prevTimeScale;
         if (controller != null) controller.inputEnabled = true;
         if (cam != null) cam.enabled = true;

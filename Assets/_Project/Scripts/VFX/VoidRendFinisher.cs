@@ -84,6 +84,22 @@ public sealed partial class VoidRendSkillDemo
     Quaternion fixedShotRotation;
     float fixedShotFov = 60f;
     float charge, distortion, sequenceStart, stageTime;
+    float finisherPausedDuration, finisherPauseStarted = -1f;
+    float FinisherClock => Time.unscaledTime - finisherPausedDuration
+        - (finisherPauseStarted >= 0f ? Time.unscaledTime - finisherPauseStarted : 0f);
+
+    void UpdateFinisherPauseClock()
+    {
+        if (playing && Time.timeScale <= 0f)
+        {
+            if (finisherPauseStarted < 0f) finisherPauseStarted = Time.unscaledTime;
+        }
+        else if (finisherPauseStarted >= 0f)
+        {
+            finisherPausedDuration += Time.unscaledTime - finisherPauseStarted;
+            finisherPauseStarted = -1f;
+        }
+    }
     bool targetLocked, cinematicCamera, voidRendCinematicActive;
     RenderPipelineAsset previousPipeline;
     bool pipelineChanged;
@@ -201,7 +217,7 @@ public sealed partial class VoidRendSkillDemo
         onTargetReleased.Invoke();
     }
 
-    void SetStage(string stage) { Stage = stage; stageTime = Time.unscaledTime; if (!IsHorseHoldStage()) cameraFrameAngles = Vector2.zero; }
+    void SetStage(string stage) { Stage = stage; stageTime = FinisherClock; if (!IsHorseHoldStage()) cameraFrameAngles = Vector2.zero; }
 
     /// <summary>要把對準點放在畫面 screen（0～1）的位置，鏡頭要往左、往上轉幾度</summary>
     Vector2 FrameAnglesFor(Vector2 screen, float fov)
@@ -215,8 +231,8 @@ public sealed partial class VoidRendSkillDemo
     {
         distortion = amount;
         Shader.SetGlobalFloat("_SpatialStrength", amount);
-        Shader.SetGlobalFloat("_SpatialClock", Time.unscaledTime);
-        if (refractionMaterial) { refractionMaterial.SetFloat("_Strength", amount); refractionMaterial.SetFloat("_Clock", Time.unscaledTime); }
+        Shader.SetGlobalFloat("_SpatialClock", FinisherClock);
+        if (refractionMaterial) { refractionMaterial.SetFloat("_Strength", amount); refractionMaterial.SetFloat("_Clock", FinisherClock); }
     }
 
     /// <summary>目標的水平半徑（取碰撞體，沒有就取 Renderer 外框），用來決定衝刺停在多遠。</summary>
@@ -247,7 +263,7 @@ public sealed partial class VoidRendSkillDemo
     {
         SkillDamageCap.BeginCast(this);   // 這次施放對強敵的傷害重新計算（一次最多 30%）
         SuspendPracticeControlsForSkill();
-        playing = true; priorTimeScale = Time.timeScale; sequenceStart = Time.unscaledTime;
+        playing = true; priorTimeScale = CombatHitStop.CaptureTimeScale(); sequenceStart = FinisherClock;
         SetWindupInvulnerability(true);
         ResetPreviewState();
         // Reset the isolated demo only when the next replay actually begins.
@@ -614,9 +630,9 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateFinisherCamera(Vector3 shake,Vector3 rotationShake)
     {
-        if(playing) Elapsed=Time.unscaledTime-sequenceStart;
-        if(refractionMaterial) refractionMaterial.SetFloat("_Clock",Time.unscaledTime);
-        if (playing) Shader.SetGlobalFloat("_SpatialClock", Time.unscaledTime);
+        if(playing) Elapsed=FinisherClock-sequenceStart;
+        if(refractionMaterial) refractionMaterial.SetFloat("_Clock",FinisherClock);
+        if (playing) Shader.SetGlobalFloat("_SpatialClock", FinisherClock);
         // Z 的電影鏡頭必須一路維持到落地姿勢完成，不能被一般環繞鏡頭提早接管。
         if(!cinematicCamera && !voidRendCinematicActive) return;
         cinematicCamera = true;
@@ -646,7 +662,7 @@ public sealed partial class VoidRendSkillDemo
             return;
         }
         foreach(var p in poseRest) if(p.Key) p.Key.localRotation=p.Value;
-        float t=Time.unscaledTime-stageTime;
+        float t=FinisherClock-stageTime;
         Vector3 rh=new Vector3(.35f,1.6f,.2f), lh=new Vector3(-.35f,1.55f,.12f);
         float spin=0;
         if(Stage=="OverheadWindup") rh=new Vector3(.12f,2.25f,.08f);
@@ -725,7 +741,7 @@ public sealed partial class VoidRendSkillDemo
 
     void ApplyHumanoidFinisherPoseCore()
     {
-        float t = Time.unscaledTime - stageTime;
+        float t = FinisherClock - stageTime;
         // Tripo 姿勢（轉刀舉手 / 低馬步）有的話當底，沒有就是原本的站姿
         bool clipPose = ApplyStageClipPose(t);
         if (!clipPose) RestoreHumanoidUprightPose();
@@ -826,7 +842,7 @@ public sealed partial class VoidRendSkillDemo
 
     void ApplyProceduralKesaSlash()
     {
-        float age = Time.unscaledTime - proceduralSlashStarted;
+        float age = FinisherClock - proceduralSlashStarted;
         if (age < 0f || age > .24f) return;
         float side = (proceduralSlashSide & 1) == 0 ? 1f : -1f;
         float cut = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((age - .025f) / .105f));
@@ -1060,6 +1076,8 @@ public sealed partial class VoidRendSkillDemo
     {
         while (true)
         {
+            // Cinematic motion uses real time during slow motion, but pauses with the menu.
+            while (playing && Time.timeScale <= 0f) yield return null;
             object current;
             try
             {
@@ -1077,7 +1095,16 @@ public sealed partial class VoidRendSkillDemo
                 CancelSkill();
                 yield break;
             }
-            yield return current;
+            if (current is WaitForSecondsRealtime wait)
+            {
+                float remaining = wait.waitTime;
+                while (remaining > 0f)
+                {
+                    yield return null;
+                    if (Time.timeScale > 0f) remaining -= Time.unscaledDeltaTime;
+                }
+            }
+            else yield return current;
         }
     }
 
@@ -1136,7 +1163,7 @@ public sealed partial class VoidRendSkillDemo
         System.IO.Directory.CreateDirectory("Temp/VoidRendReview");
         for (int i=0;i<marks.Length;i++)
         {
-            while (Time.unscaledTime-sequenceStart < marks[i]) yield return null;
+            while (FinisherClock-sequenceStart < marks[i]) yield return null;
             yield return new WaitForEndOfFrame();
             ScreenCapture.CaptureScreenshot("Temp/VoidRendReview/"+names[i]+".png");
             Debug.Log("[VoidRend capture] "+names[i]+" stage="+Stage+" elapsed="+Elapsed+" locked="+TargetLocked);

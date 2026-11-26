@@ -118,23 +118,15 @@ public static class ShieldParryVFX
             l.type = LightType.Point; l.color = FlashEdge; l.range = 6f; l.intensity = 0f; l.shadows = LightShadows.None;
 
             // 頓幀：只在正常速度時做，結束時只還原我們自己設的值（不干擾對話暫停等其他系統）
-            const float stopScale = 0.05f;
-            bool stopped = false;
-            if (HitStopSeconds > 0f && Mathf.Approximately(Time.timeScale, 1f)) { Time.timeScale = stopScale; stopped = true; }
+            CombatHitStop.Request(HitStopSeconds, .05f, .08f);
 
             const float flashTime = 0.2f;
             for (float t = 0f; t < flashTime; t += Time.unscaledDeltaTime)
             {
                 float k = t / flashTime;
                 l.intensity = 9f * (k < 0.15f ? k / 0.15f : 1f - SmoothTween.Evaluate(SmoothTween.Ease.OutCubic, (k - 0.15f) / 0.85f));
-                if (stopped && t >= HitStopSeconds)
-                {
-                    if (Mathf.Approximately(Time.timeScale, stopScale)) Time.timeScale = 1f;
-                    stopped = false;
-                }
                 yield return null;
             }
-            if (stopped && Mathf.Approximately(Time.timeScale, stopScale)) Time.timeScale = 1f;
             l.intensity = 0f;
         }
 

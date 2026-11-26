@@ -10,7 +10,7 @@ public enum GameAction
     Skill1, Skill2, Skill3, Skill4, HealPotion, StaminaPotion, Map,
     SwitchWeapon, BatPowder,
     BowAim, AimConfirm,   // 新的加在最後面：PlayerPrefs 用名字存，但預設表用順序對應
-    VillageMap            // 漁村地圖（巡邏的村丁給的，VillageMapScreen）
+    VillageMap, LockOn, SwitchTarget // 漁村地圖（巡邏的村丁給的，VillageMapScreen）
 }
 
 /// <summary>手把配置：PS4（△ 跳、× 翻滾、R2 衝刺…）或 Xbox（原本的 A 跳、B 翻滾、LB 衝刺…）。兩套各自記住改過的按鍵</summary>
@@ -35,7 +35,7 @@ public static class InputBindings
         "<Keyboard>/1", "<Keyboard>/2", "<Keyboard>/3", "<Keyboard>/4", "<Keyboard>/q", "<Keyboard>/g", "<Keyboard>/m",
         "<Keyboard>/tab", "<Keyboard>/f",
         "<Mouse>/rightButton", "",   // 拉弓瞄準：跟格擋一樣是右鍵（拿弓時才有作用）；瞄準確認：鍵盤固定用滑鼠左鍵
-        "<Keyboard>/n",
+        "<Keyboard>/n", "<Keyboard>/l", "<Keyboard>/j",
     };
     // 手把預設（括號內是 PS4 的按鍵）：
     //   跳躍 Y（△）、衝刺 RT（R2 按住）、翻滾 A（×）、攻擊 X（□）、格擋 / 盾反 LB（L1）、互動 B（○）、牽引 RB（R1）
@@ -53,7 +53,7 @@ public static class InputBindings
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
         "<Gamepad>/rightTrigger", "",
         "<Gamepad>/leftTrigger", "<Gamepad>/buttonWest",
-        "",   // 漁村地圖：手把預設不綁
+        "", "", "",   // 漁村地圖、鎖定、切換目標：保留現有手把配置
     };
 
     static readonly string[] DefaultPadPS4 =
@@ -64,7 +64,7 @@ public static class InputBindings
         "<Gamepad>/rightStickPress", "<Gamepad>/leftStickPress", "<Gamepad>/select",
         "<Gamepad>/dpad/down", "<Gamepad>/buttonEast",   // 撒石粉 = ○（跟互動同一顆：旁邊有能互動的東西時先互動）
         "<Gamepad>/leftTrigger", "<Gamepad>/rightTrigger",
-        "",   // 漁村地圖：手把預設不綁
+        "", "", "",   // 漁村地圖、鎖定、切換目標：保留現有手把配置
     };
 
     public static string Label(GameAction a) => a switch
@@ -77,6 +77,7 @@ public static class InputBindings
         GameAction.SwitchWeapon => "切換武器（刀 / 弓）", GameAction.BatPowder => "撒石粉（擾亂蝙蝠）",
         GameAction.BowAim => "拉弓瞄準（按住）", GameAction.AimConfirm => "瞄準確認 / 射箭",
         GameAction.VillageMap => "漁村地圖",
+        GameAction.LockOn => "鎖定 / 解除目標", GameAction.SwitchTarget => "切換鎖定目標",
         _ => a.ToString()
     };
 
@@ -87,6 +88,9 @@ public static class InputBindings
     static bool rumble = true;
     static PadLayout layout = PadLayout.PS4;
     static bool loaded;
+    static int suppressedActionFrame = -1;
+    public static bool ActionsSuppressedThisFrame => Time.frameCount == suppressedActionFrame;
+    public static void SuppressActionsThisFrame() => suppressedActionFrame = Time.frameCount;
 
     const string Prefs = "Controls.";
 
@@ -203,9 +207,20 @@ public static class InputBindings
     // ---------------- 讀按鍵 ----------------
 
     /// <summary>把路徑字串變成目前裝置上的按鍵（裝置沒插就是 null）</summary>
+    static readonly System.Collections.Generic.Dictionary<string, ButtonControl> resolvedControls = new();
+    static InputDevice cachedKeyboard, cachedMouse, cachedPad;
+
     public static ButtonControl Resolve(string path)
     {
         if (string.IsNullOrEmpty(path)) return null;
+        if (cachedKeyboard != Keyboard.current || cachedMouse != Mouse.current || cachedPad != Gamepad.current)
+        {
+            resolvedControls.Clear();
+            cachedKeyboard = Keyboard.current;
+            cachedMouse = Mouse.current;
+            cachedPad = Gamepad.current;
+        }
+        if (resolvedControls.TryGetValue(path, out var cached)) return cached;
         int split = path.IndexOf('/');
         if (split < 0) return null;
         string device = path.Substring(0, split), control = path.Substring(split + 1);
@@ -216,7 +231,9 @@ public static class InputBindings
             "<Gamepad>" => Gamepad.current,
             _ => null
         };
-        return d?.TryGetChildControl<ButtonControl>(control);
+        var result = d?.TryGetChildControl<ButtonControl>(control);
+        resolvedControls[path] = result;
+        return result;
     }
 
     static ButtonControl KeyboardControl(GameAction a) => KeyboardEnabled ? Resolve(KeyboardPath(a)) : null;
@@ -247,8 +264,8 @@ public static class InputBindings
     public static bool Pressed(GameAction a) => KeyboardPressed(a) || PadPressed(a);
     public static bool Held(GameAction a) => (KeyboardControl(a)?.isPressed ?? false) || (PadControl(a)?.isPressed ?? false);
     public static bool Released(GameAction a) => (KeyboardControl(a)?.wasReleasedThisFrame ?? false) || (PadControl(a)?.wasReleasedThisFrame ?? false);
-    public static bool KeyboardPressed(GameAction a) => KeyboardControl(a)?.wasPressedThisFrame ?? false;
-    public static bool PadPressed(GameAction a) => PadControl(a)?.wasPressedThisFrame ?? false;
+    public static bool KeyboardPressed(GameAction a) => !ActionsSuppressedThisFrame && (KeyboardControl(a)?.wasPressedThisFrame ?? false);
+    public static bool PadPressed(GameAction a) => !ActionsSuppressedThisFrame && (PadControl(a)?.wasPressedThisFrame ?? false);
     public static bool PadHeld(GameAction a) => PadControl(a)?.isPressed ?? false;
 
     // ---------------- 顯示名稱 ----------------

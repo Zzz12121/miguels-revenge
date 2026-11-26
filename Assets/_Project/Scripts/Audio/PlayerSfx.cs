@@ -4,7 +4,7 @@ using UnityEngine;
 /// 玩家的動作音效（只加聲音，不改任何動作）：
 ///   起跳：一陣上揚的風聲；二段跳：再高一點的風聲
 ///   落地：在空中待夠久才有「咚」一聲，掉得越快越重
-///   揮刀：武士刀的揮砍聲（katana_swing_*，風切 + 刀身的細哨音），在刀真正揮下去的那一刻播（抬手之後）；
+///   揮刀：武士刀的揮砍聲（katana_swing_*，風切 + 刀身的細哨音），在刀真正揮出去的那一刻播（MeleeCombat.OnSwingActive）；
 ///         取代 MeleeCombat 原本的 knifeSlice（給它一段靜音）。空揮比較高（whiffPitch），這一刀砍進敵人身上的當下
 ///         把正在播的聲音音高往下拉（hitPitch），聽得出砍中和空揮不同；大刀 / 長槍 / 小刀各自再高低一點
 ///   打中：在原本的「砍中」聲底下墊一層悶響，傷害高的換成更重的那種
@@ -41,7 +41,6 @@ public sealed class PlayerSfx : MonoBehaviour
     // 這一刀的揮砍聲：什麼時候開始抬手、打中算這一刀的時間窗、有沒有砍中、聲音播了沒（播的那個 AudioSource）
     AudioSource swingSrc;
     float swingStart = -10f, swingWindow, swingBase;
-    int swingSerial;
     bool swingHit, swingPlayed;
     float airborneSince, lastHitSound, lastJumpSound;
     float lowestVy;
@@ -63,14 +62,14 @@ public sealed class PlayerSfx : MonoBehaviour
     void OnEnable()
     {
         if (controller != null) controller.OnDoubleJump += DoubleJump;
-        if (melee != null) melee.OnSwing += Swing;
+        if (melee != null) melee.OnSwingActive += Swing;
         PlayerCombat.OnHitLanded += HitLanded;
     }
 
     void OnDisable()
     {
         if (controller != null) controller.OnDoubleJump -= DoubleJump;
-        if (melee != null) melee.OnSwing -= Swing;
+        if (melee != null) melee.OnSwingActive -= Swing;
         PlayerCombat.OnHitLanded -= HitLanded;
     }
 
@@ -112,31 +111,22 @@ public sealed class PlayerSfx : MonoBehaviour
 
     void DoubleJump() => Jump(1.2f);
 
-    /// <summary>OnSwing 在抬手「之前」發出：等抬手時間過了（刀真正揮下去）才播揮砍聲</summary>
+    /// <summary>OnSwingActive 在刀真正揮出去的那一刻發出（抬手已經結束）：馬上播揮砍聲</summary>
     void Swing(int combo)
     {
         if (melee == null) return;
-        float speed = Mathf.Max(0.1f, melee.AttackSpeed);   // 空中刀的時間也照攻擊速度縮短（WindupFor / SwingFor 已經算進去了）
-        float windup = melee.IsDashSlash ? 0.05f : melee.IsAirSlash ? melee.airSlashWindup / speed : melee.WindupFor(combo);
+        float speed = Mathf.Max(0.1f, melee.AttackSpeed);   // 空中刀的時間也照攻擊速度縮短（SwingFor 已經算進去了）
         float swing = melee.IsDashSlash ? 0.25f : melee.IsAirSlash ? melee.airSlashSwing / speed : melee.SwingFor(combo);
-        swingSerial++;
         swingHit = swingPlayed = false;
         swingSrc = null;
         swingStart = Time.time;
-        swingWindow = windup + swing + 0.12f;
+        swingWindow = swing + 0.12f;
         swingBase = WeaponPitch * (combo % 3 == 2 && !melee.IsAirSlash && !melee.IsDashSlash ? 0.93f : 1f) * Random.Range(0.97f, 1.03f);
-        StartCoroutine(PlaySwingAfter(windup, swingSerial));
+        if (!Dead) PlaySwing();
     }
 
     /// <summary>大刀 1、長槍低一點（往前戳的風聲比較粗）、小刀高一點</summary>
     static float WeaponPitch => PlayerLoadout.Current == WeaponLoadout.Spear ? 0.88f : PlayerLoadout.UsingKnife ? 1.22f : 1f;
-
-    System.Collections.IEnumerator PlaySwingAfter(float windup, int serial)
-    {
-        if (windup > 0f) yield return new WaitForSeconds(windup);   // 跟著遊戲時間（頓幀、慢動作時一起慢）
-        if (serial != swingSerial || swingPlayed || Dead) yield break;
-        PlaySwing();
-    }
 
     void PlaySwing()
     {

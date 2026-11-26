@@ -17,6 +17,13 @@ public static class ParrySlowMotion
 
     static Host host;
 
+    /// <summary>End this transient clock before another system captures a restore value.</summary>
+    public static void Cancel()
+    {
+        if (host != null) host.Cancel();
+        else Active = false;
+    }
+
     public static void Play(float scale = 0.8f, float seconds = 0.7f)
     {
         if (scale <= 0f || scale >= 1f || seconds <= 0f) return;
@@ -85,11 +92,15 @@ public static class ParrySlowMotion
             current = scale;
         }
 
-        void OnDisable()
+        public void Cancel()
         {
+            if (running != null) StopCoroutine(running);
+            running = null;
             if (current > 0f && Mathf.Approximately(Time.timeScale, current)) Time.timeScale = 1f;
             current = -1f;
             Active = false;
         }
+
+        void OnDisable() => Cancel();
     }
 }

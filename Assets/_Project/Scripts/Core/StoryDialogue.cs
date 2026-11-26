@@ -68,7 +68,7 @@ public class StoryDialogue : MonoBehaviour
         onDone = done;
         index = 0;
         lineStart = Time.unscaledTime;
-        prevTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+        prevTimeScale = CombatHitStop.CaptureTimeScale();
         Time.timeScale = 0f;
 
         var hp = PlayerHealth.Find();
@@ -133,6 +133,7 @@ public class StoryDialogue : MonoBehaviour
     {
         DialogueVoice.Stop();
         current = null;
+        InputBindings.SuppressActionsThisFrame();
         Time.timeScale = prevTimeScale;
         if (controller != null)
         {

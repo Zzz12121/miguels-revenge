@@ -304,7 +304,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         SetStance(Stance.Slam, 30f);
         yield return Wait(0.08f);
         GameAudio.Play("SFX/roar_rock_crumble", transform.position, 0.9f, Random.Range(1.1f, 1.25f));
-        ThirdPersonCamera.ShakeMain(0.35f, 0.5f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.35f, 0.5f);
         Vector3 center = transform.position;
         CombatVFX.Ring(center, DustColor, shockRadius * 0.6f);
         var wave = MakeRing("DojoMaster_Shockwave", new Color(1f, 0.85f, 0.55f, 0.9f), 0.35f);
@@ -365,7 +365,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         StopWalking();
         SetStance(Stance.Raise, 4f);
         GameAudio.Play("SFX/roar_rock_crumble", transform.position, 1f, 0.8f);
-        ThirdPersonCamera.ShakeMain(0.3f, 1f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.3f, 1f);
         CombatVFX.Ring(transform.position, new Color(1f, 0.6f, 0.3f, 0.9f), 4f);
         yield return Wait(1f);
         SetStance(Stance.Guard, 6f);
@@ -386,7 +386,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
     {
         pushDir.y = 0f;
         Vector3 knock = (pushDir.sqrMagnitude > 0.001f ? pushDir.normalized : transform.forward) * knockback + Vector3.up * knockUp;
-        if(player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ShakeMain(0.2f, 0.25f);
+        if(player.TakeDamage(damage, knock, false, reason)) ThirdPersonCamera.ImpactAtMain(transform.position, 0.2f, 0.25f);
     }
     public void DeliverBrushHit(float damage,Vector3 direction,Vector3 point)
     {
@@ -432,7 +432,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
         }
         GameAudio.StopMusic(2f);
         GameAudio.Play("SFX/victory_stinger", transform.position, 0.8f, 1f, 0f, 1f, 200f);
-        ThirdPersonCamera.ShakeMain(0.4f, 0.8f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.4f, 0.8f);
         OnDefeated?.Invoke();
     }
 

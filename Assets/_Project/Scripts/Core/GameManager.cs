@@ -600,7 +600,7 @@ public class GameManager : MonoBehaviour
     {
         CloseOverlay(false);
         SkillAimCancellation.Cancel(); // Restore targeting's clock BEFORE pause captures it.
-        overlayPrevTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+        overlayPrevTimeScale = CombatHitStop.CaptureTimeScale();
         Time.timeScale = 0f;
 
         // 鏡頭在游標沒鎖住時按左鍵會重新鎖住游標，選單開著時先停用（跟能力植物的做法一樣）
@@ -678,6 +678,7 @@ public class GameManager : MonoBehaviour
         UIKit.Washi = false;
         if (restoreGameplay)
         {
+            InputBindings.SuppressActionsThisFrame();
             Time.timeScale = overlayPrevTimeScale;
             if (disabledCamera != null) disabledCamera.enabled = true;
             Cursor.lockState = CursorLockMode.Locked;

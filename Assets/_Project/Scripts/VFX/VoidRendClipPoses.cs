@@ -160,14 +160,14 @@ public sealed partial class VoidRendSkillDemo
         if (!HasSkillClipPoses || lastAppliedRotations.Count == 0) return;
         foreach (var p in lastAppliedRotations) handoffFromRotations[p.Key] = p.Value;
         handoffFromHips = lastAppliedHips;
-        handoffStart = Time.unscaledTime;
+        handoffStart = FinisherClock;
     }
 
     /// <summary>技能結束後的 LateUpdate（Animator 已經算完下落動畫）：從馬步混過去，不會一下跳成下落姿勢</summary>
     void ApplyHandoffToAnimator()
     {
         if (handoffFromRotations.Count == 0 || casterAnimator == null) return;
-        float w = Mathf.SmoothStep(0f, 1f, (Time.unscaledTime - handoffStart) / Mathf.Max(.01f, horseToFallBlendSeconds));
+        float w = Mathf.SmoothStep(0f, 1f, (FinisherClock - handoffStart) / Mathf.Max(.01f, horseToFallBlendSeconds));
         if (w >= 1f) { handoffFromRotations.Clear(); return; }
         foreach (var p in handoffFromRotations)
             if (p.Key != null) p.Key.localRotation = Quaternion.Slerp(p.Value, p.Key.localRotation, w);
@@ -255,7 +255,7 @@ public sealed partial class VoidRendSkillDemo
         blendFromRotations.Clear();
         foreach (var p in lastAppliedRotations) blendFromRotations[p.Key] = p.Value;
         blendFromHips = lastAppliedHips;
-        poseBlendStart = Time.unscaledTime;
+        poseBlendStart = FinisherClock;
     }
 
     /// <summary>每一幀姿勢都算完之後：混合換階段的過渡、記下這一幀的姿勢</summary>
@@ -264,7 +264,7 @@ public sealed partial class VoidRendSkillDemo
         if (!HasSkillClipPoses || casterAnimator == null) return;
         Transform hips = casterAnimator.GetBoneTransform(HumanBodyBones.Hips);
         float blendSeconds = Stage == "SheatheOrbit" && HasIaiPose ? iaiBlendSeconds : skillPoseBlendSeconds;
-        float w = blendSeconds <= 0f ? 1f : Mathf.SmoothStep(0f, 1f, (Time.unscaledTime - poseBlendStart) / blendSeconds);
+        float w = blendSeconds <= 0f ? 1f : Mathf.SmoothStep(0f, 1f, (FinisherClock - poseBlendStart) / blendSeconds);
         if (w < 1f && blendFromRotations.Count > 0)
         {
             // 刀在技能期間掛在手上（PlayerWeaponPresenter.MaterializeInHand），骨頭混合時會自己跟著手動

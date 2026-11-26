@@ -57,7 +57,7 @@ public sealed partial class VoidRendSkillDemo
     void ApplyDrawDashPose()
     {
         if (!pelvis || !rightHand || !weapon) return;
-        float age = Time.unscaledTime - stageTime;
+        float age = FinisherClock - stageTime;
         float cut = Stage == "Launch" ? Mathf.SmoothStep(0, 1, Mathf.Clamp01(age / .23f)) : 0f;
         float settle = Stage == "Launch" ? Mathf.SmoothStep(0, 1, Mathf.Clamp01((age - .20f) / .15f)) : 0f;
         float blend = Stage == "DrawPrepare" ? Mathf.SmoothStep(0, 1, Mathf.Clamp01(age / Mathf.Max(.01f, drawBlendSeconds))) : 1f;
@@ -123,8 +123,8 @@ public sealed partial class VoidRendSkillDemo
 
     void UpdateDrawDashAfterimages()
     {
-        if (!playing || Stage != "ApproachRun" || Time.unscaledTime < nextDrawGhostTime) return;
-        nextDrawGhostTime = Time.unscaledTime + drawGhostInterval;
+        if (!playing || Stage != "ApproachRun" || FinisherClock < nextDrawGhostTime) return;
+        nextDrawGhostTime = FinisherClock + drawGhostInterval;
         // 跟空中側閃同一種殘影（AfterimageGhost），密一點、留久一點，鏡頭固定時才看得出一路衝過去
         if (drawGhostRenderers == null || drawGhostRenderers.Length == 0)
             drawGhostRenderers = caster.GetComponentsInChildren<SkinnedMeshRenderer>();

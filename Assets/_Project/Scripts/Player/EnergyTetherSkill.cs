@@ -325,7 +325,7 @@ public sealed class EnergyTetherSkill : MonoBehaviour
         selectionLocked = false; padThrow = false;
         dragging=false;
         aimingStartedAt = Time.unscaledTime;
-        savedTimeScale = Time.timeScale;
+        savedTimeScale = CombatHitStop.CaptureTimeScale();
         savedFixedDelta = Time.fixedDeltaTime;
         savedCursorLock = Cursor.lockState;
         savedCursorVisible = Cursor.visible;

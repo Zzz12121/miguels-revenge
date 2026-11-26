@@ -75,10 +75,15 @@ public sealed partial class VoidRendSkillDemo
         CreateTargetingReticle();
     }
 
+    [Header("技能接招緩衝")]
+    [Range(.05f, .3f)] public float skillInputBufferSeconds = .16f;
+    CombatInputBuffer skillInputBuffer;
+    PreviewSkill queuedPreviewSkill;
+
     void UpdatePreviewInputAndTargeting()
     {
         TickPadShoulderChord();   // 手把 L1 + R1 一起按（每幀都要偵測，才知道什麼時候放開）
-        if(RangeInputSettings.InputBlocked)return;
+        if(RangeInputSettings.InputBlocked || InputBindings.ActionsSuppressedThisFrame) { skillInputBuffer.Clear(); return; }
         if(CalligraphyPaintingWorld.BlocksTether)
         {
             if(IsTargeting)CancelTargeting();
@@ -86,7 +91,7 @@ public sealed partial class VoidRendSkillDemo
             SetPadVoidRendArmed(false);
             return;
         }
-        if (Keyboard.current == null) return;
+        if (Keyboard.current == null && !PadInput.Connected) return;
         if (Time.timeScale <= 0f) return;
 
         // 技能 1：按住 1 蓄力（蓄力中會鎖住跳躍 / 翻滾，所以要在下面的 ActionsLocked 檢查之前處理）
@@ -106,11 +111,28 @@ public sealed partial class VoidRendSkillDemo
         {
             // Dialogue/shop already owns movement input and the number keys.
             if (GameUI.OverlayOpen || (practiceController != null &&
-                (!practiceController.inputEnabled || practiceController.ActionsLocked))) return;
+                (!practiceController.inputEnabled || practiceController.ActionsLocked || practiceController.IsStunned)))
+            { skillInputBuffer.Clear(); return; }
+            PreviewSkill pressedSkill = InputBindings.Pressed(GameAction.Skill2) ? PreviewSkill.CatPounce :
+                InputBindings.Pressed(GameAction.Skill3) ? PreviewSkill.CrescentDash :
+                InputBindings.Pressed(GameAction.Skill4) ? PreviewSkill.SkyfallCross : PreviewSkill.None;
+            if (pressedSkill != PreviewSkill.None)
+            {
+                queuedPreviewSkill = pressedSkill;
+                skillInputBuffer.Queue(skillInputBufferSeconds);
+            }
+            var melee = practiceController ? practiceController.GetComponent<PlayerCombat>() : null;
+            if (practiceController && (practiceController.IsRolling || melee && !melee.CanDodgeCancel)) return;
+            if (skillInputBuffer.Pending)
+            {
+                skillInputBuffer.Clear();
+                BeginTargeting(queuedPreviewSkill);
+                return;
+            }
             // 技能 1：鍵盤固定「按住 1 蓄力、左鍵出招」
             // 技能 2~4：預設 2~4 / 手把十字鍵 ← → ↓，可以在暫停選單「設定」裡改
             // 手把：L1 + R1 一起按（或十字鍵 ↑）選技能 1 → 放開 → 按住 L1 蓄力瞄準 → R1 發射（見 VoidRendCharge）
-            if (Keyboard.current.digit1Key.wasPressedThisFrame) { SetPadVoidRendArmed(false); if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
+            if (Keyboard.current != null && InputBindings.KeyboardEnabled && Keyboard.current.digit1Key.wasPressedThisFrame) { SetPadVoidRendArmed(false); if (PlayerSkillAvailability.TryUse()) BeginCharge(); }
             else if (UpdatePadVoidRendSelection()) { }
             else if (InputBindings.Pressed(GameAction.Skill2)) BeginTargeting(PreviewSkill.CatPounce);
             else if (InputBindings.Pressed(GameAction.Skill3)) BeginTargeting(PreviewSkill.CrescentDash);
@@ -169,7 +191,7 @@ public sealed partial class VoidRendSkillDemo
             !SkillAimCancellation.Register(CancelTargeting)) return;
         pendingSkill = skill;
         targetingStarted = Time.unscaledTime;
-        timeScaleBeforeTargeting = Time.timeScale;
+        timeScaleBeforeTargeting = CombatHitStop.CaptureTimeScale();
         Time.timeScale = targetingTimeScale;
         Time.fixedDeltaTime = fixedDeltaStart * targetingTimeScale;
         SetTargetingControls(true);
@@ -190,7 +212,7 @@ public sealed partial class VoidRendSkillDemo
         hoveredSelection = FindTargetUnderPointer();
         hoveredTarget = hoveredSelection.marker;
         UpdateTargetingReticle(hoveredSelection);
-        if (Keyboard.current.escapeKey.wasPressedThisFrame || PadInput.CancelPressed) // 手把 B 取消
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame || PadInput.CancelPressed) // 手把 B 取消
         {
             SkillAimCancellation.CancelForEscape();
             return;
@@ -328,7 +350,10 @@ public sealed partial class VoidRendSkillDemo
     void SetTargetingControls(bool targeting)
     {
         if (practiceController != null)
+        {
+            if (targeting) practiceController.GetComponent<PlayerCombat>()?.CancelTransientActions();
             practiceController.inputEnabled = !targeting;
+        }
         if (practiceOrbitCamera != null)
         {
             practiceOrbitCamera.enabled = !targeting;
@@ -565,7 +590,7 @@ public sealed partial class VoidRendSkillDemo
     {
         // 短版程序化袈裟斬：只有抬刀、斜切、極短收勢，不再把長動畫整段加速播放。
         proceduralSlashSide = side;
-        proceduralSlashStarted = Time.unscaledTime;
+        proceduralSlashStarted = FinisherClock;
     }
 
     void EmitSkillCut(float side)

@@ -237,7 +237,7 @@ public sealed class LeapCleaveStrike : MonoBehaviour
             }
 
             // ── 3. 蓄力：停在頭頂、身體拉成弓形 ──
-            if (chargeTimeScale < .999f && Time.timeScale > .99f) { savedTimeScale = Time.timeScale; Time.timeScale = chargeTimeScale; slowed = true; }
+            if (chargeTimeScale < .999f && Time.timeScale > .99f) { savedTimeScale = CombatHitStop.CaptureTimeScale(); Time.timeScale = chargeTimeScale; slowed = true; }
             Play("Fall", .1f);
             Vector3 hover = transform.position;
             float nextSpark = 0f;

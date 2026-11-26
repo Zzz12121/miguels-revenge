@@ -27,9 +27,9 @@ public static class PadInput
     // ---------------- 移動 / 鏡頭 ----------------
 
     /// <summary>左搖桿（已扣掉死區，長度 0~1）</summary>
-    public static Vector2 Move => Stick(Pad?.leftStick.ReadValue() ?? Vector2.zero);
+    public static Vector2 Move => Stick(Pad?.leftStick.ReadUnprocessedValue() ?? Vector2.zero);
     /// <summary>右搖桿（已扣掉死區，長度 0~1）</summary>
-    public static Vector2 Look => Stick(Pad?.rightStick.ReadValue() ?? Vector2.zero);
+    public static Vector2 Look => Stick(Pad?.rightStick.ReadUnprocessedValue() ?? Vector2.zero);
 
     static Vector2 Stick(Vector2 v)
     {

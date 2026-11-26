@@ -27,9 +27,9 @@ public sealed class CalligraphyUltimateCameraShake : MonoBehaviour
     void End(ScriptableRenderContext context,Camera camera)=>After(camera);
     void Before(Camera camera)
     {
-        if(camera!=target || applied || !IsShaking || Time.timeScale<=0)return;
+        if(camera!=target || applied || !IsShaking || Time.timeScale<=0 || ThirdPersonCamera.MainShakeIntensity<=0)return;
         applied=true;savedPosition=transform.position;savedRotation=transform.rotation;
-        float age=Time.time-started,fade=Mathf.Clamp01((ends-Time.time)/Mathf.Max(.01f,ends-started));
+        float age=Time.time-started,fade=Mathf.Clamp01((ends-Time.time)/Mathf.Max(.01f,ends-started))*ThirdPersonCamera.MainShakeIntensity;
         float x=(Mathf.PerlinNoise(age*frequency,17)-.5f)*2;
         float y=(Mathf.PerlinNoise(41,age*frequency)-.5f)*2;
         transform.position+=transform.right*x*strength*fade+transform.up*y*strength*fade;

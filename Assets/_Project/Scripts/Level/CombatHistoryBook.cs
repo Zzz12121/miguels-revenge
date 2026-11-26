@@ -45,7 +45,7 @@ public class CombatHistoryBook : MonoBehaviour
         openFrame = Time.frameCount;
         openTime = Time.unscaledTime;
         scroll = 0f;
-        prevTimeScale = Time.timeScale > 0f ? Time.timeScale : 1f;
+        prevTimeScale = CombatHitStop.CaptureTimeScale();
         Time.timeScale = 0f;
         if (controller != null)
         {
@@ -82,6 +82,7 @@ public class CombatHistoryBook : MonoBehaviour
     {
         if (!open) return;
         open = AnyOpen = false;
+        InputBindings.SuppressActionsThisFrame();
         Time.timeScale = prevTimeScale;
         if (controller != null)
         {

@@ -262,57 +262,17 @@ public class PlayerLoadout : MonoBehaviour
         archerBow = GetComponent<PlayerArcherBow>();
         combat.OnSwing += i => { swingAt = Time.time; swingIndex = i; };
         combat.OnBowShot += OnBowShot;
-        combat.OnDealtHit += OnDealtHit;
+
         combat.OnArrowSpawned += OnArrowSpawned;
     }
 
     // ---------------- 打擊回饋 ----------------
 
-    float hitStopUntil;
-
-    void OnDealtHit(float damage, IDamageable target)
-    {
-        float k = Mathf.Clamp01(damage / 30f);
-        ThirdPersonCamera.ShakeMain(0.05f + 0.07f * k, 0.12f);
-        // 頓幀：一下打中好幾個也只頓一次；別的東西正在改時間（暫停、慢動作）就不頓
-        // 刀、長槍砍中敵人（target 不是 null；箭是 null）：刀砍進身體時慢下來、卡在肉裡停一下（0.09 ~ 0.14 秒）、再慢慢抽出來，
-        // 砍進去、抽出來各比平常多花約 0.05 秒（加起來多 0.1 秒）。空揮沒有打中東西，不頓、照平常的速度
-        bool melee = target != null && !(Current == WeaponLoadout.BowKnife && Arrows > 0 && combat.IsAimingBow);
-        if (Time.unscaledTime >= hitStopUntil && Time.timeScale >= 0.99f)
-        {
-            float stop = melee ? 0.09f + 0.05f * k : 0.04f + 0.03f * k;
-            hitStopUntil = Time.unscaledTime + stop + (melee ? EnterTime + PullOutTime + 0.05f : 0.05f);
-            StartCoroutine(HitStop(stop, melee));
-        }
-        // 手把震動統一交給 PadRumble（它也掛在 OnDealtHit 上；兩邊各自開關馬達會互相把對方的震動關掉）
-    }
-
-    const float HitStopScale = 0.05f;
-    // 砍進身體：實際 0.07 秒只走 0.02 秒（多 0.05 秒）；抽出來：實際 0.1 秒只走 0.05 秒（多 0.05 秒）
-    const float EnterScale = 0.28f, EnterTime = 0.07f;
-    const float PullOutScale = 0.5f, PullOutTime = 0.1f;
-
-    static bool OurScale => Mathf.Approximately(Time.timeScale, HitStopScale) || Mathf.Approximately(Time.timeScale, EnterScale) || Mathf.Approximately(Time.timeScale, PullOutScale);
-
-    System.Collections.IEnumerator HitStop(float seconds, bool melee = false)
-    {
-        if (melee)
-        {
-            // 刀砍進身體：慢下來
-            Time.timeScale = EnterScale;
-            yield return new WaitForSecondsRealtime(EnterTime);
-            if (!Mathf.Approximately(Time.timeScale, EnterScale)) yield break; // 別的東西改了時間（暫停、技能慢動作）：交給它
-        }
-        // 卡在肉裡停一下
-        Time.timeScale = HitStopScale;
-        yield return new WaitForSecondsRealtime(seconds);
-        if (!Mathf.Approximately(Time.timeScale, HitStopScale)) yield break;
-        if (!melee) { Time.timeScale = 1f; yield break; }
-        // 抽刀：慢慢從砍中的地方抽出來，再回到正常
-        Time.timeScale = PullOutScale;
-        yield return new WaitForSecondsRealtime(PullOutTime);
-        if (Mathf.Approximately(Time.timeScale, PullOutScale)) Time.timeScale = 1f;
-    }
+    /// <summary>
+    /// 這一下是刀 / 長槍砍到的（不是射箭）：PlayerHitFeedback 用來決定頓幀要不要加上「砍進去變慢」「抽出來變慢」兩段
+    /// （CombatHitStop.BladeEnter* / BladeExit*）。頓幀本身統一由 CombatHitStop 管
+    /// </summary>
+    public static bool BladeHit => Instance != null && !(Current == WeaponLoadout.BowKnife && Arrows > 0 && Instance.combat != null && Instance.combat.IsAimingBow);
 
     PlayerShieldBowAnimator shieldBow;
     static readonly int BowDrawHash = Animator.StringToHash("BowDraw");
@@ -344,11 +304,6 @@ public class PlayerLoadout : MonoBehaviour
     void Update()
     {
         SnapBowDrawPose();
-    }
-
-    void OnDisable()
-    {
-        if (OurScale) Time.timeScale = 1f;
     }
 
     void OnDestroy()

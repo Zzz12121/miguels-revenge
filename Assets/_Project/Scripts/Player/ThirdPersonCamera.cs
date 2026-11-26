@@ -123,7 +123,12 @@ public partial class ThirdPersonCamera : MonoBehaviour
     readonly RaycastHit[] hits = new RaycastHit[16];
     CharacterController targetBody;
     Transform targetBodyOwner;
-    float shakeAmplitude, shakeDuration, shakeTimer;
+    CombatCameraImpulse impactImpulse;
+    [Header("命中鏡頭回饋")]
+    [Range(0f, 1f)] public float cameraShakeIntensity = .7f;
+    [Tooltip("保留手動環繞方向，攻擊與跳躍不會自行轉到背後")]
+    public bool manualOrbitPriority = true;
+    public Vector3 PlanarForward => Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
     CinemachineThirdPersonFollow follow;
     bool aiming;
     Transform aimTarget;
@@ -173,9 +178,29 @@ public partial class ThirdPersonCamera : MonoBehaviour
     /// <summary>畫面震動（Boss 拍地、怒吼時使用）</summary>
     public void Shake(float amplitude, float duration)
     {
-        if (amplitude < shakeAmplitude * (shakeDuration > 0f ? shakeTimer / shakeDuration : 0f)) return;
-        shakeAmplitude = amplitude;
-        shakeDuration = shakeTimer = Mathf.Max(duration, 0.01f);
+        Impact(target ? transform.position - target.position : -transform.forward, amplitude, duration);
+    }
+
+    [Min(1f)] public float impactFeedbackRange = 24f;
+    public static float MainShakeIntensity => Camera.main && Camera.main.TryGetComponent<ThirdPersonCamera>(out var orbit)
+        ? Mathf.Clamp01(orbit.cameraShakeIntensity) : 1f;
+
+    public void ImpactAt(Vector3 point, float amplitude, float duration)
+    {
+        Vector3 direction = target ? point - target.position : point - transform.position;
+        float attenuation = 1f - Mathf.Clamp01((direction.magnitude - 2f) / Mathf.Max(1f, impactFeedbackRange));
+        Impact(direction, amplitude * attenuation * attenuation, duration);
+    }
+
+    public static void ImpactAtMain(Vector3 point, float amplitude, float duration)
+    {
+        if (Camera.main && Camera.main.TryGetComponent<ThirdPersonCamera>(out var orbit))
+            orbit.ImpactAt(point, amplitude, duration);
+    }
+
+    public void Impact(Vector3 direction, float amplitude, float duration)
+    {
+        if (impactImpulse) impactImpulse.Play(direction, amplitude, duration);
     }
 
     /// <summary>讓 Main Camera 震動，找不到就忽略</summary>
@@ -208,6 +233,8 @@ public partial class ThirdPersonCamera : MonoBehaviour
     {
         var brain = GetComponent<CinemachineBrain>();
         if (brain == null) brain = gameObject.AddComponent<CinemachineBrain>();
+        brain.UpdateMethod = CinemachineBrain.UpdateMethods.LateUpdate;
+        brain.BlendUpdateMethod = CinemachineBrain.BrainUpdateMethods.LateUpdate;
         brain.DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Styles.Cut, 0f);
 
         Transform rig = transform.parent != null ? transform.parent : transform;
@@ -239,6 +266,8 @@ public partial class ThirdPersonCamera : MonoBehaviour
         follow = cinemachineCamera.GetComponent<CinemachineThirdPersonFollow>();
         if (follow == null) follow = cinemachineCamera.gameObject.AddComponent<CinemachineThirdPersonFollow>();
         ConfigureFollow();
+        impactImpulse = cinemachineCamera.GetComponent<CombatCameraImpulse>();
+        if (!impactImpulse) impactImpulse = cinemachineCamera.gameObject.AddComponent<CombatCameraImpulse>();
     }
 
     void ConfigureFollow()
@@ -259,15 +288,22 @@ public partial class ThirdPersonCamera : MonoBehaviour
         follow.AvoidObstacles = avoid;
     }
 
+    void Update()
+    {
+        float beforeYaw = yaw, beforePitch = pitch;
+        HandleInput();
+        NoteManualLook(beforeYaw, beforePitch);
+        HandleLockInput();
+    }
+
     void LateUpdate() // 在角色 Update 移動完之後才更新鏡頭，避免抖動
     {
         if (target == null || cameraTarget == null) return;
-        float yawBeforeInput = yaw;
-        HandleInput();
-        NoteManualLook(yawBeforeInput);
+        UpdateLockOn(Time.unscaledDeltaTime);
+        if (impactImpulse) impactImpulse.Intensity = cameraShakeIntensity;
 
         // 注視點（平滑跟隨）
-        Vector3 pivot = target.position + FramedOffset() + ClimbPivotShift();
+        Vector3 pivot = target.position + FramedOffset() + ClimbPivotShift() + LockFramingOffset;
         if (targetMotor == null && target != null) targetMotor = target.GetComponent<ThirdPersonController>();
         AutoBehind();   // 進攻 / 翻滾 / 跳躍時轉到背後（ThirdPersonCamera.AutoBehind.cs）
         bool rolling = targetMotor != null && targetMotor.IsRolling;
@@ -282,7 +318,7 @@ public partial class ThirdPersonCamera : MonoBehaviour
 
         // 瞄準：注視點移到瞄準對象的肩膀、鏡頭拉近、畫面放大（平滑過渡）
         aimBlend = Mathf.MoveTowards(aimBlend, aiming && aimTarget != null ? 1f : 0f, aimBlendSpeed * Time.deltaTime);
-        float dist = distance * Mathf.Lerp(1f, climbDistanceScale, Mathf.SmoothStep(0f, 1f, climbBlend));
+        float dist = Mathf.Max(distance, LockFramingDistance) * Mathf.Lerp(1f, climbDistanceScale, Mathf.SmoothStep(0f, 1f, climbBlend));
         if (lowAngleFraming)
         {
             // 往上看：鏡頭拉近（原神：仰角越大鏡頭越貼近角色，角色留在畫面下方、背景是天空）
@@ -305,14 +341,6 @@ public partial class ThirdPersonCamera : MonoBehaviour
         }
         if (cinemachineCamera != null)
             cinemachineCamera.Lens.FieldOfView = Mathf.Lerp(baseFov, aimFov, Mathf.SmoothStep(0f, 1f, aimBlend));
-
-        if (shakeTimer > 0f)
-        {
-            // Menus/dialogue stop scaled time; never leave a frozen shake running forever.
-            shakeTimer = Time.timeScale <= 0f || Cursor.lockState != CursorLockMode.Locked
-                ? 0f : Mathf.Max(0f, shakeTimer - Time.unscaledDeltaTime);
-            lookPoint += Random.insideUnitSphere * shakeAmplitude * Mathf.Clamp01(shakeTimer / shakeDuration);
-        }
 
         // Cinemachine 的 Third Person Follow 會把鏡頭放在注視點正後方 distance 公尺（有牆就往前拉）
         bool fullView = keepPlayerVisible && follow != null && !CalligraphyPaintingWorld.BlocksTether;
@@ -445,7 +473,7 @@ public partial class ThirdPersonCamera : MonoBehaviour
         if (Cursor.lockState != CursorLockMode.Locked && PadInput.AnyPressed && !SkillAimCancellation.IsAiming && !GameUI.OverlayOpen)
             LockCursor(true);
 
-        if (Cursor.lockState != CursorLockMode.Locked) return;
+        if (Cursor.lockState != CursorLockMode.Locked || GameUI.OverlayOpen || Time.timeScale <= 0f) return;
 
         // 右搖桿轉鏡頭（每秒轉的角度；瞄準時一樣比較好微調）
         Vector2 look = PadInput.Look;
@@ -492,6 +520,8 @@ public partial class ThirdPersonCamera : MonoBehaviour
     /// </summary>
     public void WarpWithTarget(Vector3 delta)
     {
+        resolvedViewDistance = -1f;
+        viewDistanceVelocity = 0f;
         smoothedPivot+=delta;
         if(cameraTarget)cameraTarget.position+=delta;
         transform.position+=delta;
@@ -501,7 +531,10 @@ public partial class ThirdPersonCamera : MonoBehaviour
     public void SnapToTarget()
     {
         if (target == null || cameraTarget == null) return;
-        smoothedPivot = target.position + targetOffset;
+        resolvedViewDistance = -1f;
+        viewDistanceVelocity = 0f;
+        autoPitch = autoPitchVelocity = 0f;
+        smoothedPivot = target.position + FramedOffset() + ClimbPivotShift() + LockFramingOffset;
         pivotVelocity = Vector3.zero;
         Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
         cameraTarget.SetPositionAndRotation(smoothedPivot + rotation * Vector3.right * shoulderOffset, rotation);

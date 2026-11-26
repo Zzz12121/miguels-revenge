@@ -1,0 +1,8 @@
+{
+  "calls": 10000,
+  "originalBytes": 0,
+  "cachedBytes": 0,
+  "originalMs": 2.8881,
+  "cachedMs": 0.20070000000000002,
+  "context": "Warm input lookup microbenchmark in Unity Editor. Does not measure rendered gameplay frame rate."
+}
