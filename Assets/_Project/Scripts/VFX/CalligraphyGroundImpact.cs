@@ -11,6 +11,7 @@ public sealed class CalligraphyGroundImpact : MonoBehaviour
     {
         var go=new GameObject("Ink dragon fracture impact");go.transform.SetParent(parent,false);go.transform.position=center;
         var effect=go.AddComponent<CalligraphyGroundImpact>();
+        CalligraphyVisualContact.Publish(go.transform,center,center+Vector3.up*1.3f,radius,Vector3.up*2);
         effect.delay=settings?.debrisDelay??0;
         for(int i=0;i<14;i++)
         {

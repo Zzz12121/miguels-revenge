@@ -101,6 +101,7 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
         // Observe the actual burst, so changing playback speed cannot desynchronise damage.
         while(fall && !fall.HasLiveParticles("Ring_Halo_faded_add_soft"))yield return null;
         if(fall)ImpactAt=Time.time;
+        if(fall)CalligraphyVisualContact.Publish(transform,transform.position,transform.position+Vector3.up*2,settings.hitRadius,Vector3.down*10);
         if(fall && player && CalligraphyPlayerHitGate.Touches(player,transform.position,transform.position+Vector3.up*1.7f,settings.hitRadius*(settings.scale/.45f)))
         {
             Vector3 delta=player.transform.position-transform.position;
@@ -168,6 +169,22 @@ public sealed class CalligraphySkillSequence : MonoBehaviour
                         {
                             Vector3 vertex=renderer.transform.position+waveVertices[v];bounds.Encapsulate(vertex);
                             if(!light)slamRadius=Mathf.Max(slamRadius,Vector3.ProjectOnPlane(vertex-transform.position,Vector3.up).magnitude);
+                        }
+                        if(CalligraphyVisualContact.Observed)
+                        {
+                            float low=float.NegativeInfinity,high=float.PositiveInfinity;
+                            if(light&&customData.Count>i&&waveUV.Count==waveVertices.Count)
+                            {
+                                var m=renderer.sharedMaterial;float visualTiling=m.GetTextureScale("_MainTex").y;
+                                if(Mathf.Abs(visualTiling)>.00001f){float shift=m.GetTextureOffset("_MainTex").y;low=(PulseTextureMin-shift)/visualTiling-customData[i].w;high=(PulseTextureMax-shift)/visualTiling-customData[i].w;}
+                            }
+                            for(int sample=begin;sample<end;sample+=Mathf.Max(1,verticesPerParticle/20))
+                            {
+                                if(light&&waveUV.Count==waveVertices.Count&&(waveUV[sample].y<low||waveUV[sample].y>high))continue;
+                                Vector3 at=renderer.transform.position+waveVertices[sample];
+                                Vector3 flow=Vector3.ProjectOnPlane(at-fx.transform.position,Vector3.up).normalized*8;
+                                CalligraphyVisualContact.Publish(transform,at,at+Vector3.up*.6f,.45f,flow);
+                            }
                         }
                         if(!light)
                         {

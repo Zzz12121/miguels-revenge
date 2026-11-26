@@ -1,0 +1,11 @@
+{
+  "baselineEntries": 4508,
+  "hashedUnchanged": 4241,
+  "townChanged": 40,
+  "unexpectedPreexistingChanges": [],
+  "note": "Compared only files with a baseline SHA-256. Remote fast-forward changes are tracked separately; no blanket staging.",
+  "authorizedTownDocumentationChanges": [
+    "Docs/INKBOUND_TOWN_ART_ACCEPTANCE.md",
+    "Docs/INKBOUND_TOWN_EXPLORATION.md"
+  ]
+}

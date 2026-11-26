@@ -57,9 +57,11 @@ public sealed class CalligraphyInkProjectile : MonoBehaviour
         if(nearest>=0)
         {
             var h=hits[nearest];var player=h.collider.GetComponentInParent<PlayerHealth>();
+            CalligraphyVisualContact.Publish(transform,transform.position,h.point,settings.collisionRadius,velocity);
             if(player)CalligraphyPlayerHitGate.Hit(player,damage,velocity.normalized*1.4f,"被遊墨行者的筆觸擊倒",h.point,feedbackParent:scopedLifetime?cleanupRoot:null);
             ink.Burst(h.point,1.1f);Destroy(gameObject);return;
         }
+        CalligraphyVisualContact.Publish(transform,transform.position,transform.position+step,settings.collisionRadius,velocity);
         transform.position+=step;DistanceTravelled+=step.magnitude;trailClock-=dt;
         HeadingLocked|=DistanceTravelled>=settings.maximumDistance*Mathf.Clamp01(settings.homingEndPercentage);
         if(trailClock<=0 && !visual)

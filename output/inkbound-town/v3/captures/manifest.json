@@ -1,0 +1,47 @@
+{
+  "kind": "Actual Unity cameras, normal player FOV",
+  "resolution": "1920x1080",
+  "fov": 60.0,
+  "shots": [
+    {
+      "name": "01-main-street",
+      "position": "(-44.00, 2.20, -16.00)",
+      "lookAt": "(-44.00, 1.60, 8.00)"
+    },
+    {
+      "name": "02-cloth-shop",
+      "position": "(-43.00, 1.90, -16.00)",
+      "lookAt": "(-49.40, 1.60, -11.00)"
+    },
+    {
+      "name": "03-tea-veranda",
+      "position": "(17.00, 2.30, -24.00)",
+      "lookAt": "(28.00, 1.40, -24.00)"
+    },
+    {
+      "name": "04-tea-inside",
+      "position": "(27.00, 1.90, -24.00)",
+      "lookAt": "(30.00, 1.40, -27.00)"
+    },
+    {
+      "name": "05-river",
+      "position": "(-3.30, 2.80, -50.00)",
+      "lookAt": "(-1.00, 2.10, -21.00)"
+    },
+    {
+      "name": "06-quay",
+      "position": "(-10.80, 2.50, -39.00)",
+      "lookAt": "(-12.00, 2.00, 5.00)"
+    },
+    {
+      "name": "07-overview",
+      "position": "(-55.00, 40.00, -45.00)",
+      "lookAt": "(0.00, 1.00, 15.00)"
+    },
+    {
+      "name": "08-chess",
+      "position": "(49.00, 2.00, 39.00)",
+      "lookAt": "(54.00, 1.10, 43.00)"
+    }
+  ]
+}

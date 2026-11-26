@@ -80,6 +80,7 @@ public sealed partial class CalligraphyBossCombat
             length*=ratio/Mathf.Max(.0001f,beamRangeRatio);beamRangeRatio=ratio;
             var scale=skillEffect.transform.localScale;scale.z=beamBaseScaleZ*ratio;skillEffect.transform.localScale=scale;
             length=Mathf.Min(length,inkBeam.maximumRange);
+            if(length>0)CalligraphyVisualContact.Publish(transform,from,from+actualDirection*length,inkBeam.hitRadius,actualDirection*10);
             if(length>0 && Time.time>=beamHitAt && CalligraphyPlayerHitGate.Touches(player,from,from+actualDirection*length,inkBeam.hitRadius))
             {CalligraphyPlayerHitGate.Hit(player,beamDamage,actualDirection,"被墨光擊倒",Abdomen(player));beamHitAt=Time.time+inkBeam.hitInterval;}
         }

@@ -1,0 +1,42 @@
+[
+  {
+    "source": "output/inkbound-town/interior-gallery/02-market-street.png",
+    "thumbnail": "output/inkbound-town/v3/baseline/02-market-street.jpg",
+    "sourceResolution": [
+      1920,
+      1080
+    ],
+    "sourceModified": 1795701156.7078414,
+    "note": "Existing pre-V3 Unity capture, thumbnail only; not a historical performance measurement"
+  },
+  {
+    "source": "output/inkbound-town/interior-gallery/05-inside-teahouse.png",
+    "thumbnail": "output/inkbound-town/v3/baseline/05-inside-teahouse.jpg",
+    "sourceResolution": [
+      1920,
+      1080
+    ],
+    "sourceModified": 1795701157.278916,
+    "note": "Existing pre-V3 Unity capture, thumbnail only; not a historical performance measurement"
+  },
+  {
+    "source": "output/inkbound-town/interior-gallery/10-chess-table.png",
+    "thumbnail": "output/inkbound-town/v3/baseline/10-chess-table.jpg",
+    "sourceResolution": [
+      1920,
+      1080
+    ],
+    "sourceModified": 1795701158.1622484,
+    "note": "Existing pre-V3 Unity capture, thumbnail only; not a historical performance measurement"
+  },
+  {
+    "source": "output/inkbound-town/interior-gallery/14-town-overview.png",
+    "thumbnail": "output/inkbound-town/v3/baseline/14-town-overview.jpg",
+    "sourceResolution": [
+      1920,
+      1080
+    ],
+    "sourceModified": 1795701158.7901251,
+    "note": "Existing pre-V3 Unity capture, thumbnail only; not a historical performance measurement"
+  }
+]

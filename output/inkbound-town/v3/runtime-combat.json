@@ -1,0 +1,41 @@
+{
+  "kind": "Actual Editor Game View; includes Editor and auto-tick overhead, not a standalone build benchmark",
+  "resolution": "1920x1080",
+  "fov": 60.0,
+  "hardware": {
+    "processorType": "Intel(R) Core(TM) i9-14900HX",
+    "graphicsDeviceName": "NVIDIA GeForce RTX 4060 Laptop GPU"
+  },
+  "frameMilliseconds": {
+    "samples": 150,
+    "mean": 14.447552021592855,
+    "median": 14.514398761093616,
+    "p95": 16.823101788759232
+  },
+  "mainThreadMilliseconds": {
+    "samples": 156,
+    "mean": 14.30190769230769,
+    "median": 14.3511,
+    "p95": 16.8479
+  },
+  "renderThreadMilliseconds": null,
+  "gpuMilliseconds": {
+    "samples": 116,
+    "mean": 10.104328827586206,
+    "median": 9.919488,
+    "p95": 11.727872
+  },
+  "gpuNote": "Measured FrameTimingManager GPU timings",
+  "fpsFromFrameMean": 69.215878129764235,
+  "gcBytesPerFrame": 24118.375796178345,
+  "rendering": {
+    "drawCalls": 1964,
+    "setPassCalls": 427,
+    "triangles": 7977801,
+    "vertices": 8651289
+  },
+  "npc": 100,
+  "detailedEchoes": 3,
+  "particleCount": 134,
+  "allocatedMB": 4104.3525485992432
+}

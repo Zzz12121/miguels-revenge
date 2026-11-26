@@ -1,0 +1,168 @@
+{
+  "scene": "Assets/_Project/Scenes/InkboundTown_Exploration.unity",
+  "playing": true,
+  "hardware": {
+    "processorType": "Intel(R) Core(TM) i9-14900HX",
+    "graphicsDeviceName": "NVIDIA GeForce RTX 4060 Laptop GPU"
+  },
+  "pipeline": "PC_RPAsset",
+  "colorSpace": "Linear",
+  "fov": 60.0,
+  "shaderErrors": [],
+  "missingScripts": 0,
+  "invalidMeshes": [],
+  "npcRoutines": 100,
+  "boats": 2,
+  "npcColliders": 0,
+  "allIgnorePlayer": true,
+  "visibleLettering": [],
+  "playerCombat": true,
+  "nav": [
+    {
+      "from": "Market",
+      "to": "West quay",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 7
+    },
+    {
+      "from": "West quay",
+      "to": "Market",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 7
+    },
+    {
+      "from": "West quay",
+      "to": "South bridge",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 5
+    },
+    {
+      "from": "South bridge",
+      "to": "West quay",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 5
+    },
+    {
+      "from": "South bridge",
+      "to": "Tea interior",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 3
+    },
+    {
+      "from": "Tea interior",
+      "to": "South bridge",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 3
+    },
+    {
+      "from": "Tea interior",
+      "to": "East quay",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 5
+    },
+    {
+      "from": "East quay",
+      "to": "Tea interior",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 5
+    },
+    {
+      "from": "East quay",
+      "to": "Chess court",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 8
+    },
+    {
+      "from": "Chess court",
+      "to": "East quay",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 6
+    },
+    {
+      "from": "Chess court",
+      "to": "North bridge",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 4
+    },
+    {
+      "from": "North bridge",
+      "to": "Chess court",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 5
+    },
+    {
+      "from": "North bridge",
+      "to": "West alley",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 10
+    },
+    {
+      "from": "West alley",
+      "to": "North bridge",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 8
+    },
+    {
+      "from": "West alley",
+      "to": "Market",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 11
+    },
+    {
+      "from": "Market",
+      "to": "West alley",
+      "begin": true,
+      "end": true,
+      "found": true,
+      "status": "PathComplete",
+      "corners": 12
+    }
+  ],
+  "elder": "Fighting across town",
+  "timestamp": "2026-11-27T01:52:12.0905683+08:00"
+}
