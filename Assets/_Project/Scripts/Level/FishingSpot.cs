@@ -300,7 +300,7 @@ public sealed class FishingSpot : MonoBehaviour
         VillageWallet.Add(hooked.id, 1);
         Splash(bobberPos, 1.1f);
         GameAudio.Play("SFX/RPG/beltHandle1", health.transform.position, 0.8f, 1.1f, 0.05f, 0.3f);
-        VictoryBanner.ShowSmall($"釣到{hooked.name}了！", $"可以賣 {hooked.price} 文　魚簍裡有 {FishCatalog.CountAll()} 條", GameUI.Good);
+        ItemToast.Show(hooked.name, 1, $"釣到了！可以賣 {hooked.price} 文　魚簍裡有 {FishCatalog.CountAll()} 條");
         caughtFish = BuildFish(hooked);
         fishFrom = bobberPos;
         Say($"{hooked.name}（{hooked.price} 文）", GameUI.Good);

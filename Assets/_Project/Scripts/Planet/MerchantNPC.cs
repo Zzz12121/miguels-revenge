@@ -440,6 +440,7 @@ public class MerchantNPC : MonoBehaviour
         else
         {
             items.Add(item, 1);
+            ItemToast.Show(itemName, 1, $"持有 {items.Count(item)}　按 {(potion ? items.potionKey : items.staminaPotionKey)} 喝");
             shopLine = potion
                 ? $"成交！治癒藥水一瓶。受傷時按 {items.potionKey} 喝下去，喝的時候會走得比較慢。倒下之後藥水會補回來。"
                 : $"成交！精力藥水一瓶。跑不動的時候按 {items.staminaPotionKey} 喝下去，精力馬上全滿。";

@@ -92,7 +92,10 @@ public class PlayerHitFeedback : MonoBehaviour
 
         float stop = (heavy ? heavyHitstop : lightHitstop) + (finishing ? finishBonus : 0f);
         stop = Mathf.Min(stop, repeatedSkill ? multiHitstop : maximumHitstop);
-        CombatHitStop.Request(stop, hitstopTimeScale, repeatedSkill ? .18f : .10f);
+        // 刀 / 長槍砍到血肉（不是射箭、不是多段技能）：頓幀前後加上「刀砍進去變慢」「刀抽出來變慢」兩段（各多約 0.05 秒）
+        bool blade = !repeatedSkill && surface == ImpactSurface.Flesh && PlayerLoadout.BladeHit;
+        CombatHitStop.Request(stop, hitstopTimeScale, repeatedSkill ? .18f : .10f,
+                              blade ? CombatHitStop.BladeEnterSeconds : 0f, blade ? CombatHitStop.BladeExitSeconds : 0f);
         var camera = Camera.main ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
         if (camera) camera.ImpactAt(point, finishing ? finishShake : heavy ? heavyShake : lightShake, .12f);
 

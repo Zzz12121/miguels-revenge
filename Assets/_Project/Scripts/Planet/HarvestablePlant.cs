@@ -68,7 +68,7 @@ public class HarvestablePlant : MonoBehaviour
         if (inventory == null) inventory = player.gameObject.AddComponent<PlayerInventory>();
         inventory.AddResource(resourceName, resourceAmount);
         GameAudio.Play("SFX/RPG/cloth1", transform.position, 0.7f, 1.2f, 0.08f, 0.3f);
-        VictoryBanner.ShowSmall($"{DisplayName} +{resourceAmount}", $"持有 {inventory.GetResource(resourceName)}", GameUI.Good);
+        ItemToast.Show(DisplayName, resourceAmount, $"持有 {inventory.GetResource(resourceName)}");
         Destroy(gameObject);
     }
 }

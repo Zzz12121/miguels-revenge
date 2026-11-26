@@ -266,7 +266,7 @@ public sealed class FishBuyerShop : IDialogueShop
         VillageWallet.Add(VillageWallet.CoinKey, earned);
         var p = PlayerHealth.Find();
         GameAudio.Play("SFX/RPG/handleCoins", p != null ? p.transform.position : Vector3.zero, 0.9f, 1f, 0.05f, 0.3f);
-        VictoryBanner.ShowSmall($"錢 +{earned} 文", $"持有 {VillageWallet.Coins} 文", GameUI.Accent);
+        ItemToast.Show("錢", earned, $"持有 {VillageWallet.Coins} 文", "文");
         Refresh();
         string more = stock.Count > 0 ? "還有別的要賣嗎？" : "這些錢拿去村裡逛逛吧——行商那裡有外地的貨，茶屋的糰子也不錯。";
         return index == 0 || n > 1
@@ -327,6 +327,7 @@ public sealed class TeaHouseShop : IDialogueShop
             default:
                 VillageWallet.Spend(price);
                 VillageWallet.Add(VillageWallet.HerbKey, 1);
+                ItemToast.Show("草藥", 1, $"持有 {VillageWallet.Get(VillageWallet.HerbKey)}　可以拿去給藥師換藥水");
                 GameAudio.Play("SFX/RPG/handleSmallLeather", at, 0.8f, 1.1f, 0.05f, 0.3f);
                 return $"藥草一株，拿好。湊夠了就拿去藥鋪給藥師換藥水。（身上的藥草：{VillageWallet.Get(VillageWallet.HerbKey)}）";
         }
@@ -405,6 +406,7 @@ public sealed class CosmeticShop : IDialogueShop
             Wardrobe.Unlock(slot, it.index);
             GameAudio.Play("SFX/RPG/handleCoins", at, 0.9f, 1f, 0.05f, 0.3f);
             Wardrobe.Wear(slot, it.index);
+            ItemToast.Show(it.name, 0, slot == Wardrobe.Slot.Hook ? "鉤索的新樣子" : "已經穿戴在身上了");
             return slot == Wardrobe.Slot.Hook ? $"成交！{it.name}，下次甩鉤索的時候就看得到了。" : $"成交！{it.name}，很適合你。";
         }
         Wardrobe.Wear(slot, it.index);
