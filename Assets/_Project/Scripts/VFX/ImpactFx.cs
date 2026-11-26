@@ -172,16 +172,16 @@ public static class ImpactFx
 
     static ParticleSystem Create(string name, Vector3 pos, Quaternion rot, Material mat, float duration)
     {
-        var go = new GameObject(name);
+        var ps = ImpactParticlePool.Rent(name);
+        var go = ps.gameObject;
         go.transform.SetPositionAndRotation(pos, rot);
-        var ps = go.AddComponent<ParticleSystem>();
         ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         var main = ps.main;
         main.duration = duration;
         main.loop = false;
         main.playOnAwake = false;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.stopAction = ParticleSystemStopAction.Destroy;
+        main.stopAction = ParticleSystemStopAction.Callback;
         // 頓幀時特效照常播放，閃光和火花才會「定格」在畫面上
         main.useUnscaledTime = false;
         var emission = ps.emission; emission.rateOverTime = 0f;

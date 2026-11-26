@@ -541,7 +541,7 @@ public class BossController : MonoBehaviour
         BeginFight();
         PlayAnim("Roar", 0.4f);
         PlayBigRoar(1f);
-        ThirdPersonCamera.ShakeMain(0.3f, 1f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.3f, 1f);
         yield return new WaitForSeconds(1.3f);
         EndAnim();
     }
@@ -650,11 +650,11 @@ public class BossController : MonoBehaviour
             if (arena != null && arena.TryGetGroundHeight(transform.position, out float g))
                 transform.position = new Vector3(transform.position.x, g, transform.position.z);
         }
-        ThirdPersonCamera.ShakeMain(0.3f, 0.6f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.3f, 0.6f);
         yield return StretchBody(Vector3.one, 0.2f);
         yield return Lean(-85f, 1.4f, true); // 往後倒下（不管有沒有模型動畫都完整倒下）
         PlayImpact(0.7f, 1f);                 // 倒地
-        ThirdPersonCamera.ShakeMain(0.4f, 0.5f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.4f, 0.5f);
 
         // 過關的大標題 + 勝利音效
         if (showVictoryBanner)
@@ -749,7 +749,7 @@ public class BossController : MonoBehaviour
         // 吼多久：至少 phase2RoarTime，而且要等怒吼聲差不多播完
         float hold = Mathf.Max(0f, phase2RoarTime - 1.15f);
         if (rageRoar != null) hold = Mathf.Max(hold, rageRoar.length - 0.9f);
-        ThirdPersonCamera.ShakeMain(0.6f, Mathf.Max(1.2f, hold));
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.6f, Mathf.Max(1.2f, hold));
         if (PlayerAlive)
         {
             Vector3 to = FlatTo(player.position);
@@ -853,7 +853,7 @@ public class BossController : MonoBehaviour
             if (launched)
             {
                 PlayImpact(1.2f, 0.8f);
-                ThirdPersonCamera.ShakeMain(0.25f, 0.3f);
+                ThirdPersonCamera.ImpactAtMain(transform.position, 0.25f, 0.3f);
             }
         }
 
@@ -956,7 +956,7 @@ public class BossController : MonoBehaviour
         // 拍下去！
         CurrentAction = "拍地";
         yield return Lean(40f, 0.08f);
-        ThirdPersonCamera.ShakeMain(0.35f, 0.5f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.35f, 0.5f);
         PlayImpact(1f, 1f);
 
         // 用 Perlin 雜訊決定哪些石板變成深坑，每次拍地形狀都不一樣
@@ -1009,7 +1009,7 @@ public class BossController : MonoBehaviour
         PlayAnim("Roar", 0.65f);
         yield return Lean(-20f, 0.4f);
         yield return StretchBody(new Vector3(0.9f, 1.25f, 0.9f), 0.25f);
-        ThirdPersonCamera.ShakeMain(0.25f, roarDuration);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.25f, roarDuration);
         PlayBigRoar(1f);
 
         if (arena != null)
@@ -1128,7 +1128,7 @@ public class BossController : MonoBehaviour
     /// <summary>骨棒插進地板的衝擊：地面凹陷、岩石震碎、範圍內的玩家受傷並往外飛</summary>
     void PlantImpact(Vector3 point, float holdTime)
     {
-        ThirdPersonCamera.ShakeMain(0.5f, 0.5f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.5f, 0.5f);
         PlayImpact(0.75f, 1f);
         CombatVFX.Ring(point, plantCircleColor, plantRadius);
         CombatVFX.Impact(point + Vector3.up * 0.3f, new Color(0.8f, 0.72f, 0.58f));
@@ -1288,7 +1288,7 @@ public class BossController : MonoBehaviour
         CurrentAction = "光束";
         ShowBeam(beamDiameter, 2);
         StartBeamLoopSound();
-        ThirdPersonCamera.ShakeMain(0.15f, 0.3f);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.15f, 0.3f);
         nextBeamTick = 0f;
         t = 0f;
         while (t < beamDuration)
@@ -1480,7 +1480,7 @@ public class BossController : MonoBehaviour
         if (beamBreaksPillars && hitRock != null && hitRock.IsStanding && !hitRock.IsCracking)
         {
             hitRock.ShatterAfter(beamPillarBreakTime);
-            ThirdPersonCamera.ShakeMain(0.1f, 0.15f);
+            ThirdPersonCamera.ImpactAtMain(transform.position, 0.1f, 0.15f);
             GameAudio.PlayAt(GameAudio.Pick(impactSound, "SFX/rock_hit"), hitRock.transform.position, 0.6f * sfxVolume, 1.25f, 0.8f, 70f);
         }
 
@@ -1606,7 +1606,7 @@ public class BossController : MonoBehaviour
         HideLandMark(true);
         PlayAnim("JumpLand");
         SetBodyScale(new Vector3(1.25f, 0.7f, 1.25f));
-        ThirdPersonCamera.ShakeMain(0.5f * power, 0.6f * power);
+        ThirdPersonCamera.ImpactAtMain(transform.position, 0.5f * power, 0.6f * power);
         PlayImpact(0.85f / power, 1f);
 
         // 落點形成隕石坑：中間最深、外圍淺

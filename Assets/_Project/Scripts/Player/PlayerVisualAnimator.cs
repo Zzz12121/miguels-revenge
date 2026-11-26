@@ -23,6 +23,11 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     [SerializeField] Color bowWoodColor = new Color(0.32f, 0.14f, 0.055f, 1f);
     [SerializeField] Color shieldColor = new Color(0.12f, 0.24f, 0.38f, 1f);
 
+    [Header("步幅與實際位移")]
+    [Min(.1f)] public float walkClipMetersPerSecond = 4.5f;
+    [Min(.1f)] public float runClipMetersPerSecond = 8f;
+    bool hasLocomotionRate;
+    static readonly int LocomotionRateHash = Animator.StringToHash("LocomotionRate");
     static readonly int SpeedHash = Animator.StringToHash("Speed");
     static readonly int GroundedHash = Animator.StringToHash("Grounded");
     static readonly int VerticalSpeedHash = Animator.StringToHash("VerticalSpeed");
@@ -42,6 +47,8 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     [Range(0f, 2f)] public float hitMoveLockMax = .9f;
     [Tooltip("受擊動畫播到幾成就可以動（1 = 整段播完）")]
     [Range(.3f, 1f)] public float hitMoveLockFraction = 1f;
+    [Tooltip("受擊時交還移動控制的上限，保留剩餘受擊姿勢")]
+    [Range(0f, 2f)] public float hitControlReturnCap = .32f;
     int hitLockPendingFrames;
     float hitLockUntil;
     float nextIdleChange;
@@ -96,7 +103,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     // 最後一刀的蓄力（抬手）時間 (秒)，比一般刀的 SlashPrepare 久
     const float FinisherPrepare = .5f;
     // 接招容錯：一刀收完之後還有多久 (秒) 可以按下一段（揮刀中途先按也會記住）
-    const float ComboGrace = .45f;
+    const float ComboGrace = .16f;
     // 刀鋒在模型的哪一面：揮刀時刀鋒朝後就改成 false / true 對調
     const bool FlipBladeEdge = true;
     // 每一刀揮完之後到能接下一刀的硬直 (秒)；最後一段（第三刀）比較長
@@ -285,6 +292,12 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         CacheHumanoidBones();
         CacheVisualRoot();
         ConfigureShortSlashTiming();
+        if (animator)
+        {
+            animator.applyRootMotion = false;
+            foreach (var parameter in animator.parameters)
+                if (parameter.nameHash == LocomotionRateHash) hasLocomotionRate = true;
+        }
         ScheduleNextIdle();
     }
 
@@ -303,7 +316,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         // Awake 可能保留舊的空參照；每次啟用重新抓取，確保揮刀事件一定會接上。
         ResolveReferences();
         ConfigureShortSlashTiming();
-        if (combat != null) combat.OnSwing += HandleSwing;
+        if (combat != null) { combat.OnSwing += HandleSwing; combat.OnAttackCanceled += HandleAttackCanceled; }
         if (health != null)
         {
             health.OnDied += HandleDeath;
@@ -313,7 +326,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
 
     void OnDisable()
     {
-        if (combat != null) combat.OnSwing -= HandleSwing;
+        if (combat != null) { combat.OnSwing -= HandleSwing; combat.OnAttackCanceled -= HandleAttackCanceled; }
         if (health != null)
         {
             health.OnDied -= HandleDeath;
@@ -378,9 +391,15 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
             float referenceSpeed = Mathf.Max(0.01f, controller.sprintSpeed);
             // 站在船上時移動腳本被停用：當成站在地上，不要播往下掉
             bool standingOnBoat = !controller.isActiveAndEnabled;
-            normalizedSpeed = standingOnBoat ? 0f : controller.CurrentSpeed / referenceSpeed;
+            normalizedSpeed = standingOnBoat ? 0f : controller.AnimationSpeed / referenceSpeed;
             grounded = standingOnBoat || controller.IsGrounded;
-            animator.SetFloat(SpeedHash, normalizedSpeed, 0.1f, Time.deltaTime);
+            animator.SetFloat(SpeedHash, normalizedSpeed, normalizedSpeed < .02f ? .045f : .075f, Time.deltaTime);
+            if (hasLocomotionRate)
+            {
+                bool running = animator.GetCurrentAnimatorStateInfo(0).IsName("Run");
+                float rate = controller.AnimationSpeed / Mathf.Max(.1f, running ? runClipMetersPerSecond : walkClipMetersPerSecond);
+                animator.SetFloat(LocomotionRateHash, Mathf.Clamp(rate, .08f, 1.35f), .07f, Time.deltaTime);
+            }
             animator.SetBool(GroundedHash, grounded);
             animator.SetFloat(VerticalSpeedHash, controller.VerticalVelocity);
         }
@@ -490,6 +509,15 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         nextIdleChange = Time.unscaledTime + Random.Range(low, high);
     }
 
+    void HandleAttackCanceled()
+    {
+        slashStartedAt = float.NegativeInfinity;
+        slashClipIndex = -1;
+        slashClipLeaving = false;
+        if (animator && (health == null || !health.IsDead) && controller && !controller.HasBufferedDodge)
+            animator.CrossFadeInFixedTime(controller.IsGrounded ? "Idle" : "Fall", .08f, 0, 0f);
+    }
+
     void HandleSwing(int comboIndex) => PlaySwordAttack(comboIndex);
 
     public void PlaySwordAttack(int comboIndex = 0)
@@ -563,6 +591,14 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         SmoothStepHeight();
         ApplyJumpDynamics();
         ApplyShortKesaSlash();
+        if (combat && combat.IsChargingAttack)
+        {
+            float weight = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(combat.ChargeProgress * 4f));
+            var actor = controller ? controller.transform : transform;
+            RotateBoneWorld(chest, actor.right, -6f * weight);
+            RotateBoneWorld(rightUpperArm, actor.right, -24f * weight);
+            RotateBoneWorld(leftUpperArm, actor.right, -12f * weight);
+        }
         ApplyAirDashPose();
         UpdateBowAndShieldVisuals();
 
@@ -773,6 +809,12 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
     {
         if (slashClipIndex < 0) return;
         if (controller != null && controller.IsRolling) { slashClipIndex = -1; return; }
+        if (combat != null && !combat.IsAttacking && !slashClipLeaving)
+        {
+            slashClipIndex = -1;
+            animator.CrossFadeInFixedTime(controller != null && !controller.IsGrounded ? "Fall" : "Idle", .08f, 0, 0f);
+            return;
+        }
         var path = CurrentSlash;
         float age = SlashAge;
         float[] k = SlashClipKeys[slashClipIndex];
@@ -1581,7 +1623,7 @@ public sealed class PlayerVisualAnimator : MonoBehaviour
         else if (--hitLockPendingFrames <= 0) lockSeconds = .5f; // 找不到受擊動畫（例如被其他動作蓋掉）：鎖一下就好
         if (lockSeconds < 0f) return;
         hitLockPendingFrames = 0;
-        lockSeconds = Mathf.Min(lockSeconds, hitMoveLockMax);
+        lockSeconds = Mathf.Min(lockSeconds, hitMoveLockMax, hitControlReturnCap);
         hitLockUntil = Time.time + lockSeconds;
         controller.Stun(lockSeconds);
     }

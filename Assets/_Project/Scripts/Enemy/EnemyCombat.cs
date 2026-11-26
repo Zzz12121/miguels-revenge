@@ -241,7 +241,7 @@ public class EnemyCombat : MeleeCombat
         if (dir.sqrMagnitude < 0.0001f) dir = transform.forward;
         Vector3 push = dir.normalized * knockback * comboKnockScale * (CurrentMove != null ? CurrentMove.knockbackScale : 1f)
                      + Vector3.up * (comboReaction == PlayerHitReaction.KnockedFlying ? 7f : 3f);
-        player.TakeDamage(damage, push, false, "被打倒了", true, comboReaction);
+        if (!player.TakeDamage(damage, push, false, "被打倒了", true, comboReaction)) return false;
         if (attackVfx) CombatVFX.Impact(hitPoint, attackVfxColor);
         return true;
     }

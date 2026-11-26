@@ -1,0 +1,18 @@
+{
+  "phase": "passed",
+  "checks": {
+    "productionEncounterAndTransformation": true,
+    "originalEntranceAndRegularBossSkills": true,
+    "cinematicSlowMotionPausesWithoutAdvancingActorsOrStages": true,
+    "existingVoidRendReturnsControlAndClock": true,
+    "halfHealthEscapeDialogueAndCameraHandoff": true
+  },
+  "errors": [],
+  "encounterPhase": "Waiting for rematch",
+  "escapePhase": "Escaped",
+  "castHistory": [
+    6,
+    2
+  ],
+  "playerProtectedForObservation": true
+}

@@ -48,6 +48,7 @@ public partial class ThirdPersonCamera
     public float autoRaiseSmooth = 0.1f, autoLowerSmooth = 0.45f;
 
     float autoPitch, autoPitchVelocity;
+    float resolvedViewDistance = -1f, viewDistanceVelocity;
     readonly RaycastHit[] viewHits = new RaycastHit[32];
     readonly Dictionary<Renderer, (ShadowCastingMode mode, float seen)> hiddenOccluders = new Dictionary<Renderer, (ShadowCastingMode, float)>();
     readonly Dictionary<Collider, Renderer[]> occluderRenderers = new Dictionary<Collider, Renderer[]>();
@@ -86,7 +87,7 @@ public partial class ThirdPersonCamera
         if (c == null || c.isTrigger || c is CharacterController || ArrowPassThrough.On(c)) return Occluder.Ignore;
         if (target != null && c.transform.IsChildOf(target)) return Occluder.Ignore;
         if (!CalligraphyWorldIsolation.Allows(c.transform)) return Occluder.Ignore;
-        if (c is TerrainCollider) return Occluder.Solid;
+        if (c is TerrainCollider || LockedTarget && c.transform.IsChildOf(LockedTarget)) return Occluder.Solid;
         var rb = c.attachedRigidbody;
         if (rb != null && !rb.isKinematic) return Occluder.Ignore;   // 會動的東西（被打飛的木桶、布娃娃）
         if (c.GetComponentInParent<IDamageable>() != null || c.GetComponentInParent<Animator>() != null) return Occluder.Ignore;   // 角色
@@ -139,9 +140,18 @@ public partial class ThirdPersonCamera
 
         float finalPitch = Mathf.Min(pitch + autoPitch, 85f);
         rotation = Quaternion.Euler(finalPitch, yaw, 0f);
-        dist = Mathf.Min(dist, ClearDistance(lookPoint, finalPitch, dist));
+        float clearDistance = Mathf.Min(dist, ClearDistance(lookPoint, finalPitch, dist));
+        if (resolvedViewDistance < 0f || clearDistance < resolvedViewDistance)
+        {
+            resolvedViewDistance = clearDistance;
+            viewDistanceVelocity = 0f;
+        }
+        else resolvedViewDistance = Mathf.SmoothDamp(resolvedViewDistance, clearDistance,
+            ref viewDistanceVelocity, Mathf.Max(.01f, returnDamping), Mathf.Infinity, Time.unscaledDeltaTime);
+        dist = Mathf.Min(clearDistance, resolvedViewDistance);
 
-        HideOccluders(lookPoint - rotation * Vector3.forward * dist);
+        if (hideSmallOccluders) HideOccluders(lookPoint - rotation * Vector3.forward * dist);
+        else RestoreOccluders(true);
     }
 
     /// <summary>鏡頭到角色頭、胸、腳的連線上有小東西 → 暫時隱藏（只留影子）；0.2 秒沒再擋住就恢復</summary>
@@ -202,5 +212,11 @@ public partial class ThirdPersonCamera
         }
     }
 
-    void OnDisable() => RestoreOccluders(true);
+    void OnDisable()
+    {
+        RestoreOccluders(true);
+        ClearLock();
+        resolvedViewDistance = -1f;
+        viewDistanceVelocity = 0f;
+    }
 }

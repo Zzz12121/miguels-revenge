@@ -130,7 +130,7 @@ public class PlayerHealth : MonoBehaviour
         skillInvulnerability.RemoveWhere(owner => !owner);
         if (skillInvulnerability.Count > 0) return false;
         // 翻滾是完整無敵：連原本可忽略受傷無敵時間的持續傷害也不能穿透。
-        if ((controller != null && controller.IsRolling) || Time.unscaledTime < dodgeInvulnerableUntil) return false;
+        if ((controller != null && controller.DodgeInvulnerable) || Time.time < dodgeInvulnerableUntil) return false;
         if (!ignoreInvincibility)
         {
             if (Time.time - lastHitTime < invincibleTime) return false;
@@ -255,7 +255,7 @@ public class PlayerHealth : MonoBehaviour
 
     public void GrantDodgeInvulnerability(float seconds)
     {
-        dodgeInvulnerableUntil = Mathf.Max(dodgeInvulnerableUntil, Time.unscaledTime + Mathf.Max(0f, seconds));
+        dodgeInvulnerableUntil = Mathf.Max(dodgeInvulnerableUntil, Time.time + Mathf.Max(0f, seconds));
     }
 
     /// <summary>補滿血（檢查點使用）</summary>
@@ -290,6 +290,9 @@ public class PlayerHealth : MonoBehaviour
     {
         if (IsDead) return;
         IsDead = true;
+        CombatHitStop.Cancel();
+        combat?.CancelTransientActions();
+        controller.ResetMotion();
         Health = 0f;
         deathReason = reason;
         if (knockDownRoutine != null) { StopCoroutine(knockDownRoutine); knockDownRoutine = null; }

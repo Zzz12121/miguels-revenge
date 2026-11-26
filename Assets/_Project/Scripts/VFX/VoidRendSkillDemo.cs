@@ -131,6 +131,8 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     void Update()
     {
+        UpdateFinisherPauseClock();
+        if (playing && Time.timeScale <= 0f) return;
         UpdatePreviewInputAndTargeting();
         UpdateChargeCameraRestore();
 
@@ -141,6 +143,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
 
     void LateUpdate()
     {
+        if (playing && Time.timeScale <= 0f) return;
         // Humanoid 骨架必須在 Animator 更新之後才疊加技能姿勢，否則下一幀會被動畫蓋掉。
         if (playing) StabilizeCasterVisualRoot();
         if (playing && !useLegacyProceduralPose) ApplyHumanoidFinisherPose();
@@ -157,7 +160,7 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         Vector3 shake = new Vector3(
             Mathf.PerlinNoise(t, 1.7f) - 0.5f,
             Mathf.PerlinNoise(4.2f, t) - 0.5f,
-            Mathf.PerlinNoise(t, 8.4f) - 0.5f) * (shakeStrength * 0.42f);
+            Mathf.PerlinNoise(t, 8.4f) - 0.5f) * (shakeStrength * 0.42f * ThirdPersonCamera.MainShakeIntensity);
         Vector3 rotShake = new Vector3(shake.y, -shake.x, shake.z) * 2.1f;
 
         UpdateFinisherCamera(shake, rotShake);
@@ -179,8 +182,19 @@ public sealed partial class VoidRendSkillDemo : MonoBehaviour
         DrawPadVoidRendArmedHint();
     }
 
+    void OnEnable()
+    {
+        skillInputBuffer.Clear();
+        UnityEngine.SceneManagement.SceneManager.activeSceneChanged += ClearSceneSkillInput;
+    }
+
+    void ClearSceneSkillInput(UnityEngine.SceneManagement.Scene previous, UnityEngine.SceneManagement.Scene current)
+        => skillInputBuffer.Clear();
+
     void OnDisable()
     {
+        skillInputBuffer.Clear();
+        UnityEngine.SceneManagement.SceneManager.activeSceneChanged -= ClearSceneSkillInput;
         StopAllCoroutines();
         if (IsTargeting) CancelTargeting();
         if (charging) CancelCharge();

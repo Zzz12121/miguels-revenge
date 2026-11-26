@@ -12,7 +12,7 @@ using UnityEngine.InputSystem;
 /// - shieldBashEnabled 打開時，右鍵按一下 = 舊的舉盾衝撞（盾擊）
 /// - 弓箭（bowMode：船戰登船，或拿到弓箭技能 / 鐵匠鋪換弓）：右鍵按住瞄準、左鍵射箭，陸地和船上的敵人都射得到
 /// </summary>
-public class PlayerCombat : MeleeCombat
+public partial class PlayerCombat : MeleeCombat
 {
     [Header("測試與倍率")]
     [Tooltip("玩家攻擊力倍率")]
@@ -153,12 +153,27 @@ public class PlayerCombat : MeleeCombat
     bool hitMarkerValid;
 
     PlayerHealth health;
-    bool attackQueued;
+    [Header("輸入緩衝")]
+    [Range(.05f, .3f)] public float attackBufferSeconds = .16f;
+    [Range(0f, 90f)] public float initialAttackTurn = 35f;
+    [Min(0f)] public float anticipationTurnSpeed = 540f;
+    [Range(.05f, .3f)] public float blockBufferSeconds = .12f;
+    CombatInputBuffer blockBuffer;
+    CombatInputBuffer attackBuffer;
+    bool attackQueued => attackBuffer.Pending;
+    PlayerWeaponPresenter hitWeapon;
+    bool hitWindow, sampledBlade;
+    float swingDamage;
+    Vector3 previousBladeBase, previousBladeTip;
+    readonly Collider[] bladeOverlap = new Collider[96];
+    [Header("武器掃掠")]
+    [Range(.05f, .5f)] public float bladeRadius = .18f;
 
     protected override void Awake()
     {
         base.Awake();
         health = GetComponent<PlayerHealth>();
+        if (!GetComponent<PlayerMeleeSweepDriver>()) gameObject.AddComponent<PlayerMeleeSweepDriver>();
         // 跳劈落地：地面衝擊 + 鏡頭震動
         OnPlungeLanded += p =>
         {
@@ -185,8 +200,20 @@ public class PlayerCombat : MeleeCombat
 
     void Update()
     {
-        if (health != null && health.IsDead) return;
-        if (controller != null && (controller.IsRolling || controller.ActionsLocked)) return;
+        if (controller == null || !controller.inputEnabled || controller.ActionsLocked || Time.timeScale <= 0f ||
+            GameUI.OverlayOpen || InputBindings.ActionsSuppressedThisFrame || RangeInputSettings.InputBlocked || health != null && health.IsDead)
+        {
+            ClearBufferedInput();
+            return;
+        }
+        if (controller.IsRolling)
+        {
+            if (Cursor.lockState == CursorLockMode.Locked && InputBindings.Pressed(GameAction.Attack))
+                attackBuffer.Queue(attackBufferSeconds);
+            if (Cursor.lockState == CursorLockMode.Locked && InputBindings.Pressed(GameAction.Block))
+                blockBuffer.Queue(blockBufferSeconds);
+            return;
+        }
         if (bowMode)
         {
             UpdateBow();
@@ -196,12 +223,18 @@ public class PlayerCombat : MeleeCombat
 
         // 攻擊 / 格擋的按鍵在暫停選單「設定」裡可以改（預設 滑鼠左鍵 / 右鍵，手把 X / LT）
         bool leftClick = InputBindings.Pressed(GameAction.Attack);
-        bool rightClick = InputBindings.Pressed(GameAction.Block);
+        if (InputBindings.Pressed(GameAction.Block)) blockBuffer.Queue(blockBufferSeconds);
+        bool rightClick = blockBuffer.Pending && CanDodgeCancel;
+        if (rightClick)
+        {
+            blockBuffer.Clear();
+            if (IsAttacking) CancelAttack();
+        }
 
         // 受擊僵直中不能攻擊 / 舉盾
         if (controller.IsStunned)
         {
-            attackQueued = false;
+            attackBuffer.Clear();
             if (IsBlocking) SetBlocking(false, true);
             return;
         }
@@ -233,6 +266,13 @@ public class PlayerCombat : MeleeCombat
             SetBlocking(false, true);
         if (IsBlocking) controller.FaceDirection(GetAimDirection());
 
+        if (!IsAttacking && attackQueued && !ShieldUp)
+        {
+            attackBuffer.Clear();
+            heavyChain = false;
+            BeginAttack();
+        }
+
         // 有「重擊」能力：沒在攻擊時按下左鍵先開始蓄力，放開才出手；按住超過 heavyHoldTime 就是重擊（舉盾時不能蓄力）
         if (heavyAttackEnabled && !IsAttacking && !ShieldUp)
         {
@@ -258,7 +298,7 @@ public class PlayerCombat : MeleeCombat
         if (leftClick && !ShieldUp)
         {
             heavyChain = false;
-            if (!BeginAttack()) attackQueued = true;
+            if (!BeginAttack()) attackBuffer.Queue(attackBufferSeconds);
         }
     }
 
@@ -500,6 +540,8 @@ public class PlayerCombat : MeleeCombat
 
     bool charging, chargeFull, heavyChain, heavySwing;
     float chargeStart;
+    public bool IsChargingAttack => charging;
+    public float ChargeProgress => charging ? Mathf.Clamp01((Time.time - chargeStart) / Mathf.Max(.01f, heavyHoldTime)) : 0f;
 
     [Tooltip("手上武器的傷害倍率（鐵匠鋪換武器時由 PlayerLoadout 設定，不會跟著存檔 / 換關卡；大刀 = 1）")]
     [System.NonSerialized] public float weaponDamageScale = 1f;
@@ -554,7 +596,7 @@ public class PlayerCombat : MeleeCombat
         charging = false;
         chargeFull = false;
         heavyChain = false;
-        attackQueued = false;
+        attackBuffer.Clear();
 
         if (IsAimingBow)
         {
@@ -572,7 +614,7 @@ public class PlayerCombat : MeleeCombat
         EndCounter();
         if (IsBlocking) SetBlocking(false, true);
         charging = false;
-        attackQueued = false;
+        attackBuffer.Clear();
 
         if (IsAimingBow)
         {
@@ -848,25 +890,59 @@ public class PlayerCombat : MeleeCombat
 
     protected override void OnSwingStart(int index)
     {
-        attackQueued = false;
+        attackBuffer.Clear();
         heavySwing = index == 0 && heavyChain; // 重擊只算蓄力放開的那一刀
-        if (heavySwing) ThirdPersonCamera.ShakeMain(0.12f, 0.15f);
+
     }
 
-    protected override bool WantsNextHit() => attackQueued;
+    public void ClearBufferedInput()
+    {
+        attackBuffer.Clear();
+        blockBuffer.Clear();
+        charging = false;
+        chargeFull = false;
+    }
+
+    public override void CancelAttack()
+    {
+        ClearBufferedInput();
+        base.CancelAttack();
+    }
+
+    protected override bool WantsNextHit() => attackQueued && !controller.HasBufferedDodge;
+    protected override bool CanContinueAttack => health == null || !health.IsDead;
+
+    protected override void FaceAttack(Vector3 direction)
+    {
+        direction.y = 0f;
+        if (direction.sqrMagnitude < .001f) return;
+        transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction), initialAttackTurn);
+    }
+
+    protected override void TrackAnticipation(float deltaTime)
+    {
+        Vector3 direction = GetAimDirection();
+        direction.y = 0f;
+        if (direction.sqrMagnitude > .001f)
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(direction),
+                anticipationTurnSpeed * deltaTime);
+    }
 
     protected override Vector3 GetAimDirection()
     {
         Transform cam = controller != null ? controller.cameraTransform : null;
         if (cam == null && Camera.main != null) cam = Camera.main.transform;
-        return cam != null ? cam.forward : transform.forward;
+        var orbit = cam ? cam.GetComponent<ThirdPersonCamera>() : null;
+        if (orbit && orbit.LockedTarget) return orbit.LockedTarget.position - transform.position;
+        if (controller && controller.DesiredMoveDirection.sqrMagnitude > .01f) return controller.DesiredMoveDirection;
+        return orbit ? orbit.PlanarForward : cam != null ? cam.forward : transform.forward;
     }
 
     protected override bool TryDamage(Collider c, float damage, Vector3 hitPoint, HashSet<object> alreadyHit)
     {
         if(!CalligraphyWorldIsolation.Allows(c.transform))return false;
         var target = c.GetComponentInParent<IDamageable>();
-        if (target == null || target.IsDead || alreadyHit.Contains(target)) return false;
+        if (target == null || target.IsDead || target is BossHealth boss && boss.Invulnerable || alreadyHit.Contains(target)) return false;
 
         alreadyHit.Add(target);
         float dealt = damage * DamageScale(heavySwing, target);
@@ -874,7 +950,7 @@ public class PlayerCombat : MeleeCombat
         AfterHit(dealt, target);
         OnHitLanded?.Invoke(target, hitPoint, dealt, heavySwing || IsDashSlash); // 幻影突進 / 剪刀斬：打中的手感算重擊（頓幀久一點）
         if (heavySwing) CombatVFX.Impact(hitPoint, new Color(1f, 0.6f, 0.2f));
-        ThirdPersonCamera.ShakeMain(heavySwing ? 0.18f : 0.08f, 0.1f);
+
         return true;
     }
 }

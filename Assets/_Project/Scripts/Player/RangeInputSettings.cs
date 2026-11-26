@@ -87,7 +87,7 @@ public sealed class RangeInputSettings : MonoBehaviour
         foreach(var skill in FindObjectsByType<VoidRendSkillDemo>())if(skill.IsPlaying)return;
         var tether=GetComponent<EnergyTetherSkill>();if(tether && tether.IsExecuting)return;
         if(!SkillAimCancellation.Register(Close))return;
-        savedTimeScale=Time.timeScale;savedCursor=Cursor.lockState;savedCursorVisible=Cursor.visible;
+        savedTimeScale=CombatHitStop.CaptureTimeScale();savedCursor=Cursor.lockState;savedCursorVisible=Cursor.visible;
         IsOpen=true;WaitingFor=-1;Feedback="點選格子，再按一下想用的按鍵";openedFrame=Time.frameCount;
         if(controller){controller.LockActions();locked=true;}
         orbit=Camera.main?Camera.main.GetComponent<ThirdPersonCamera>():null;
@@ -100,6 +100,7 @@ public sealed class RangeInputSettings : MonoBehaviour
         IsOpen=false;WaitingFor=-1;SkillAimCancellation.Release(Close);
         if(locked && controller)controller.UnlockActions();locked=false;
         if(orbit)orbit.SetPointerUiOwner(this,false);orbit=null;
+        InputBindings.SuppressActionsThisFrame();
         Time.timeScale=savedTimeScale;Cursor.lockState=savedCursor;Cursor.visible=savedCursorVisible;
     }
     void Update()

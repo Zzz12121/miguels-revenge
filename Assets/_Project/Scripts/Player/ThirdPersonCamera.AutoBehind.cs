@@ -23,15 +23,15 @@ public partial class ThirdPersonCamera
     bool jumpAirborne;
 
     /// <summary>HandleInput 之前記下 yaw，之後比對：有變 = 玩家手動轉了鏡頭</summary>
-    void NoteManualLook(float yawBefore)
+    void NoteManualLook(float yawBefore, float pitchBefore)
     {
-        if (Mathf.Abs(Mathf.DeltaAngle(yawBefore, yaw)) > 0.05f) lastManualLook = Time.unscaledTime;
+        if (Mathf.Abs(Mathf.DeltaAngle(yawBefore, yaw)) > 0.01f || Mathf.Abs(pitchBefore - pitch) > .01f) lastManualLook = Time.unscaledTime;
     }
 
     /// <summary>角色正在進攻 / 翻滾 / 跳躍時，鏡頭的水平角度慢慢轉到角色背後</summary>
     void AutoBehind()
     {
-        if (!autoBehindOnAction || target == null) return;
+        if (manualOrbitPriority || LockedTarget || !autoBehindOnAction || target == null) return;
         if (autoBehindOwner != target)
         {
             autoBehindOwner = target;

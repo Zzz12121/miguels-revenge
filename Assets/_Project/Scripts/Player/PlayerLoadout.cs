@@ -259,45 +259,11 @@ public class PlayerLoadout : MonoBehaviour
         archerBow = GetComponent<PlayerArcherBow>();
         combat.OnSwing += i => { swingAt = Time.time; swingIndex = i; };
         combat.OnBowShot += OnBowShot;
-        combat.OnDealtHit += OnDealtHit;
+
         combat.OnArrowSpawned += OnArrowSpawned;
     }
 
     // ---------------- 打擊回饋 ----------------
-
-    float hitStopUntil;
-
-    void OnDealtHit(float damage, IDamageable target)
-    {
-        float k = Mathf.Clamp01(damage / 30f);
-        ThirdPersonCamera.ShakeMain(0.05f + 0.07f * k, 0.12f);
-        // 頓幀：一下打中好幾個也只頓一次；別的東西正在改時間（暫停、慢動作）就不頓
-        // 刀、長槍砍中敵人（target 不是 null；箭是 null）：刀停在砍中的地方久一點（0.09 ~ 0.14 秒），接著一小段加速，像把刀從肉裡快速抽出來
-        bool melee = target != null && !(Current == WeaponLoadout.BowKnife && Arrows > 0 && combat.IsAimingBow);
-        if (Time.unscaledTime >= hitStopUntil && Time.timeScale >= 0.99f)
-        {
-            float stop = melee ? 0.09f + 0.05f * k : 0.04f + 0.03f * k;
-            hitStopUntil = Time.unscaledTime + stop + (melee ? 0.15f : 0.05f);
-            StartCoroutine(HitStop(stop, melee));
-        }
-        // 手把震動統一交給 PadRumble（它也掛在 OnDealtHit 上；兩邊各自開關馬達會互相把對方的震動關掉）
-    }
-
-    const float HitStopScale = 0.05f;
-
-    const float PullOutScale = 1.7f, PullOutTime = 0.07f;
-
-    System.Collections.IEnumerator HitStop(float seconds, bool pullOut = false)
-    {
-        Time.timeScale = HitStopScale;
-        yield return new WaitForSecondsRealtime(seconds);
-        if (!Mathf.Approximately(Time.timeScale, HitStopScale)) yield break; // 別的東西改了時間（暫停、技能慢動作）：交給它
-        if (!pullOut) { Time.timeScale = 1f; yield break; }
-        // 抽刀：一小段時間走得比平常快（刀從砍中的地方快速抽出來），再回到正常
-        Time.timeScale = PullOutScale;
-        yield return new WaitForSecondsRealtime(PullOutTime);
-        if (Mathf.Approximately(Time.timeScale, PullOutScale)) Time.timeScale = 1f;
-    }
 
     PlayerShieldBowAnimator shieldBow;
     static readonly int BowDrawHash = Animator.StringToHash("BowDraw");
@@ -329,11 +295,6 @@ public class PlayerLoadout : MonoBehaviour
     void Update()
     {
         SnapBowDrawPose();
-    }
-
-    void OnDisable()
-    {
-        if (Mathf.Approximately(Time.timeScale, HitStopScale)) Time.timeScale = 1f;
     }
 
     void OnDestroy()

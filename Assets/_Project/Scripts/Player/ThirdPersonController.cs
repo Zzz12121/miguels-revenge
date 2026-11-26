@@ -23,6 +23,25 @@ public class ThirdPersonController : MonoBehaviour
     public float sprintSpeed = 8f;
     [Tooltip("加速 / 減速度，越大越靈敏 (m/s²)")]
     public float acceleration = 40f;
+    [Tooltip("停止時的減速度 (m/s²)")]
+    [Min(1f)] public float deceleration = 55f;
+    [Tooltip("反向移動時的加速度倍率")]
+    [Range(1f, 3f)] public float reversalAcceleration = 1.65f;
+    [Header("閃避緩衝與無敵窗口")]
+    [Range(.05f, .3f)] public float dodgeBufferSeconds = .15f;
+    [Min(0f)] public float rollInvulnerabilityStart = .025f;
+    [Min(0f)] public float rollInvulnerabilityEnd = .42f;
+    CombatInputBuffer dodgeBuffer;
+    PlayerCombat playerCombat;
+    PlayerHealth playerHealth;
+    ThirdPersonCamera playerCamera;
+    float rollElapsed, rollRequestedTravel;
+    readonly float[] rollDistanceSamples = new float[49];
+    public bool HasBufferedDodge => dodgeBuffer.Pending;
+    public Vector3 DesiredMoveDirection { get; private set; }
+    public float AnimationSpeed { get; private set; }
+    public bool DodgeInvulnerable => IsAirDashing || IsRolling &&
+        rollElapsed >= rollInvulnerabilityStart && rollElapsed <= Mathf.Min(rollDuration, rollInvulnerabilityEnd);
     [Tooltip("在空中時的操控比例 (0 = 空中完全無法改變方向, 1 = 跟地面一樣)")]
     [Range(0f, 1f)] public float airControl = 0.5f;
     [Tooltip("轉向平滑時間，越小轉身越快")]
@@ -44,7 +63,13 @@ public class ThirdPersonController : MonoBehaviour
     float suppressJumpUntil = float.NegativeInfinity;
     /// <summary>不能跳躍 / 翻滾 / 攻擊 / 使用道具與技能</summary>
     public bool ActionsLocked => actionLocks > 0;
-    public void LockActions() => actionLocks++;
+    public void LockActions()
+    {
+        actionLocks++;
+        dodgeBuffer.Clear();
+        playerCombat?.ClearBufferedInput();
+        CombatHitStop.Cancel();
+    }
     public void UnlockActions() => actionLocks = Mathf.Max(0, actionLocks - 1);
     /// <summary>接下來 seconds 秒內按空白鍵不會跳（關掉對話框的那一下不要順便跳起來）</summary>
     public void SuppressJump(float seconds) => suppressJumpUntil = Time.unscaledTime + seconds;
@@ -81,7 +106,7 @@ public class ThirdPersonController : MonoBehaviour
     public bool IsRolling { get; private set; }
     /// <summary>翻滾已經滾了全程距離的幾成（0～1，動畫用：身體轉的角度跟著實際滾的距離）</summary>
     public float RollTravelFraction => IsRolling || rollPending ? Mathf.Clamp01(rollProgress / Mathf.Max(.01f, rollDistance)) : 0f;
-    public float RollNormalizedTime => IsRolling ? Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration)) : 0f;
+    public float RollNormalizedTime => IsRolling ? Mathf.Clamp01(rollElapsed / Mathf.Max(.01f, rollDuration)) : 0f;
     public bool IsControlImmune => IsRolling || IsAirDashing || IsScriptedMoving;
     public event System.Action OnRollStarted;
     public event System.Action OnRollEnded;
@@ -114,6 +139,7 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>開始由技能控制位置（會中斷翻滾 / 側閃、清掉速度）</summary>
     public void BeginScriptedMove()
     {
+        dodgeBuffer.Clear();
         EndRoll();
         EndAirDash(false);
         IsScriptedMoving = true;
@@ -206,7 +232,7 @@ public class ThirdPersonController : MonoBehaviour
         if (grounded)
         {
             if (!wasGrounded && fallSpeed < -6f) Footstep(footstepVolume * 1.4f); // 落地
-            stepTravel += horizontalVelocity.magnitude * dt;
+            stepTravel += AnimationSpeed * dt;
             if (stepTravel >= stepDistance)
             {
                 stepTravel = 0f;
@@ -239,7 +265,12 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>正在受擊僵直</summary>
     public bool IsStunned => Time.time < stunUntil;
     /// <summary>僵直 seconds 秒（玩家受傷時使用）</summary>
-    public void Stun(float seconds) => stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+    public void Stun(float seconds)
+    {
+        stunUntil = Mathf.Max(stunUntil, Time.time + seconds);
+        dodgeBuffer.Clear();
+        playerCombat?.ClearBufferedInput();
+    }
 
     [Header("擊退：嚴禁在地上滑")]
     [Tooltip("被推的時候往上的力道至少要這麼大 (m/s)，才會被打飛到空中（帶著水平的力道飛出去，落地就停住）。\n" +
@@ -350,8 +381,21 @@ public class ThirdPersonController : MonoBehaviour
         temporarySpeedBoost = 1f;
     }
 
+    void OnEnable() => UnityEngine.SceneManagement.SceneManager.activeSceneChanged += ClearSceneInput;
+
+    void ClearSceneInput(UnityEngine.SceneManagement.Scene previous, UnityEngine.SceneManagement.Scene current)
+    {
+        dodgeBuffer.Clear();
+        lastJumpPressedTime = float.NegativeInfinity;
+        playerCombat?.ClearBufferedInput();
+    }
+
     void OnDisable()
     {
+        UnityEngine.SceneManagement.SceneManager.activeSceneChanged -= ClearSceneInput;
+        dodgeBuffer.Clear();
+        DesiredMoveDirection = Vector3.zero;
+        AnimationSpeed = 0f;
         EndRoll();
         EndAirDash(false);
         IsScriptedMoving = false;
@@ -388,6 +432,11 @@ public class ThirdPersonController : MonoBehaviour
     /// <summary>清除所有速度（重生 / 傳送時使用）</summary>
     public void ResetMotion()
     {
+        dodgeBuffer.Clear();
+        playerCombat?.ClearBufferedInput();
+        lastJumpPressedTime = float.NegativeInfinity;
+        DesiredMoveDirection = Vector3.zero;
+        AnimationSpeed = 0f;
         EndRoll();
         EndAirDash(false);
         IsScriptedMoving = false;
@@ -442,13 +491,27 @@ public class ThirdPersonController : MonoBehaviour
     void Awake()
     {
         controller = GetComponent<CharacterController>();
+        playerCombat = GetComponent<PlayerCombat>();
+        playerHealth = GetComponent<PlayerHealth>();
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
     }
 
     void Update()
     {
-        if (RangeInputSettings.IsRange(this) && RangeInputSettings.InputBlocked) return;
+        if (!aiControlled)
+        {
+            if (!playerCombat) playerCombat = GetComponent<PlayerCombat>();
+            if (!playerHealth) playerHealth = GetComponent<PlayerHealth>();
+        }
+        if (!aiControlled && (!inputEnabled || ActionsLocked || GameUI.OverlayOpen || Time.timeScale <= 0f ||
+            RangeInputSettings.InputBlocked || playerHealth && playerHealth.IsDead))
+        {
+            dodgeBuffer.Clear();
+            lastJumpPressedTime = float.NegativeInfinity;
+            DesiredMoveDirection = Vector3.zero;
+            if (Time.timeScale <= 0f || GameUI.OverlayOpen || RangeInputSettings.InputBlocked) return;
+        }
         if (controller == null || !controller.enabled) return;
         if (IsScriptedMoving) return; // 技能（幻影分身突進）在控制位置
         float dt = Time.deltaTime;
@@ -471,8 +534,9 @@ public class ThirdPersonController : MonoBehaviour
             Vector3 camForward = Vector3.forward, camRight = Vector3.right;
             if (cameraTransform != null)
             {
-                camForward = Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
-                camRight = Vector3.ProjectOnPlane(cameraTransform.right, Vector3.up).normalized;
+                if (!playerCamera) playerCamera = cameraTransform.GetComponent<ThirdPersonCamera>();
+                camForward = playerCamera ? playerCamera.PlanarForward : Vector3.ProjectOnPlane(cameraTransform.forward, Vector3.up).normalized;
+                camRight = Vector3.Cross(Vector3.up, camForward);
             }
             moveDir = camForward * input.y + camRight * input.x; // 長度 <= 1
             if (IsStunned) { moveDir = Vector3.zero; sprint = false; jumpPressed = false; rollPressed = false; }
@@ -480,8 +544,18 @@ public class ThirdPersonController : MonoBehaviour
 
         // 動作鎖定中（對話、喝藥水）或剛結束對話：這一下空白鍵不算跳躍
         if (ActionsLocked || Time.unscaledTime < suppressJumpUntil) jumpPressed = false;
-        // 翻滾鍵：在地上 = 翻滾；在空中 = 空中側閃斬
-        if (rollPressed && !TryStartAirDash(moveDir)) TryStartRoll(moveDir);
+        if (InputBindings.ActionsSuppressedThisFrame) { jumpPressed = false; rollPressed = false; }
+        DesiredMoveDirection = moveDir;
+        if (rollPressed) dodgeBuffer.Queue(dodgeBufferSeconds);
+        if (dodgeBuffer.Pending && !IsRolling && !rollPending && !IsAirDashing)
+        {
+            if (!playerCombat) playerCombat = GetComponent<PlayerCombat>();
+            if (!playerCombat || playerCombat.CanDodgeCancel)
+            {
+                if (!TryStartAirDash(moveDir)) TryStartRoll(moveDir);
+                if (IsRolling || rollPending || IsAirDashing) dodgeBuffer.Clear();
+            }
+        }
         if (IsRolling || rollPending)
         {
             UpdateRoll(dt);
@@ -507,7 +581,9 @@ public class ThirdPersonController : MonoBehaviour
         float targetSpeed = (sprint ? sprintSpeed : walkSpeed) * speedMultiplier * temporarySpeedMultiplier * temporarySpeedBoost
                           * (IsPushing ? pushFactor : 1f);
         Vector3 targetVelocity = moveDir * targetSpeed;
-        float accel = controller.isGrounded ? acceleration : acceleration * airControl;
+        float groundAcceleration = moveDir.sqrMagnitude < .001f ? deceleration : acceleration;
+        if (Vector3.Dot(horizontalVelocity, targetVelocity) < 0f) groundAcceleration *= reversalAcceleration;
+        float accel = controller.isGrounded ? groundAcceleration : acceleration * airControl;
         if (ballistic)
         {
             // 拋物線飛行中：水平速度不變，落地（或撞到東西停下來）才恢復控制
@@ -525,7 +601,14 @@ public class ThirdPersonController : MonoBehaviour
         // ---- 3. 角色轉向移動方向 ----
         if (moveDir.sqrMagnitude > 0.001f && !lockRotation)
         {
-            float targetAngle = Mathf.Atan2(moveDir.x, moveDir.z) * Mathf.Rad2Deg;
+            Vector3 facing = moveDir;
+            if (!aiControlled && cameraTransform)
+            {
+                if (!playerCamera) playerCamera = cameraTransform.GetComponent<ThirdPersonCamera>();
+                if (playerCamera && playerCamera.LockedTarget)
+                    facing = Vector3.ProjectOnPlane(playerCamera.LockedTarget.position - transform.position, Vector3.up);
+            }
+            float targetAngle = Mathf.Atan2(facing.x, facing.z) * Mathf.Rad2Deg;
             float angle = Mathf.SmoothDampAngle(transform.eulerAngles.y, targetAngle,
                                                 ref rotationVelocity, rotationSmoothTime);
             transform.rotation = Quaternion.Euler(0f, angle, 0f);
@@ -540,6 +623,7 @@ public class ThirdPersonController : MonoBehaviour
 
         bool canJump = Time.time - lastGroundedTime <= coyoteTime;
         bool wantsJump = Time.time - lastJumpPressedTime <= jumpBufferTime;
+        if (playerCombat && playerCombat.IsAttacking && !playerCombat.CanDodgeCancel) wantsJump = false;
         // 精力不夠跳：這次按鍵作廢（也不會變成二段跳）
         if (wantsJump && (canJump || doubleJumpEnabled && !aiControlled && !airJumpUsed && !ballistic && !controller.isGrounded)
             && playerStamina != null && !playerStamina.TrySpendJump())
@@ -569,6 +653,7 @@ public class ThirdPersonController : MonoBehaviour
         verticalVelocity += gravity * dt;
 
         // ---- 5. 實際移動 ----
+        Vector3 positionBeforeMove = transform.position;
         bool wasGrounded = controller.isGrounded;
         // Step-up is a grounded walking aid, not an airborne landing. At sprint speed it can
         // snap a rising capsule onto an obstacle and prematurely replace Jump with Run.
@@ -589,6 +674,7 @@ public class ThirdPersonController : MonoBehaviour
         if (wasGrounded && !controller.isGrounded && verticalVelocity <= 0f && !ballistic)
             SnapToGround();
 
+        AnimationSpeed = dt > 0f ? Vector3.ProjectOnPlane(transform.position - positionBeforeMove, Vector3.up).magnitude / dt : 0f;
         UpdateFootsteps(dt);
     }
 
@@ -668,12 +754,13 @@ public class ThirdPersonController : MonoBehaviour
 
     void TryStartRoll(Vector3 requestedDirection)
     {
+        if (playerCombat && !playerCombat.CanDodgeCancel) return;
         if (aiControlled || !isActiveAndEnabled || !inputEnabled || ActionsLocked || IsStunned || ballistic || IsRolling || rollPending ||
             !controller || !controller.enabled || !controller.isGrounded || Time.timeScale<=0 || GameUI.OverlayOpen ||
-            (GetComponent<PlayerHealth>()?.IsDead??false) || Time.unscaledTime < nextRollTime) return;
+            (GetComponent<PlayerHealth>()?.IsDead??false) || Time.time < nextRollTime) return;
         // Affordability first; payment is committed only after the controller really moves.
         if (Stamina != null && !Stamina.CanAffordRoll){Stamina.TrySpendRoll();return;}
-        // 攻擊到一半也能翻：先把攻擊整個取消（歸零攻擊幀、移動速度還原），下面的速度才不會用到攻擊時被壓低的速度
+        // 只在已公開的收招取消窗口進入閃避。先把攻擊整個取消（歸零攻擊幀、移動速度還原），下面的速度才不會用到攻擊時被壓低的速度
         GetComponent<PlayerCombat>()?.CancelTransientActions();
         requestedDirection.y = 0f;
         bool hasInput = requestedDirection.sqrMagnitude > .001f;
@@ -688,14 +775,16 @@ public class ThirdPersonController : MonoBehaviour
         FaceDirection(rollDirection);
         // 速度曲線：從原本跑的速度接上去，一開始最快、之後慢慢減速，結束時剛好是走路速度（還按著方向鍵）→ 直接接著跑，不會停一下再起步
         rollEntrySpeed = Mathf.Max(0f, Vector3.Dot(horizontalVelocity, rollDirection));
-        rollExitSpeedNow = walkSpeed * speedMultiplier * (hasInput ? rollExitSpeed : .3f); // 沒按方向鍵：滾完慢慢停下來
+        rollExitSpeedNow = walkSpeed * speedMultiplier * (hasInput ? rollExitSpeed : 0f); // 沒按方向鍵：滾完慢慢停下來
         rollPeak = SolveRollPeak();
         rollProgress = 0f;
         horizontalVelocity = Vector3.zero;
         verticalVelocity = -2f;
         ballistic = false;
         GetComponent<PlayerCombat>()?.CancelTransientActions();
-        rollStartedAt = Time.unscaledTime;
+        rollStartedAt = Time.time;
+        rollElapsed = 0f;
+        rollRequestedTravel = 0f;
         rollCommitted=false;rollTravel=0;
         rollPending = true;
     }
@@ -719,7 +808,7 @@ public class ThirdPersonController : MonoBehaviour
         airDashStartedAt = Time.time;
         horizontalVelocity = Vector3.zero;
         verticalVelocity = 0f;
-        GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(airDashDuration + .05f);
+
         CombatVFX.Puff(transform.position, -AirDashDirection, new Color(.85f, .9f, 1f, .55f));
         GameAudio.Play("SFX/RPG/cloth3", transform.position, .8f, 1.5f, .05f, .3f);
         OnAirDashStarted?.Invoke();
@@ -752,13 +841,17 @@ public class ThirdPersonController : MonoBehaviour
 
     void UpdateRoll(float dt)
     {
-        if(dt<=0)return;
+        if (dt <= 0f || !IsRolling && !rollPending) return;
         if(!inputEnabled || ActionsLocked || IsStunned){EndRoll();return;}
-        float u = Mathf.Clamp01((Time.unscaledTime - rollStartedAt) / Mathf.Max(.01f, rollDuration));
-        // 半正弦速度：起步與收尾不突兀，積分後仍約等於設定距離。
-        float speed = RollSpeed(Mathf.Clamp01(u + dt / rollDuration * .5f), rollPeak);
+        rollElapsed = Mathf.Min(rollDuration, rollElapsed + dt);
+        float u = Mathf.Clamp01(rollElapsed / Mathf.Max(.01f, rollDuration));
+        float sample = u * (rollDistanceSamples.Length - 1);
+        int lower = Mathf.Min(rollDistanceSamples.Length - 2, Mathf.FloorToInt(sample));
+        float wanted = Mathf.Lerp(rollDistanceSamples[lower], rollDistanceSamples[lower + 1], sample - lower);
+        float travel = Mathf.Max(0f, wanted - rollRequestedTravel);
+        rollRequestedTravel = wanted;
         Vector3 before=transform.position;
-        controller.Move((rollDirection * speed + Vector3.down * 2f) * dt);
+        controller.Move(rollDirection * travel + Vector3.down * (2f * dt));
         rollProgress += Mathf.Max(0f, Vector3.Dot(transform.position - before, rollDirection));
         if(!rollCommitted)
         {
@@ -767,14 +860,14 @@ public class ThirdPersonController : MonoBehaviour
             {
                 if(Stamina!=null && !Stamina.TrySpendRoll()){EndRoll();return;}
                 rollCommitted=true;rollPending=false;IsRolling=true;nextRollTime=rollStartedAt+rollDuration+rollCooldown;
-                GetComponent<PlayerHealth>()?.GrantDodgeInvulnerability(Mathf.Max(0,rollDuration*(1-u))+.08f);
+
                 OnRollStarted?.Invoke();
             }
             else if(u>.08f){EndRoll();return;}
         }
         if (u < 1f) return;
         EndRoll();
-        horizontalVelocity = rollDirection * rollExitSpeedNow; // 滾完直接接著跑
+        horizontalVelocity = DesiredMoveDirection.sqrMagnitude > .001f ? DesiredMoveDirection.normalized * rollExitSpeedNow : Vector3.zero; // 滾完直接接著跑
     }
 
     /// <summary>翻滾速度（u = 0～1）：前 14% 從進場速度加速上去，之後一路減速到結束速度</summary>
@@ -797,7 +890,13 @@ public class ThirdPersonController : MonoBehaviour
         }
         a /= n; b = b / n - a;
         float target = rollDistance / Mathf.Max(.01f, rollDuration);
-        return Mathf.Max(rollExitSpeedNow, b > 1e-4f ? (target - a) / b : target);
+        float peak = Mathf.Max(rollExitSpeedNow, b > 1e-4f ? (target - a) / b : target);
+        rollDistanceSamples[0] = 0f;
+        for (int i = 1; i <= n; i++)
+            rollDistanceSamples[i] = rollDistanceSamples[i - 1] + RollSpeed((i - .5f) / n, peak);
+        float sum = Mathf.Max(.001f, rollDistanceSamples[n]);
+        for (int i = 1; i <= n; i++) rollDistanceSamples[i] *= rollDistance / sum;
+        return peak;
     }
 
     Vector2 ReadMoveInput(out bool sprint, out bool jumpPressed, out bool rollPressed)

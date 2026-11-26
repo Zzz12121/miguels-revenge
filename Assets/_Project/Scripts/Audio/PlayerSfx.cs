@@ -45,14 +45,14 @@ public sealed class PlayerSfx : MonoBehaviour
     void OnEnable()
     {
         if (controller != null) controller.OnDoubleJump += DoubleJump;
-        if (melee != null) melee.OnSwing += Swing;
+        if (melee != null) melee.OnSwingActive += Swing;
         PlayerCombat.OnHitLanded += HitLanded;
     }
 
     void OnDisable()
     {
         if (controller != null) controller.OnDoubleJump -= DoubleJump;
-        if (melee != null) melee.OnSwing -= Swing;
+        if (melee != null) melee.OnSwingActive -= Swing;
         PlayerCombat.OnHitLanded -= HitLanded;
     }
 

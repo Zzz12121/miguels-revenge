@@ -16,9 +16,11 @@ public class PlayerHitFeedback : MonoBehaviour
 {
     [Header("頓幀（秒，真實時間）")]
     public float lightHitstop = 0.045f;
-    public float heavyHitstop = 0.09f;
+    public float heavyHitstop = 0.075f;
     [Tooltip("打死敵人 / 打碎石頭 / 砍倒樹時額外增加")]
-    public float finishBonus = 0.06f;
+    public float finishBonus = 0.025f;
+    [Range(0f, .12f)] public float maximumHitstop = .12f;
+    [Range(0f, .03f)] public float multiHitstop = .018f;
     [Range(0f, 1f)] public float hitstopTimeScale = 0.05f;
 
     [Header("鏡頭震動（疊加在原本的震動上）")]
@@ -33,13 +35,16 @@ public class PlayerHitFeedback : MonoBehaviour
     public string woodSound = "SFX/RPG/chop";
     [Tooltip("打擊音效最長幾秒（rock_hit 原檔有 4 秒）")]
     public float maxSoundSeconds = 0.35f;
+    [Tooltip("血肉的低頻命中聲已由 PlayerSfx 播放；需要額外材質聲時才開啟")]
+    public bool layerFleshAudio = false;
 
     public static bool Enabled = true;
 
     static PlayerHitFeedback instance;
-    float hitstopEnd;
-    bool hitstopActive;
-    float savedTimeScale = 1f;
+    [Header("連續命中的回饋上限")]
+    [Min(.02f)] public float effectInterval = .055f;
+    [Min(.05f)] public float multiHitInterval = .10f;
+    float nextEffectAt, nextMultiHitAt;
     Transform player;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -61,14 +66,8 @@ public class PlayerHitFeedback : MonoBehaviour
 
     static void Handle(IDamageable target, Vector3 point, float dealt, bool heavy)
     {
-        if (!Enabled || target == null) return;
+        if (!Enabled || target == null || dealt <= 0f) return;
         Instance.Play(target, point, heavy);
-    }
-
-    void OnDisable()
-    {
-        if (hitstopActive && Mathf.Approximately(Time.timeScale, hitstopTimeScale)) Time.timeScale = savedTimeScale;
-        hitstopActive = false;
     }
 
     void Play(IDamageable target, Vector3 point, bool heavy)
@@ -84,37 +83,23 @@ public class PlayerHitFeedback : MonoBehaviour
         Vector3 dir = player != null ? point - player.position : Vector3.forward;
         dir.y = 0f;
 
+        bool repeatedSkill = PlayerCombat.ReportingSkillHit;
+        if (repeatedSkill && Time.unscaledTime < nextMultiHitAt) return;
+        if (Time.unscaledTime < nextEffectAt) return;
+        nextEffectAt = Time.unscaledTime + effectInterval;
+        if (repeatedSkill) nextMultiHitAt = Time.unscaledTime + multiHitInterval;
         ImpactFx.Hit(point, dir, surface, heavy, finishing);
 
         float stop = (heavy ? heavyHitstop : lightHitstop) + (finishing ? finishBonus : 0f);
-        StartHitstop(stop);
-        ThirdPersonCamera.ShakeMain(finishing ? finishShake : heavy ? heavyShake : lightShake, 0.12f);
+        stop = Mathf.Min(stop, repeatedSkill ? multiHitstop : maximumHitstop);
+        CombatHitStop.Request(stop, hitstopTimeScale, repeatedSkill ? .18f : .10f);
+        var camera = Camera.main ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
+        if (camera) camera.ImpactAt(point, finishing ? finishShake : heavy ? heavyShake : lightShake, .12f);
 
         string clip = surface switch { ImpactSurface.Rock => rockSound, ImpactSurface.Wood => woodSound, _ => fleshSound };
         float pitch = surface == ImpactSurface.Rock ? 1.45f : heavy ? 0.85f : 1f;
+        if (surface == ImpactSurface.Flesh && !layerFleshAudio) return;
         AudioCutoff.PlayShort(clip, point, volume * (heavy ? 1f : 0.8f), pitch, maxSoundSeconds, 0.1f, 0.08f, 30f);
     }
 
-    void StartHitstop(float seconds)
-    {
-        if (seconds <= 0f) return;
-        hitstopEnd = Mathf.Max(hitstopEnd, Time.unscaledTime + seconds);
-        if (hitstopActive) return;
-        // 已經有其他系統在調時間（暫停、慢動作、劇情、抽刀加速）就不插手。
-        // 只在時間剛好是 1 的時候開始、結束時一律回到 1：以前會把「抽刀加速 1.7 倍」記下來再還回去，整個遊戲就一直是 1.7 倍
-        if (!Mathf.Approximately(Time.timeScale, 1f)) return;
-        savedTimeScale = 1f;
-        hitstopActive = true;
-        Time.timeScale = hitstopTimeScale;
-        StartCoroutine(HitstopRoutine());
-    }
-
-    IEnumerator HitstopRoutine()
-    {
-        while (Time.unscaledTime < hitstopEnd) yield return null;
-        // 頓幀期間按了暫停：等解除暫停後再恢復
-        while (Time.timeScale == 0f) yield return null;
-        if (Mathf.Approximately(Time.timeScale, hitstopTimeScale)) Time.timeScale = savedTimeScale;
-        hitstopActive = false;
-    }
 }

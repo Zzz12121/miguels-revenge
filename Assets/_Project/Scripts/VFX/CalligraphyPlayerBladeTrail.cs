@@ -19,9 +19,9 @@ public sealed class CalligraphyPlayerBladeTrail : MonoBehaviour
             trail.startColor=new Color(1,1,1,.8f);trail.endColor=new Color(1,1,1,0);trail.emitting=false;
         }
         Vector3 at=weapon.BladeTip.position;
-        bool drawing=combat.IsAttacking && weapon.IsDrawn && (at-previous).sqrMagnitude>.0002f;
+        bool drawing=combat.IsAttacking && (combat.Phase == MeleeCombat.AttackPhase.Active || combat.IsDashSlash || combat.IsAirSlash || combat.IsPlunging) && weapon.IsDrawn && (at-previous).sqrMagnitude>.0002f;
         if(drawing && !wasDrawing)trail.Clear();
         trail.transform.position=at;trail.emitting=drawing;wasDrawing=drawing;previous=at;
     }
-    void OnDisable(){if(trail)trail.Clear();}
+    void OnDisable(){if(trail){trail.emitting=false;trail.Clear();}}
 }
