@@ -5,8 +5,8 @@ using UnityEngine.SceneManagement;
 /// <summary>
 /// 漁村的兩個小支線（不用在場景裡放東西，也不用重建場景：進漁村時自動掛上）：
 ///   - 賣花的姑娘（Walker_Girl，FlowerGirlGift）：第一次說完話，她說「這是我在後山摘花時順手拔的，不知道是什麼草，送你吧」，給兩株草藥（拿去給藥師換藥水）
-///   - 跑腿的男孩（Walker_Boy，ErrandRun）：請玩家幫忙跑腿——到東邊盡頭那間房子（中間那排最東邊）門口拿包裹，
-///     送到海邊那排最西邊的房子，收件的人家給 100 文。任務進行中畫面右邊寫著現在要做什麼，要去的房子頭上有記號。
+///   - 跑腿的男孩（Walker_Boy，ErrandRun）：請玩家幫忙跑腿——到東邊盡頭那間房子（中間那排最東邊）找穿藍色衣服的老闆拿包裹，
+///     送到海邊那排最西邊的房子交給穿綠色衣服的人，收件的人家給 100 文。任務進行中畫面左邊寫著現在要做什麼，要找的人頭上有箭頭。
 /// 進度記在 StoryProgress 的旗標裡，會跟著存檔（送過的草藥不會再送、跑腿做完不會再接）。
 /// </summary>
 public static class VillageErrands
@@ -97,21 +97,28 @@ public class FlowerGirlGift : MonoBehaviour
 }
 
 /// <summary>
-/// 跑腿的男孩：接下跑腿 → 到東邊盡頭那間房子（中間那排 Row_B 最東邊）門口拿包裹 → 送到海邊那排（Row_A）最西邊的房子 → 收件的人家給 100 文。
-/// 包裹是程式做的小布包，放在東邊那間房子正面（朝海那一面）的屋簷外；兩邊都是走過去按互動鍵。
+/// 跑腿的男孩：接下跑腿 → 到東邊盡頭那間房子（中間那排 Row_B 最東邊）門口，找穿藍色衣服的老闆拿包裹 →
+/// 送到海邊那排（Row_A）最西邊的房子，交給門口穿綠色衣服的人 → 收件的人家給 100 文。
+/// 兩個人都是進漁村時在房子門口生出來的（複製場景裡村民的模型：收網的漁夫是藍衣服、宅院的家僕是綠衣服，
+/// 不用重建場景），走過去對話就能拿 / 交包裹。任務進行中畫面左邊（祠堂的試煉下面）寫著現在要做什麼，
+/// 要找的人頭上有一個箭頭（不寫字）。
 /// </summary>
 public class ErrandRun : MonoBehaviour
 {
     public const string Accepted = "errand.accepted", Picked = "errand.parcel", Done = "errand.done";
     public int reward = 100;
 
-    MerchantNPC npc;
+    const string SenderName = "雜貨店老闆", ReceiverName = "海邊人家";
+    const string SenderLook = "藍色", ReceiverLook = "綠色";
+
+    MerchantNPC npc, sender, receiver;
     bool talked, found;
     Vector3 pickupAt, dropoffAt;
     GameObject parcel;
     Material parcelMat;
     Transform player;
-    GUIStyle hudStyle, markStyle;
+    ShrineTrial shrine;
+    GUIStyle titleStyle, lineStyle, hintStyle, markStyle;
 
     static bool Has(string f) => StoryProgress.Has(f);
     bool Active => Has(Accepted) && !Has(Done);
@@ -124,29 +131,34 @@ public class ErrandRun : MonoBehaviour
         npc.choiceProvider = Choice;
         var east = Farthest("Row_B", 1f);
         var west = Farthest("Row_A", -1f);
-        found = east != null && west != null;
-        if (found)
-        {
-            pickupAt = FrontOf(east);
-            dropoffAt = FrontOf(west);
-            Debug.Log($"[ErrandRun] 拿包裹：{east.name} {pickupAt}，送到：{west.name} {dropoffAt}");
-        }
-        else Debug.LogWarning("[ErrandRun] 找不到 Row_A / Row_B 的房子，跑腿任務做不了");
+        if (east == null || west == null) { Debug.LogWarning("[ErrandRun] 找不到 Row_A / Row_B 的房子，跑腿任務做不了"); return; }
+        pickupAt = FrontOf(east);
+        dropoffAt = FrontOf(west);
+        sender = MakeNpc("Errand_Sender", "Walker_Fisher", pickupAt, SenderName);
+        receiver = MakeNpc("Errand_Receiver", "Walker_Servant", dropoffAt, ReceiverName);
+        found = sender != null && receiver != null;
+        if (!found) { Debug.LogWarning("[ErrandRun] 找不到村民的模型（Walker_Fisher / Walker_Servant），跑腿任務做不了"); return; }
+        sender.linesProvider = SenderLines;
+        sender.choiceProvider = SenderChoice;
+        receiver.linesProvider = ReceiverLines;
+        receiver.choiceProvider = ReceiverChoice;
     }
 
     void OnDestroy()
     {
         if (parcel != null) Destroy(parcel);
         if (parcelMat != null) Destroy(parcelMat);
+        if (sender != null) Destroy(sender.gameObject);
+        if (receiver != null) Destroy(receiver.gameObject);
     }
 
-    // ---------------------------------------------------------------- 對話
+    // ---------------------------------------------------------------- 跑腿的男孩
 
     string[] Lines()
     {
         if (Has(Done)) return new[] { "謝謝你幫我跑腿！老闆還誇我動作快，嘿嘿。" };
-        if (Has(Picked)) return new[] { "包裹拿到了嗎？快送去海邊那排最西邊的房子！" };
-        if (Has(Accepted)) return new[] { "包裹在東邊盡頭那間房子門口！中間那排、最東邊的那間。" };
+        if (Has(Picked)) return new[] { $"包裹拿到了嗎？快送去海邊那排最西邊的房子，交給穿{ReceiverLook}衣服的人！" };
+        if (Has(Accepted)) return new[] { $"包裹在東邊盡頭那間房子！中間那排、最東邊的那間，找門口穿{SenderLook}衣服的老闆。" };
         var lines = VillageErrands.BaseLines(npc, ref talked);
         lines.Add("啊！你看起來很可靠……可以幫我一個忙嗎？");
         lines.Add("老闆要我把一個包裹從東邊盡頭那間房子送到海邊的房子，可是我還有三個地方要跑，根本來不及！");
@@ -166,67 +178,120 @@ public class ErrandRun : MonoBehaviour
                 StoryProgress.Set(Accepted);
                 return new[]
                 {
-                    "太好了！包裹放在東邊盡頭那間房子門口——中間那排、最東邊的那間。",
-                    $"送到海邊那排最西邊的房子，那家人會給你跑腿錢，有 {reward} 文喔！",
+                    $"太好了！東邊盡頭那間房子——中間那排、最東邊的那間，門口穿{SenderLook}衣服的老闆會把包裹交給你。",
+                    $"送到海邊那排最西邊的房子，交給穿{ReceiverLook}衣服的人，他們會給你跑腿錢，有 {reward} 文喔！",
                 };
             },
         };
     }
 
-    // ---------------------------------------------------------------- 拿包裹、送包裹
+    // ---------------------------------------------------------------- 拿包裹（東邊的老闆）
+
+    string[] SenderLines()
+    {
+        if (Has(Done)) return new[] { "包裹送到啦？謝謝你，下次有事再拜託你。" };
+        if (Has(Picked)) return new[] { $"包裹就麻煩你了，送到海邊那排最西邊的房子，交給穿{ReceiverLook}衣服的那位。" };
+        if (Has(Accepted)) return new[] { "喔！你是那孩子找來幫忙的？", "那孩子一天到晚跑來跑去，總算找到幫手了。" };
+        return new[] { "這幾天貨多，忙都忙不過來。", "要是有人能幫忙送個貨就好了……" };
+    }
+
+    DialogueChoice SenderChoice()
+    {
+        if (!Has(Accepted) || Has(Picked)) return null;
+        return new DialogueChoice
+        {
+            question = $"（{SenderName}把一個藍染布包著的包裹遞給你）",
+            options = new[] { "收下包裹" },
+            onPick = _ =>
+            {
+                StoryProgress.Set(Picked);
+                if (parcel != null) parcel.SetActive(false);
+                GameAudio.Play("SFX/RPG/handleSmallLeather", pickupAt, 0.8f, 1f, 0.05f, 0.3f);
+                ItemToast.Show("跑腿的包裹", 0, $"送到海邊那排最西邊的房子，交給穿{ReceiverLook}衣服的人");
+                AutoSave.Request("拿到跑腿的包裹");
+                return new[] { $"送到海邊那排最西邊的房子，交給門口穿{ReceiverLook}衣服的那位就行了。路上小心！" };
+            },
+        };
+    }
+
+    // ---------------------------------------------------------------- 送包裹（西邊的海邊人家）
+
+    string[] ReceiverLines()
+    {
+        if (Has(Done)) return new[] { "上次的包裹謝謝你啦，東西都好好的。" };
+        if (Has(Picked)) return new[] { "哎呀，這包裹……是東邊那家託你送來的？" };
+        return new[] { "海風真舒服。", "東邊那家說要送東西過來，怎麼還沒到呢……" };
+    }
+
+    DialogueChoice ReceiverChoice()
+    {
+        if (!Has(Picked) || Has(Done)) return null;
+        return new DialogueChoice
+        {
+            question = $"要把包裹交給{ReceiverName}嗎？",
+            options = new[] { "交出包裹" },
+            onPick = _ =>
+            {
+                StoryProgress.Set(Done);
+                VillageWallet.Add(VillageWallet.CoinKey, reward);
+                GameAudio.Play("SFX/RPG/handleCoins", dropoffAt, 0.9f, 1f, 0.05f, 0.3f);
+                ItemToast.Show("錢", reward, $"跑腿完成　持有 {VillageWallet.Coins} 文", "文");
+                return new[]
+                {
+                    "從東邊盡頭一路走到這裡，辛苦你了。",
+                    $"這是跑腿錢，{reward} 文，收下吧。",
+                };
+            },
+        };
+    }
+
+    // ---------------------------------------------------------------- 包裹放在老闆腳邊
 
     void Update()
     {
         if (!found) return;
-        if (player == null) { var hp = PlayerHealth.Find(); if (hp == null) return; player = hp.transform; }
+        if (player == null) { var hp = PlayerHealth.Find(); if (hp != null) player = hp.transform; }
         bool needParcel = Has(Accepted) && !Has(Picked);
-        if (needParcel && parcel == null) parcel = MakeParcel(pickupAt);
+        if (needParcel && parcel == null) parcel = MakeParcel(pickupAt + sender.transform.right * 0.75f);
         if (parcel != null && parcel.activeSelf != needParcel) parcel.SetActive(needParcel);
-        if (GameUI.OverlayOpen || StoryDialogue.Active) return;
-
-        if (needParcel)
-        {
-            float d = Flat(pickupAt - player.position).magnitude;
-            if (d < 2.8f)
-            {
-                InteractPrompt.Offer(this, d, "拿起包裹");
-                if (InteractPrompt.Pressed(this)) Pick();
-            }
-        }
-        else if (Has(Picked) && !Has(Done))
-        {
-            float d = Flat(dropoffAt - player.position).magnitude;
-            if (d < 3f)
-            {
-                InteractPrompt.Offer(this, d, "送包裹");
-                if (InteractPrompt.Pressed(this)) Deliver();
-            }
-        }
     }
 
-    void Pick()
+    // ---------------------------------------------------------------- 房子、人、包裹
+
+    /// <summary>
+    /// 在房子門口生一個村民：複製場景裡某個村民的模型（衣服顏色跟著那個村民的材質），站著播待機（Animator 的 Speed 是 0），
+    /// 加上碰撞和對話（MerchantNPC，不賣東西）。面向街上（房子正面朝 -Z）
+    /// </summary>
+    static MerchantNPC MakeNpc(string name, string source, Vector3 at, string speaker)
     {
-        StoryProgress.Set(Picked);
-        if (parcel != null) parcel.SetActive(false);
-        GameAudio.Play("SFX/RPG/handleSmallLeather", pickupAt, 0.8f, 1f, 0.05f, 0.3f);
-        ItemToast.Show("跑腿的包裹", 0, "送到海邊那排最西邊的房子");
-        AutoSave.Request("拿到跑腿的包裹");
-    }
+        var src = GameObject.Find(source);
+        var model = src != null ? src.transform.Find("Model") : null;
+        if (model == null) return null;
+        var go = new GameObject(name);
+        go.transform.SetPositionAndRotation(at, Quaternion.Euler(0f, 180f, 0f));
+        go.transform.localScale = src.transform.lossyScale;
+        var m = Instantiate(model.gameObject, go.transform, false);
+        m.name = "Model";
+        m.transform.SetLocalPositionAndRotation(model.localPosition, model.localRotation);
+        m.transform.localScale = model.localScale;
+        // 只留模型和 Animator：複製過來的村民行為（走路、拿東西）都拿掉
+        foreach (var b in m.GetComponentsInChildren<MonoBehaviour>(true)) Destroy(b);
+        var anim = m.GetComponent<Animator>();
+        if (anim != null) { anim.applyRootMotion = false; anim.cullingMode = AnimatorCullingMode.CullUpdateTransforms; }
 
-    void Deliver()
-    {
-        StoryProgress.Set(Done);
-        VillageWallet.Add(VillageWallet.CoinKey, reward);
-        GameAudio.Play("SFX/RPG/handleCoins", dropoffAt, 0.9f, 1f, 0.05f, 0.3f);
-        var color = new Color(0.95f, 0.8f, 0.55f);
-        StoryDialogue.Play(new List<StoryDialogue.Line>
-        {
-            StoryDialogue.L("海邊人家", null, true, "哎呀，是那孩子託你送來的？從東邊盡頭一路走到這裡，辛苦你了。", color),
-            StoryDialogue.L("海邊人家", null, true, $"這是跑腿錢，{reward} 文，收下吧。", color),
-        }, () => ItemToast.Show("錢", reward, $"跑腿完成　持有 {VillageWallet.Coins} 文", "文"));
+        var capsule = go.AddComponent<CapsuleCollider>();
+        capsule.center = new Vector3(0f, 0.9f, 0f);
+        capsule.height = 1.8f;
+        capsule.radius = 0.34f;
+        var npc = go.AddComponent<MerchantNPC>();
+        npc.speakerName = speaker;
+        npc.sellsGoods = false;
+        npc.facePlayerOnTalk = true;
+        npc.interactRange = 3f;
+        npc.guideLines = new string[0];
+        npc.repeatLines = new string[0];
+        return npc;
     }
-
-    // ---------------------------------------------------------------- 房子、包裹
 
     /// <summary>那一排最東（sign = 1）/ 最西（sign = -1）的房子</summary>
     static Transform Farthest(string row, float sign)
@@ -288,41 +353,65 @@ public class ErrandRun : MonoBehaviour
 
     static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
-    // ---------------------------------------------------------------- 畫面：右邊的任務、目標的記號
+    // ---------------------------------------------------------------- 畫面：左邊的任務（跟祠堂的試煉一樣）、要找的人頭上的箭頭
 
     void OnGUI()
     {
-        if (!found || !Active || player == null || GameUI.OverlayOpen || VitalsHud.Hidden || StoryDialogue.Active) return;
+        if (!found || !Active || player == null || GameUI.OverlayOpen || VitalsHud.Hidden) return;
+        // GUI 的文字顏色是全域的：畫完再還原
+        Color prevContent = GUI.contentColor, prevBackground = GUI.backgroundColor;
+        GUI.contentColor = Color.white;
+        GUI.backgroundColor = Color.white;
         bool picked = Has(Picked);
-        Vector3 target = picked ? dropoffAt : pickupAt;
-        float dist = Flat(target - player.position).magnitude;
+        var who = picked ? receiver : sender;
+        float dist = Flat(who.transform.position - player.position).magnitude;
+        DrawPanel(picked, dist);
+        if (!StoryDialogue.Active && !who.InConversation) DrawArrow(who.transform, dist);
+        GUI.contentColor = prevContent;
+        GUI.backgroundColor = prevBackground;
+        GUI.color = Color.white;
+    }
 
-        // 右邊（小地圖下面）：現在要做什麼
-        hudStyle ??= new GUIStyle(GameUI.Small) { alignment = TextAnchor.MiddleRight, fontSize = 17, wordWrap = false };
-        string text = picked ? "跑腿：把包裹送到海邊那排最西邊的房子" : "跑腿：到東邊盡頭的房子（中間那排最東邊）拿包裹";
-        var r = new Rect(Screen.width - 520f, Screen.height * 0.36f, 496f, 26f);
-        hudStyle.normal.textColor = new Color(0f, 0f, 0f, 0.7f);
-        GUI.Label(new Rect(r.x + 1.5f, r.y + 1.5f, r.width, r.height), text, hudStyle);
-        hudStyle.normal.textColor = GameUI.Accent;
-        GUI.Label(r, text, hudStyle);
-        var r2 = new Rect(r.x, r.y + 22f, r.width, 22f);
-        hudStyle.normal.textColor = new Color(0f, 0f, 0f, 0.7f);
-        GUI.Label(new Rect(r2.x + 1.5f, r2.y + 1.5f, r2.width, r2.height), $"還有 {dist:F0} m", hudStyle);
-        hudStyle.normal.textColor = GameUI.TextColor;
-        GUI.Label(r2, $"還有 {dist:F0} m", hudStyle);
+    /// <summary>左上的任務框（樣式跟祠堂的試煉一樣）：祠堂的試煉也在畫的話排在它下面</summary>
+    void DrawPanel(bool picked, float dist)
+    {
+        titleStyle ??= new GUIStyle(GameUI.Body) { fontStyle = FontStyle.Bold, fontSize = 14 };
+        lineStyle ??= new GUIStyle(GameUI.Small) { fontSize = 13, wordWrap = true };
+        hintStyle ??= new GUIStyle(GameUI.Small) { fontSize = 12 };
+        titleStyle.normal.textColor = lineStyle.normal.textColor = hintStyle.normal.textColor = Color.white;
 
-        // 目標頭上的記號（看得到的時候）
+        if (shrine == null) shrine = FindAnyObjectByType<ShrineTrial>();
+        float y = 150f;
+        if (shrine != null && shrine.isActiveAndEnabled && (shrine.Accepted || shrine.ReadingsDone > 0))
+            y += (shrine.PortalOpened ? 50f : 132f) + 8f;
+
+        var box = new Rect(16f, y, 230f, 88f);
+        GameUI.Panel(box);
+        GUI.color = GameUI.Accent;
+        GUI.Label(new Rect(box.x + 10f, box.y + 4f, box.width - 20f, 20f), "跑腿", titleStyle);
+        string text = picked ? $"把包裹交給海邊那排最西邊的房子門口，穿{ReceiverLook}衣服的人"
+                             : $"到東邊盡頭的房子（中間那排最東邊），找穿{SenderLook}衣服的老闆拿包裹";
+        GUI.color = GameUI.TextColor;
+        GUI.Label(new Rect(box.x + 10f, box.y + 25f, box.width - 20f, 38f), text, lineStyle);
+        GUI.color = GameUI.MutedColor;
+        GUI.Label(new Rect(box.x + 10f, box.y + 64f, box.width - 20f, 18f), $"還有 {dist:F0} m", hintStyle);
+        GUI.color = Color.white;
+    }
+
+    /// <summary>要找的人頭上一個上下浮動的箭頭（不寫字）</summary>
+    void DrawArrow(Transform who, float dist)
+    {
         var cam = Camera.main;
         if (cam == null || dist < 2.5f) return;
-        Vector3 sp = cam.WorldToScreenPoint(target + Vector3.up * (2.6f + Mathf.Sin(Time.time * 2.4f) * 0.15f));
+        Vector3 sp = cam.WorldToScreenPoint(who.position + Vector3.up * (2.7f + Mathf.Sin(Time.time * 2.4f) * 0.15f));
         if (sp.z <= 0f) return;
         markStyle ??= new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
-        markStyle.fontSize = Mathf.RoundToInt(Mathf.Lerp(30f, 18f, Mathf.Clamp01(dist / 120f)));
-        var mr = new Rect(sp.x - 60f, Screen.height - sp.y - 22f, 120f, 44f);
-        string mark = picked ? "▼ 送到這裡" : "▼ 包裹";
-        markStyle.normal.textColor = new Color(0f, 0f, 0f, 0.7f);
-        GUI.Label(new Rect(mr.x + 2f, mr.y + 2f, mr.width, mr.height), mark, markStyle);
-        markStyle.normal.textColor = GameUI.Accent;
-        GUI.Label(mr, mark, markStyle);
+        markStyle.normal.textColor = Color.white;
+        markStyle.fontSize = Mathf.RoundToInt(Mathf.Lerp(34f, 20f, Mathf.Clamp01(dist / 120f)));
+        var mr = new Rect(sp.x - 30f, Screen.height - sp.y - 22f, 60f, 44f);
+        GUI.color = new Color(0f, 0f, 0f, 0.7f);
+        GUI.Label(new Rect(mr.x + 2f, mr.y + 2f, mr.width, mr.height), "▼", markStyle);
+        GUI.color = GameUI.Accent;
+        GUI.Label(mr, "▼", markStyle);
     }
 }

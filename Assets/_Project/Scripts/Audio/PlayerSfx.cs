@@ -4,23 +4,29 @@ using UnityEngine;
 /// 玩家的動作音效（只加聲音，不改任何動作）：
 ///   起跳：一陣上揚的風聲；二段跳：再高一點的風聲
 ///   落地：在空中待夠久才有「咚」一聲，掉得越快越重
-///   揮刀：武士刀的揮砍聲（katana_swing_*，風切 + 刀身的細哨音），在刀真正揮出去的那一刻播（MeleeCombat.OnSwingActive）；
-///         取代 MeleeCombat 原本的 knifeSlice（給它一段靜音）。空揮比較高（whiffPitch），這一刀砍進敵人身上的當下
+///   揮刀：武士刀揮砍的錄音（SFX/Blade/katana_swing_1~3，一段錄音裡的三刀切開），在刀真正揮出去的那一刻播（MeleeCombat.OnSwingActive）；
+///         取代 MeleeCombat 原本的 knifeSlice（給它一段靜音）。空揮照原本的音高（whiffPitch），這一刀砍進敵人身上的當下
 ///         把正在播的聲音音高往下拉（hitPitch），聽得出砍中和空揮不同；大刀 / 長槍 / 小刀各自再高低一點
-///   打中：在原本的「砍中」聲底下墊一層悶響，傷害高的換成更重的那種
-/// 音效檔在 Resources/Audio/SFX/Gen/（`Art/Audio/synth_sfx.py`、刀聲是 `Art/Audio/synth_blade_sfx.py` 合成的）。PlayerCombat 開場時自動掛上。
+///   打中：砍到血肉是刀刺進肉裡的錄音（SFX/Blade/flesh_stab）。砍中的聲音本來就由打擊回饋（PlayerHitFeedback）依材質播
+///         （血肉 / 石頭 / 木頭），這裡只把它血肉那一種換成這段錄音；MeleeCombat 原本不管打到什麼都播的 chop 給它靜音
+///         （跳劈落地那一聲 chop 由這裡照原本的音量音高補回來）。底下再墊一層小聲的悶響，傷害高的換成更重的那種
+/// 錄音由 `Art/Audio/prepare_blade_recordings.py` 剪好放在 Resources/Audio/SFX/Blade/；其他音效在 Resources/Audio/SFX/Gen/
+/// （`Art/Audio/synth_sfx.py` 合成的）。PlayerCombat 開場時自動掛上。
 /// </summary>
 [DisallowMultipleComponent]
 public sealed class PlayerSfx : MonoBehaviour
 {
     [Range(0f, 2f)] public float jumpVolume = 0.55f;
     [Range(0f, 2f)] public float landVolume = 0.7f;
-    [Range(0f, 2f)] public float swingVolume = 0.85f;
-    [Tooltip("空揮時揮砍聲的音高（比較高、比較利）")]
-    public float whiffPitch = 1.12f;
-    [Tooltip("砍進敵人身上時把揮砍聲的音高拉到這裡（比較低、比較沉，約低 6 個半音）")]
-    public float hitPitch = 0.8f;
-    [Range(0f, 2f)] public float hitVolume = 0.9f;
+    [Range(0f, 2f)] public float swingVolume = 1f;
+    [Tooltip("空揮時揮砍聲的音高（原本的音高：厚的風切 + 刀身的金屬共鳴）")]
+    public float whiffPitch = 1f;
+    [Tooltip("砍進敵人身上時把揮砍聲的音高拉到這裡（比較低、比較沉，約低 4 個半音）")]
+    public float hitPitch = 0.78f;
+    [Tooltip("砍到血肉的聲音（Resources/Audio 底下的路徑），交給 PlayerHitFeedback 播")]
+    public string fleshHitSound = "SFX/Blade/flesh_stab";
+    [Tooltip("砍中時墊在底下的悶響（主要的砍中聲是 fleshHitSound）")]
+    [Range(0f, 2f)] public float hitVolume = 0.35f;
     [Tooltip("傷害超過這個值就用比較重的打擊聲")]
     public float heavyHitDamage = 30f;
     [Tooltip("在空中至少待這麼久，落地才有聲音（走下小台階不會咚一聲）")]
@@ -28,7 +34,7 @@ public sealed class PlayerSfx : MonoBehaviour
 
     static readonly string[] Hits = { "SFX/Gen/hit_impact_1", "SFX/Gen/hit_impact_2", "SFX/Gen/hit_impact_3", "SFX/Gen/hit_impact_4" };
     static readonly string[] HeavyHits = { "SFX/Gen/hit_heavy_1", "SFX/Gen/hit_heavy_2" };
-    static readonly string[] Swings = { "SFX/Gen/katana_swing_1", "SFX/Gen/katana_swing_2", "SFX/Gen/katana_swing_3" };
+    static readonly string[] Swings = { "SFX/Blade/katana_swing_1", "SFX/Blade/katana_swing_2", "SFX/Blade/katana_swing_3" };
     static AudioClip silent;
     static readonly string[] Jumps = { "SFX/Gen/jump_whoosh_1", "SFX/Gen/jump_whoosh_2" };
     static readonly string[] Lands = { "SFX/Gen/jump_land_1", "SFX/Gen/jump_land_2" };
@@ -37,6 +43,7 @@ public sealed class PlayerSfx : MonoBehaviour
     CharacterController body;
     MeleeCombat melee;
     PlayerHealth health;
+    PlayerHitFeedback feedback;
     bool wasGrounded = true;
     // 這一刀的揮砍聲：什麼時候開始抬手、打中算這一刀的時間窗、有沒有砍中、聲音播了沒（播的那個 AudioSource）
     AudioSource swingSrc;
@@ -56,22 +63,43 @@ public sealed class PlayerSfx : MonoBehaviour
         {
             if (silent == null) silent = AudioClip.Create("Silent", 64, 1, 44100, false);
             melee.swingSounds = new[] { silent };
+            // 砍中時原本也播 chop（打到敵人、石頭、木頭都一樣）：靜音，砍中的聲音由打擊回饋依材質播
+            melee.hitSound = silent;
         }
     }
+
+    void Start() => UseFleshStab();
 
     void OnEnable()
     {
         if (controller != null) controller.OnDoubleJump += DoubleJump;
-        if (melee != null) melee.OnSwingActive += Swing;
+        if (melee != null) { melee.OnSwingActive += Swing; melee.OnPlungeLanded += PlungeLanded; }
         PlayerCombat.OnHitLanded += HitLanded;
     }
 
     void OnDisable()
     {
         if (controller != null) controller.OnDoubleJump -= DoubleJump;
-        if (melee != null) melee.OnSwingActive -= Swing;
+        if (melee != null) { melee.OnSwingActive -= Swing; melee.OnPlungeLanded -= PlungeLanded; }
         PlayerCombat.OnHitLanded -= HitLanded;
     }
+
+    /// <summary>打擊回饋（PlayerHitFeedback）砍到血肉時改播刺進肉裡的錄音。場景裡還沒有它就先建一個
+    /// （它第一次打中時本來也會自己這樣建），第一刀就是新的聲音</summary>
+    void UseFleshStab()
+    {
+        if (feedback == null)
+        {
+            feedback = FindAnyObjectByType<PlayerHitFeedback>();
+            if (feedback == null) feedback = new GameObject("PlayerHitFeedback (auto)").AddComponent<PlayerHitFeedback>();
+        }
+        feedback.fleshSound = fleshHitSound;
+        // 隊友的打擊回饋預設不播血肉的聲音（layerFleshAudio = false，原本靠 MeleeCombat 的 chop）；chop 在這裡靜音了，所以讓它播刺肉聲
+        feedback.layerFleshAudio = true;
+    }
+
+    /// <summary>跳劈落地：PlayerCombat 播的是 hitSound（上面給了靜音），照原本的 chop、音量、音高補回來</summary>
+    void PlungeLanded(Vector3 p) => GameAudio.PlayAt(GameAudio.Clip("SFX/RPG/chop"), p, melee.soundVolume, .7f, 1f, 30f);
 
     void Update()
     {
@@ -147,6 +175,7 @@ public sealed class PlayerSfx : MonoBehaviour
 
     void HitLanded(IDamageable target, Vector3 point, float damage, bool flag)
     {
+        UseFleshStab();   // 換場景後打擊回饋是新的一個
         if (target != null) SwingConnected();
         // 一刀砍中好幾個敵人時只墊一次，不然會疊得很大聲
         if (Time.time - lastHitSound < 0.05f) return;

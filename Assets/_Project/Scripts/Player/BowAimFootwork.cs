@@ -6,7 +6,8 @@ using UnityEngine;
 ///   - 一隻腳踩住地面不動（世界座標固定），另一隻腳抬起來往前（往移動的方向）跨一步，落地後換另一隻；
 ///     跨出去的前腳落得比站姿前面一點、落地後兩腳一起踩住一下（minPlantTime），前腳定得比較久
 ///   - 站著不動時兩腳都踩住；轉身轉太多、腳離原本站的位置太遠時才挪一步
-///   - 腳的位置、角度、膝蓋往哪邊彎都照動畫本來的站姿，只是把腳釘在地上、輪流跨步；腿伸不到時骨盆稍微往下沉
+///   - 腳的位置、角度、膝蓋往哪邊彎都照動畫本來的站姿，只是把腳釘在地上、輪流跨步；腿伸不到時骨盆稍微往下沉（平滑過，不會一步一跳）
+///   - 上半身穩住：胸口的高度（相對角色根物件）做低通濾波，腳步、貼地造成的上下抖動不會傳到拉弓的手、弓和頭（瞄準時畫面裡的角色不上下震）
 ///   - 開始 / 停止瞄準時慢慢混進 / 混出，不會跳一下
 /// PlayerCombat.Awake 自動掛上。只動腿和骨盆的高度，上半身（拉弓的手臂由 PlayerLoadout 擺）不動。
 /// </summary>
@@ -26,6 +27,10 @@ public sealed class BowAimFootwork : MonoBehaviour
     public float leadFactor = 0.85f;
     [Tooltip("站著不動時：腳離站姿多遠才挪一步 (m)")]
     public float idleTrigger = 0.16f;
+    [Tooltip("上半身高度的平滑時間（秒）：越大越穩，腳步的上下起伏越傳不上去")]
+    public float upperBodySmooth = 0.25f;
+    [Tooltip("上半身最多被拉回多少 (m)：只濾掉小的上下抖動，大的高低變化（蹲下、上下坡）照常")]
+    public float upperBodyMaxOffset = 0.08f;
 
     sealed class Leg
     {
@@ -41,7 +46,10 @@ public sealed class BowAimFootwork : MonoBehaviour
     PlayerHealth health;
     ThirdPersonController ctrl;
     Animator animator;
-    Transform hips;
+    Transform hips, spine;
+    // 骨盆往下沉的量（平滑過）、上半身穩住用的高度
+    float dropSmoothed, dropVel, steadyY, steadyVel;
+    bool steadyInit;
     readonly Leg[] legs = { new Leg(), new Leg() };
     readonly Vector3[] targets = new Vector3[2];
     float weight;
@@ -63,6 +71,7 @@ public sealed class BowAimFootwork : MonoBehaviour
         if (animator == null) animator = GetComponentInChildren<Animator>();
         if (animator == null || !animator.isHuman) return false;
         hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+        spine = animator.GetBoneTransform(HumanBodyBones.Spine);
         legs[0].up = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
         legs[0].low = animator.GetBoneTransform(HumanBodyBones.LeftLowerLeg);
         legs[0].foot = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
@@ -88,7 +97,7 @@ public sealed class BowAimFootwork : MonoBehaviour
         if (want && weight <= 0.001f)
             foreach (var l in legs) { l.planted = l.animPos; l.t = -1f; } // 從動畫現在的位置開始踩住，不會跳
         weight = Mathf.MoveTowards(weight, want ? 1f : 0f, Time.deltaTime * (want ? 7f : 5f));
-        if (weight <= 0.001f) return;
+        if (weight <= 0.001f) { steadyInit = false; dropSmoothed = dropVel = 0f; return; }
 
         float dt = Time.deltaTime;
         Vector3 vel = ctrl.HorizontalVelocity;
@@ -155,16 +164,28 @@ public sealed class BowAimFootwork : MonoBehaviour
             targets[i] = Vector3.Lerp(l.animPos, p, weight);
         }
 
-        // 骨盆：兩腳之間跨步時稍微往下沉一點（看起來有重量），腿伸不到時再沉到伸得到
-        float drop = 0.025f * lift * weight;
+        // 骨盆：腿伸不到時往下沉到伸得到（瞄準時跨步不再刻意往下沉：會一步一跳）。沉的量平滑過，不會每一步上下跳
+        float drop = 0f;
         for (int i = 0; i < 2; i++)
         {
             var l = legs[i];
             float len = Vector3.Distance(l.up.position, l.low.position) + Vector3.Distance(l.low.position, l.foot.position);
             float need = Vector3.Distance(l.up.position + Vector3.down * drop, targets[i]) - len * 0.985f;
-            if (need > 0f) drop += Mathf.Min(need, 0.1f);
+            if (need > 0f) drop += Mathf.Min(need, 0.06f);
         }
-        if (drop > 0f) hips.position += Vector3.down * drop;
+        dropSmoothed = Mathf.SmoothDamp(dropSmoothed, drop, ref dropVel, 0.12f, Mathf.Infinity, Mathf.Max(1e-4f, dt));
+        if (dropSmoothed > 0.0005f) hips.position += Vector3.down * dropSmoothed;
+
+        // 上半身穩住：胸口（脊椎）相對根物件的高度做低通濾波，只把小的上下抖動拉回去；
+        // 拉弓的手臂、弓、頭都在脊椎底下，跟著一起穩住（PlayerLoadout 之後照這個姿勢擺手）
+        if (spine != null)
+        {
+            float raw = spine.position.y - transform.position.y;
+            if (!steadyInit) { steadyY = raw; steadyVel = 0f; steadyInit = true; }
+            steadyY = Mathf.SmoothDamp(steadyY, raw, ref steadyVel, upperBodySmooth, Mathf.Infinity, Mathf.Max(1e-4f, dt));
+            float off = Mathf.Clamp(steadyY - raw, -upperBodyMaxOffset, upperBodyMaxOffset) * weight;
+            if (Mathf.Abs(off) > 0.0002f) spine.position += Vector3.up * off;
+        }
 
         for (int i = 0; i < 2; i++)
         {

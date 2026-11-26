@@ -258,6 +258,10 @@ public class PlayerLoadout : MonoBehaviour
         if (GetComponent<WeaponForgeGlow>() == null) gameObject.AddComponent<WeaponForgeGlow>(); // 升級過的武器發橘光
         if (GetComponent<BladeRebound>() == null) gameObject.AddComponent<BladeRebound>();       // 砍到石頭、木頭、牆壁：刀被彈回來
         if (GetComponent<AttackFlow>() == null) gameObject.AddComponent<AttackFlow>();           // 攻擊輸入緩衝：招式一個接一個
+        if (GetComponent<FinisherForm>() == null) gameObject.AddComponent<FinisherForm>();       // 第三刀：兩腳內收、大刀拉到背後再劈
+        // 翻滾距離（蓋掉 ThirdPersonController 的 rollDistance；翻滾時間、無敵時間不變）
+        var move = GetComponent<ThirdPersonController>();
+        if (move != null && !move.aiControlled) move.rollDistance = rollDistance;
         presenter = GetComponentInChildren<PlayerWeaponPresenter>(true);
         archerBow = GetComponent<PlayerArcherBow>();
         combat.OnSwing += i => { swingAt = Time.time; swingIndex = i; };
@@ -265,6 +269,15 @@ public class PlayerLoadout : MonoBehaviour
 
         combat.OnArrowSpawned += OnArrowSpawned;
     }
+
+    [Tooltip("翻滾距離 (m)，開場時蓋掉 ThirdPersonController 的 rollDistance（原本 3.8）")]
+    [Min(0.5f)] public float rollDistance = 4.8f;
+
+    [Header("長槍第三下：單手戳")]
+    [Tooltip("判定中心往前推的倍數（判定球也放大，近的照樣打得到）")]
+    public float spearFinisherReach = 1.25f, spearFinisherRadius = 1.4f;
+    [Tooltip("傷害倍數")]
+    public float spearFinisherDamage = 1.5f;
 
     // ---------------- 打擊回饋 ----------------
 
@@ -303,6 +316,7 @@ public class PlayerLoadout : MonoBehaviour
 
     void Update()
     {
+        TrackSpearFinisher();
         SnapBowDrawPose();
     }
 
@@ -334,11 +348,7 @@ public class PlayerLoadout : MonoBehaviour
     {
         CaptureBase();
         var melee = MeleeFor(Current);
-        var s = StatsFor(melee);
-        combat.hitForwardOffset = baseOffset * s.offset;
-        combat.hitRadius = baseRadius * s.radius;
-        // 鐵匠鋪升級過（虎皮、虎牙）：每種武器都多一點傷害
-        combat.weaponDamageScale = s.damage * WeaponForge.DamageScale;
+        ApplyHitStats();
         combat.arrowDamage = Current == WeaponLoadout.BowKnife ? ArrowDamage * WeaponForge.DamageScale : 0f;
         combat.hideBowHint = !boatLevel; // 「只有射中船上的弓箭手才有效」是船戰的說明，這裡的弓不用
         ApplyTiming();
@@ -355,6 +365,29 @@ public class PlayerLoadout : MonoBehaviour
             if (!wantBow) ResetBowTuning();
         }
         ShowMelee(melee);
+    }
+
+    bool spearFinisher;
+
+    /// <summary>判定距離、範圍、傷害：長槍第三下（單手戳）戳得更遠、更痛</summary>
+    void ApplyHitStats()
+    {
+        var s = StatsFor(MeleeFor(Current));
+        bool fin = spearFinisher && Current == WeaponLoadout.Spear;
+        combat.hitForwardOffset = baseOffset * s.offset * (fin ? spearFinisherReach : 1f);
+        combat.hitRadius = baseRadius * s.radius * (fin ? spearFinisherRadius : 1f);
+        // 鐵匠鋪升級過（虎皮、虎牙）：每種武器都多一點傷害
+        combat.weaponDamageScale = s.damage * WeaponForge.DamageScale * (fin ? spearFinisherDamage : 1f);
+    }
+
+    /// <summary>長槍第三下出招中就換成單手戳的判定，出完換回來</summary>
+    void TrackSpearFinisher()
+    {
+        bool fin = Current == WeaponLoadout.Spear && combat.IsAttacking && swingIndex % 3 == 2
+                   && !combat.IsAirSlash && !combat.IsPlunging && !combat.IsDashSlash;
+        if (fin == spearFinisher) return;
+        spearFinisher = fin;
+        if (baseCaptured) ApplyHitStats();
     }
 
     /// <summary>
@@ -743,7 +776,31 @@ public class PlayerLoadout : MonoBehaviour
     public static SpearArtPose ArtPose;
     /// <summary>長槍戳到牆被彈回來的程度（0 ~ 1，BladeRebound 每幀設定、慢慢減到 0）</summary>
     public static float ReboundKick;
-    Transform hipsBone, lUpperArm, lForeArm, lHandBone, rPalmBone, lPalmBone;
+    Transform hipsBone, lUpperArm, lForeArm, lHandBone, rPalmBone, lPalmBone, lThigh, rThigh;
+
+    Transform lowerSpine, rClavicle;
+
+    /// <summary>
+    /// 長槍戳的方向 = 鏡頭看的方向：左右最多偏離身體正面 40°；上下照鏡頭比平常（ThirdPersonCamera.startPitch，往下看 15°）
+    /// 抬高 / 壓低多少，最多 25°（鏡頭平常就往下看，直接照鏡頭的話每一下都會戳到地上）
+    /// </summary>
+    static Vector3 SpearAim(Vector3 fwd)
+    {
+        var cam = Camera.main;
+        Vector3 flatFallback = (fwd - Vector3.up * 0.04f).normalized;
+        if (cam == null) return flatFallback;
+        Vector3 c = cam.transform.forward;
+        Vector3 flat = Vector3.ProjectOnPlane(c, Vector3.up);
+        if (flat.sqrMagnitude < 1e-4f) return flatFallback;
+        float yaw = Mathf.Clamp(Vector3.SignedAngle(fwd, flat.normalized, Vector3.up), -40f, 40f);
+        var tpc = cam.GetComponent<ThirdPersonCamera>();
+        float neutral = tpc != null ? tpc.startPitch : 15f;
+        float down = Mathf.Asin(Mathf.Clamp(-c.y, -1f, 1f)) * Mathf.Rad2Deg;   // 鏡頭往下看幾度
+        float elevation = Mathf.Clamp(neutral - down, -25f, 25f) - 2.3f;          // 平常稍微往下一點（原本的 -0.04）
+        Vector3 h = Quaternion.AngleAxis(yaw, Vector3.up) * fwd;
+        Vector3 side = Vector3.Cross(Vector3.up, h).normalized;
+        return (Quaternion.AngleAxis(-elevation, side) * h).normalized;
+    }
 
     /// <summary>手掌中心（手腕往手指方向 60%）：槍桿要穿過這裡，看起來才是握在手裡</summary>
     static Vector3 Palm(Transform wrist, Transform finger) => finger != null ? Vector3.Lerp(wrist.position, finger.position, 0.6f) : wrist.position;
@@ -774,10 +831,12 @@ public class PlayerLoadout : MonoBehaviour
             lHandBone = animator.GetBoneTransform(HumanBodyBones.LeftHand);
             rPalmBone = animator.GetBoneTransform(HumanBodyBones.RightMiddleProximal);
             lPalmBone = animator.GetBoneTransform(HumanBodyBones.LeftMiddleProximal);
+            lThigh = animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+            rThigh = animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
         }
         if (hipsBone == null || lUpperArm == null) return;
 
-        Phase(out _, out float pull, out float strike, out float recover);
+        Phase(out int moveIndex, out float pull, out float strike, out float recover);
         // 出得快、收得快：出手時間的前 60% 就戳到底，收招的前 40% 就收回架式（後面停在架式上等下一招）
         strike = Mathf.Clamp01(strike * 1.65f);
         recover = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(recover / 0.4f));
@@ -793,22 +852,51 @@ public class PlayerLoadout : MonoBehaviour
             t = Mathf.Lerp(t, 1f, art.weight);
         }
         Vector3 fwd = transform.forward, up = Vector3.up, right = transform.right;
+        // 第三下：單手戳。戳出去的時候左手放開、往後擺，身體轉向左邊（右肩到前面）、右肩往前送、右手伸到最長，
+        // 槍滑到握住槍尾，戳得更遠
+        float one = !artOn && attacking && moveIndex % 3 == 2 ? extend * t : 0f;
 
         // 戳出去時身體往前壓一點（先轉身體，再擺手，手才會對到槍上）
         if (spine != null && extend > 0f) spine.rotation = Quaternion.AngleAxis(10f * extend * t * w, right) * spine.rotation;
+        if (one > 0f)
+        {
+            // 負的角度 = 往左轉：腰轉 15°、胸口再轉 20°（加起來 35°），胸口往前壓一點
+            if (lowerSpine == null && animator != null) lowerSpine = animator.GetBoneTransform(HumanBodyBones.Spine);
+            if (lowerSpine != null && lowerSpine != spine) lowerSpine.rotation = Quaternion.AngleAxis(-15f * one * w, up) * lowerSpine.rotation;
+            if (spine != null) spine.rotation = Quaternion.AngleAxis(-20f * one * w, up) * Quaternion.AngleAxis(8f * one * w, right) * spine.rotation;
+            // 右肩往前送（鎖骨繞垂直軸往前轉），手才伸得到最遠
+            if (rClavicle == null && animator != null) rClavicle = animator.GetBoneTransform(HumanBodyBones.RightShoulder);
+            if (rClavicle != null) rClavicle.rotation = Quaternion.AngleAxis(-18f * one * w, up) * rClavicle.rotation;
+        }
 
-        // 槍的方向：平常朝前稍微往上、往身體中線收一點；戳的時候放平朝前
-        Vector3 ready = (fwd + up * 0.2f - right * 0.1f).normalized;
-        Vector3 thrust = (fwd - up * 0.04f).normalized;
+        // 架式的兩隻手離身體多遠，照這個角色實際的身材量（兩個肩關節、兩個髖關節的距離），手才不會穿進腰和肚子：
+        //   後手（右手）在右腰外側——髖關節外面再留大腿和手的厚度、稍微往後
+        //   前手（左手）在肚臍高度、身體正前方，離骨盆中心往前 0.36（× 身材），左手的前臂從肚子前面過去，不貼著肚子
+        float shoulderHalf = 0.5f * Vector3.Distance(upperArm.position, lUpperArm.position);
+        float body = Mathf.Clamp(shoulderHalf / 0.16f, 0.7f, 1.8f);
+        float hipHalf = lThigh != null && rThigh != null ? 0.5f * Vector3.Distance(lThigh.position, rThigh.position) : shoulderHalf * 0.6f;
+        Vector3 rearReady = hipsBone.position + right * (hipHalf + 0.12f * body) + up * 0.08f * body - fwd * 0.03f * body;
+        Vector3 frontReady = hipsBone.position + right * 0.08f * body + up * 0.24f * body + fwd * 0.36f * body;
+        // 槍的方向：平常從右腰往左前方斜斜往上（照兩隻手的位置）；戳的時候朝鏡頭看的方向
+        Vector3 ready = (frontReady - rearReady).normalized;
+        Vector3 thrust = SpearAim(fwd);   // 戳向鏡頭看的方向
         Vector3 dir = Vector3.Slerp(ready, thrust, t).normalized;
         if (artOn && art.dir.sqrMagnitude > 1e-4f) dir = Vector3.Slerp(dir, art.dir.normalized, art.weight).normalized;
         // 後手在右腰稍後面；戳的時候先往後收，再往前推到肚子前面
-        Vector3 rear = hipsBone.position + right * 0.2f + up * 0.06f - fwd * 0.04f;
+        Vector3 rear = rearReady;
         rear += t * (-fwd * 0.2f * pull + (fwd * 0.42f + up * 0.12f - right * 0.08f) * extend);
         // 往下刺：雙手抬到胸口以上、往身體前面收（槍從手往下指）
         if (artOn && art.raise > 0f) rear += (up * 0.55f + fwd * 0.12f + right * 0.02f) * art.raise * art.weight;
-        // 前手在後手往前 0.48 m 的槍桿上（大約在肚子前面）
-        Vector3 front = rear + dir * 0.48f;
+        // 單手戳：右手跟肩膀同高、手臂伸直往前
+        if (one > 0f && foreArm != null && hand != null)
+        {
+            float arm = Vector3.Distance(upperArm.position, foreArm.position) + Vector3.Distance(foreArm.position, hand.position);
+            rear = Vector3.Lerp(rear, upperArm.position + dir * arm * 0.995f, one);
+        }
+        // 前手在後手往前 0.48 m 的槍桿上（大約在肚子前面）；單手戳時放開、往左後方伸出去平衡
+        Vector3 front = rear + dir * Mathf.Lerp(Vector3.Distance(rearReady, frontReady), 0.48f * body, t);
+        float lArm = Vector3.Distance(lUpperArm.position, lForeArm.position) + Vector3.Distance(lForeArm.position, lHandBone.position);
+        Vector3 balance = lUpperArm.position + (-fwd * 0.85f - up * 0.45f - right * 0.15f).normalized * lArm * 0.95f;   // 左手往後擺、伸直
         // 手腕的目標 = 手掌要握的地方往回退半個手掌（手掌中心才會在槍桿上）。
         // 擺完手臂手掌的方向會變，所以照新的方向再擺一次
         for (int pass = 0; pass < 3; pass++)
@@ -816,12 +904,12 @@ public class PlayerLoadout : MonoBehaviour
             Vector3 rOff = hand != null && rPalmBone != null ? Palm(hand, rPalmBone) - hand.position : Vector3.zero;
             Vector3 lOff = lHandBone != null && lPalmBone != null ? Palm(lHandBone, lPalmBone) - lHandBone.position : Vector3.zero;
             TwoBoneIK(upperArm, foreArm, hand, rear - rOff, upperArm.position - up * 0.7f - fwd * 0.4f + right * 0.45f, pass == 0 ? w : 1f);
-            TwoBoneIK(lUpperArm, lForeArm, lHandBone, front - lOff, lUpperArm.position - up * 0.8f - right * 0.5f, pass == 0 ? w : 1f);
+            TwoBoneIK(lUpperArm, lForeArm, lHandBone, Vector3.Lerp(front - lOff, balance, one), lUpperArm.position - up * 0.8f - right * 0.5f + fwd * 0.25f, pass == 0 ? w : 1f);
             if (w < 0.999f) break; // 還在換姿勢的途中：擺一次就好
         }
 
         Vector3 grip = hand != null && rPalmBone != null ? Palm(hand, rPalmBone) : hand != null ? hand.position : rear;
-        spear.transform.SetPositionAndRotation(Vector3.Lerp(spear.transform.position, grip + dir * 0.6f, w),
+        spear.transform.SetPositionAndRotation(Vector3.Lerp(spear.transform.position, grip + dir * Mathf.Lerp(0.6f, 0.9f, one), w),
             Quaternion.Slerp(spear.transform.rotation, AlongY(dir, up), w));
         FollowTip(spear);
     }
