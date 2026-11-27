@@ -89,8 +89,8 @@ public static partial class InkboundTownBuilder
         for(int i=0;i<=3;i++)Box("Window crosspiece",parent,pos+new Vector3(0,-height*.5f+i*height/3,-.055f),new Vector3(width+.09f,.045f,.065f),timber);
         Box("Window sill",parent,pos+new Vector3(0,-height*.5f-.08f,-.06f),new Vector3(width+.25f,.16f,.25f),timber);
     }
-    static void Roof(Transform parent,float width,float depth,float height,float rise)
-        =>SculptRoof(parent,width,depth,height,rise);
+    static void Roof(Transform parent,float width,float depth,float height,float rise,Material material=null)
+        =>SculptRoof(parent,width,depth,height,rise,material);
     static GameObject BuildTree(string name,int kind) => SculptTree(name,kind);
     static void Leaf(Transform parent,Vector3 a,Vector3 b,float width)
     {

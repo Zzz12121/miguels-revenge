@@ -20,6 +20,7 @@ Shader "Project/InkboundTown/Painted Surface"
         _FadeFar("Atmospheric fade end",Float)=185
         _StrokeScale("Brush scale",Float)=1
         _DirectionalUV("Follow curved brush UV",Range(0,1))=0
+        [HideInInspector]_MountainWorldSpace("Continuous mountain brush coordinates",Float)=0
         [HideInInspector]_EchoStrength("Echo disturbance",Float)=0
         [HideInInspector]_InkRebuild("Reassembled pigment",Float)=1
         [HideInInspector]_InkRebuildMin("Reassembly bounds minimum",Vector)=(0,0,0,0)
@@ -27,6 +28,8 @@ Shader "Project/InkboundTown/Painted Surface"
         [HideInInspector]_TouchRadius("Influence radius",Float)=.88
         [HideInInspector]_TouchPosition("Influence position",Vector)=(0,0,0,0)
         [HideInInspector]_TouchDirection("Advection",Vector)=(0,0,0,0)
+        _ContactInk("Contact and waterline accumulation",Range(0,1.5))=.55
+        [HideInInspector]_HeightMist("Mountain foot mist",Range(0,1))=0
     }
     SubShader
     {
@@ -41,7 +44,7 @@ Shader "Project/InkboundTown/Painted Surface"
         float4 _BaseMap_ST,_TouchPosition,_TouchDirection,_BrushPanel;
         float4 _InkFrom[4],_InkTo[4];
         float4 _InkRebuildMin,_InkRebuildSize;
-        float _InkRebuild;
+        float _InkRebuild,_MountainWorldSpace,_ContactInk,_HeightMist;
         float _TextureWeight,_Pattern,_Grain,_Wash,_Outline,_FadeNear,_FadeFar,_EchoStrength,_TouchRadius,_StrokeScale,_DirectionalUV,_BrushWeight,_AlphaClip,_Cutoff;
         CBUFFER_END
         TEXTURE2D(_BaseMap);SAMPLER(sampler_BaseMap);
@@ -58,7 +61,7 @@ Shader "Project/InkboundTown/Painted Surface"
             for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++)
             {
                 float2 q=cell+float2(x,y),j=float2(hash21(q),hash21(q+31.7));
-                float2 d=q+.5+(j-.5)*.72-p;float r=dot(d,d);
+                float2 d=q+.5+(j-.5)*.92-p;float r=dot(d,d);
                 if(r<nearest){second=nearest;nearest=r;id=hash21(q+74);}
                 else second=min(second,r);
             }
@@ -132,13 +135,13 @@ Shader "Project/InkboundTown/Painted Surface"
                 float2 surface=abs(n.y)>.6?i.world.xz:(abs(n.x)>.6?i.world.zy:i.world.xy);
                 surface*=max(.1,_StrokeScale);
                 surface=lerp(surface,float2(i.uv.x*3,i.uv.y),_DirectionalUV);
-                if(_Pattern>4.5 && _Pattern<5.5)surface=float2(i.uv.x*160,i.uv.y*42);
+                if(_Pattern>4.5 && _Pattern<5.5)surface=lerp(float2(i.uv.x*160,i.uv.y*42),float2((i.world.x+i.world.z*.43)*.2,i.world.y*.75),_MountainWorldSpace);
                 float distanceToEye=distance(_WorldSpaceCameraPos,i.world);
                 float detail=1-smoothstep(18,115,distanceToEye);
                 float broad=wash(surface*.67),dry=wash(surface*float2(19,6));
                 float tex=dot(SAMPLE_TEXTURE2D(_BaseMap,sampler_BaseMap,i.uv).rgb,float3(.299,.587,.114));
                 // Lift the large clothing areas while keeping dark hair and facial marks legible.
-                half3 color=_BaseColor.rgb*lerp(1,.16+pow(tex,.76)*.9,_TextureWeight);
+                half3 color=_BaseColor.rgb*lerp(1,.16+pow(max(0,tex),.76)*.9,_TextureWeight);
                 float lighting=saturate(dot(n,normalize(float3(-.35,.85,-.3))));
                 color*=lerp(.76,1.025,smoothstep(.12,.8,lighting));
                 Light mainLight=GetMainLight(TransformWorldToShadowCoord(i.world));
@@ -148,7 +151,7 @@ Shader "Project/InkboundTown/Painted Surface"
                     color*=lerp(.66,1,ao.indirectAmbientOcclusion);
                 #endif
                 color*=1-_Wash*(.65-broad);
-                float mark=0;
+                float mark=0,mountainFootMist=0;
                 if(_Pattern<.5)
                 {
                     float foot=1-smoothstep(.15,1.65+noise21(p*.8)*.8,i.world.y);
@@ -159,8 +162,12 @@ Shader "Project/InkboundTown/Painted Surface"
                 else if(_Pattern<1.5)
                 {
                     float fibers=wash(float2(surface.x*24,surface.y*.75));
-                    color=lerp(color,_PaperColor.rgb,smoothstep(.68,.91,fibers)*_Grain*.085*detail);
-                    mark=wash(float2(surface.x*4,surface.y*.4))*.12;
+                    float dryGap=smoothstep(.67,.9,wash(float2(surface.x*38,surface.y*.42)));
+                    float longGrain=wash(float2(surface.x*3.2,surface.y*.16));
+                    color=lerp(color,_PaperColor.rgb,smoothstep(.68,.91,fibers)*_Grain*.11*detail);
+                    color=lerp(color,_PaperColor.rgb,dryGap*_Grain*.14*detail);
+                    color*=.94+longGrain*.1;
+                    mark=wash(float2(surface.x*4,surface.y*.4))*.10+dryGap*.035;
                 }
                 else if(_Pattern<2.5)
                 {
@@ -171,21 +178,29 @@ Shader "Project/InkboundTown/Painted Surface"
                     float col=abs(frac(tiles.x+floor(tiles.y)*.43)-.5);
                     float tile=(smoothstep(.41,.48,row)+smoothstep(.44,.49,col)*.4)*detail;
                     color=lerp(color,_PaperColor.rgb,tile*.035*noise21(surface*4));
-                    color=lerp(color,_PaperColor.rgb,smoothstep(.72,.94,stroke)*_Grain*.045*detail);
-                    mark=wash(surface*.7)*.17;
+                    color=lerp(color,_PaperColor.rgb,smoothstep(.72,.94,stroke)*_Grain*.085*detail);
+                    float slopeWash=wash(surface*float2(.72,.28));
+                    float bristle=smoothstep(.61,.86,wash(surface*float2(23,1.7)));
+                    color*=.9+slopeWash*.16;
+                    color=lerp(color,_PaperColor.rgb,bristle*_Grain*.12*detail);
+                    mark=wash(surface*.7)*.13+bristle*.025;
                 }
                 else if(_Pattern<3.5)
                 {
-                    float2 cell=stoneCell(surface*float2(1.1,.78)+(float2(noise21(surface*2),noise21(surface*2+9))-.5)*.12);
-                    float seam=1-smoothstep(.008,.035,cell.x);
-                    mark=seam*smoothstep(.28,.64,dry)*(.18+cell.y*.13)*detail;
-                    color=lerp(color,_PaperColor.rgb,.1+cell.y*.15);
-                    color*=.98+cell.y*.045;
-                    mark+=smoothstep(.56,.8,broad)*.07;
+                    float2 cell=stoneCell(surface*float2(.86,.92)+(float2(noise21(surface*2),noise21(surface*2+9))-.5)*.16);
+                    float seam=(1-smoothstep(.008,.038,cell.x))*smoothstep(.18,.72,wash(surface*5.7));
+                    mark=seam*smoothstep(.28,.64,dry)*(.22+cell.y*.16)*detail;
+                    color=lerp(color,_PaperColor.rgb,.08+cell.y*.17);
+                    color*=.95+cell.y*.075;
+                    mark+=smoothstep(.56,.8,broad)*.085;
                 }
                 else if(_Pattern<4.5)
                 {
-                    mark=wash(surface*float2(17,2))*.035*detail;
+                    float thread=wash(i.uv*float2(115,155));
+                    float fold=wash(surface*float2(1.7,.34));
+                    color*=.96+fold*.065;
+                    color=lerp(color,_PaperColor.rgb,smoothstep(.76,.94,thread)*_Grain*.055*detail);
+                    mark=wash(surface*float2(17,2))*.04*detail;
                     if(_TextureWeight<.1)
                     {
                         float2 motif=frac(i.uv*float2(3,4))-.5;
@@ -196,7 +211,7 @@ Shader "Project/InkboundTown/Painted Surface"
                 }
                 else if(_Pattern<5.5)
                 {
-                    float2 mountainUV=i.uv;
+                    float2 mountainUV=float2(lerp(i.uv.x,i.world.x*.01+i.world.z*.008,_MountainWorldSpace),i.uv.y);
                     float stroke=wash(surface*float2(.13,.19));
                     float ridge=pow(saturate(noise21(float2(surface.x*1.1+surface.y*.35,surface.y*.18))),3);
                     color=lerp(_PaperColor.rgb,color,saturate(.22+stroke*.9));
@@ -205,12 +220,27 @@ Shader "Project/InkboundTown/Painted Surface"
                     float foot=smoothstep(.03,.53+noise21(float2(mountainUV.x*18,2))*.16,mountainUV.y);
                     float edgeInk=smoothstep(.91,.995,mountainUV.y)*(.2+noise21(surface*.5)*.4);
                     color=lerp(_PaperColor.rgb,color*(1-edgeInk*.14),foot);
+                    if(_MountainWorldSpace>.5)
+                    {
+                        float2 rockUV=float2((i.world.x+i.world.z*.61)*.3,i.world.y*.095);
+                        float split=wash(float2(rockUV.x*4+rockUV.y*.45,rockUV.y*.55));
+                        float slope=1-saturate(abs(n.y));
+                        float strata=wash(float2(rockUV.x*2.6+rockUV.y*.32,rockUV.y*7.5));
+                        float crevice=smoothstep(.57,.79,strata)*(.3+slope*.7);
+                        color*=1-smoothstep(.44,.77,split)*(.08+slope*.14);
+                        color*=1-crevice*.13;
+                        color=lerp(color,_PaperColor.rgb,smoothstep(.72,.9,noise21(rockUV*float2(12,2.2)))*.15*foot);
+                    }
+                    float mistHeight=18+noise21(i.world.xz*.035)*16;
+                    mountainFootMist=(1-smoothstep(0,mistHeight,i.world.y))*_HeightMist;
+                    color=lerp(color,_PaperColor.rgb,mountainFootMist*(.28+.24*noise21(i.world.xz*.09)));
                 }
                 else if(_Pattern<6.5)
                 {
                     // Leaf meshes taper in geometry; pigment breaks up inside their silhouettes.
-                    color=lerp(color,_PaperColor.rgb,smoothstep(.59,.85,dry)*_Grain*.46);
-                    mark=broad*.13;
+                    color=lerp(color,_PaperColor.rgb,smoothstep(.57,.84,dry)*_Grain*.58);
+                    color*=.93+broad*.12;
+                    mark=broad*.16+dry*.035;
                 }
                 else
                 {
@@ -218,7 +248,31 @@ Shader "Project/InkboundTown/Painted Surface"
                     mark=smoothstep(.57,.80,broad)*.025;
                     color=lerp(color,_PaperColor.rgb,broad*.035);
                 }
+                float contact=0;
+                if(_Pattern<.5)
+                {
+                    float dampHeight=1.25+noise21(i.world.xz*.73)*.55;
+                    float damp=1-smoothstep(.06,dampHeight,i.world.y);
+                    float capillary=smoothstep(.4,.79,wash(float2(surface.x*5.8,surface.y*.52)));
+                    float lowerEave=exp(-pow((i.world.y-3.08)/.24,2));
+                    float upperEave=exp(-pow((i.world.y-6.43)/.28,2));
+                    contact=(damp*(.11+capillary*.2)+(lowerEave+upperEave)*.085)*_ContactInk;
+                }
+                else if(_Pattern>.5&&_Pattern<1.5)
+                {
+                    float damp=1-smoothstep(.04,.72+noise21(i.world.xz)*.25,i.world.y);
+                    contact=damp*wash(float2(surface.x*7,surface.y*.3))*.13*_ContactInk;
+                }
+                else if(_Pattern>2.5&&_Pattern<3.5)
+                {
+                    float waterline=exp(-pow((i.world.y+.82)/.23,2));
+                    float broken=smoothstep(.25,.7,wash(i.world.xz*3.7+i.world.y*4));
+                    float moss=smoothstep(.58,.82,wash(i.world.xz*1.6))*(1-smoothstep(-.95,.05,i.world.y));
+                    contact=(waterline*(.08+broken*.16)+moss*.08)*_ContactInk;
+                }
+                color*=1-contact;
                 float edge=pow(1-abs(dot(n,normalize(_WorldSpaceCameraPos-i.world))),5);
+                edge*=.55+noise21(surface*13)*.65;
                 // Mirrored coordinates stay within one painted quadrant, including mip padding.
                 float2 brushUV=abs(frac(surface*float2(.17,.13)*.5)*2-1);
                 float2 atlasUV=_BrushPanel.xy+float2(.006,.006)+brushUV*.488;
@@ -228,8 +282,9 @@ Shader "Project/InkboundTown/Painted Surface"
                 color=lerp(color,_PaperColor.rgb,smoothstep(.69,.92,dry)*_Grain*.13*detail);
                 // Fine paper fibres, softened with distance so the far scenery loses texture too.
                 float fibre=noise21(surface*float2(130,67));
-                color+=(fibre-.5)*.0015*detail;
+                color+=(fibre-.5)*.0025*detail;
                 float atmosphere=smoothstep(_FadeNear,max(_FadeNear+.1,_FadeFar),distanceToEye);
+                atmosphere=saturate(atmosphere+mountainFootMist*.18);
                 color=lerp(color,_PaperColor.rgb,atmosphere);
                 return half4(saturate(color),1);
             }

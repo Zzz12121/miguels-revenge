@@ -64,6 +64,46 @@ public static class InkboundPassThroughChecks
     {var owner=InkboundPassThroughImpact.Owner(echo);return owner.GetComponentsInChildren<Renderer>().Where(r=>InkboundPassThroughImpact.Eligible(r,owner)).All(r=>r.forceRenderingOff);}
     static float Rebuild(InkboundEcho echo)
     {var block=new MaterialPropertyBlock();echo.GetComponentInChildren<SkinnedMeshRenderer>().GetPropertyBlock(block);return block.GetFloat("_InkRebuild");}
+    static Vector3[] LiveOrigins(CalligraphyInkField ink)
+        =>ink.GetComponentsInChildren<LineRenderer>().Where(l=>l.enabled).Select(l=>l.useWorldSpace?l.GetPosition(0):l.transform.TransformPoint(l.GetPosition(0))).Distinct().ToArray();
+    public static async Task<string> MultiPointPreview()
+    {
+        Directory.CreateDirectory(Folder);var settings=Object.FindAnyObjectByType<InkboundTownInkSettings>();float speed=settings.inkPlaybackSpeed;
+        var player=PlayerHealth.Find();var motor=player.GetComponent<ThirdPersonController>();bool input=motor.inputEnabled;Vector3 position=player.transform.position;
+        var echo=Object.FindObjectsByType<InkboundEcho>().First(e=>e.name=="Dock net repair");
+        var actor=Object.FindObjectsByType<InkboundEcho>().First(e=>e.name.StartsWith("Market passing life"));
+        var animator=actor.GetComponentInChildren<Animator>();var playback=settings.ImpactPlayer;float health=player.Health;
+        var encounter=Object.FindAnyObjectByType<InkboundTownEncounter>();bool encounterEnabled=encounter.enabled,combatEnabled=encounter.elder.enabled;
+        try
+        {
+            motor.inputEnabled=false;encounter.enabled=false;encounter.elder.CancelCast();encounter.elder.enabled=false;
+            playback.enabled=false;playback.enabled=true;await Task.Delay(50);
+            // Inspect emitted geometry at birth; these are real enabled ink ribbons, not planned anchors.
+            playback.Trigger(actor,Vector3.forward);
+            var actorInk=Object.FindObjectsByType<CalligraphyInkField>().First(f=>f.name=="Pass-through elder hit ink");
+            var actorOrigins=LiveOrigins(actorInk);
+            Vector3 head=animator.GetBoneTransform(HumanBodyBones.Head).position,left=animator.GetBoneTransform(HumanBodyBones.LeftFoot).position,right=animator.GetBoneTransform(HumanBodyBones.RightFoot).position;
+            Vector3 belly=Vector3.Lerp(animator.GetBoneTransform(HumanBodyBones.Hips).position,animator.GetBoneTransform(HumanBodyBones.Chest).position,.35f);
+            var body=new{points=actorOrigins.Length,ribbons=actorInk.GetComponentsInChildren<LineRenderer>().Count(l=>l.enabled),
+                head=actorOrigins.Min(p=>Vector3.Distance(p,head))<.01f,belly=actorOrigins.Min(p=>Vector3.Distance(p,belly))<.01f,
+                leftFoot=actorOrigins.Min(p=>Vector3.Distance(p,left))<.01f,rightFoot=actorOrigins.Min(p=>Vector3.Distance(p,right))<.01f};
+            Warp(player,echo.transform.position+new Vector3(0,1.05f,-5));playback.Trigger(echo,Vector3.forward);await Task.Delay(450);
+            Shot("09-multiple-body-ink",echo.transform.position+new Vector3(-2.7f,1.5f,-2.7f),echo.GetComponentInChildren<SkinnedMeshRenderer>().bounds.center);
+            var table=Object.FindObjectsByType<InkboundPassableGroup>().First(g=>g.name=="Complete table");
+            var tableEcho=table.GetComponentInChildren<InkboundEcho>();playback.Trigger(tableEcho,Vector3.forward);
+            var field=Object.FindObjectsByType<CalligraphyInkField>().Where(f=>f.name=="Pass-through elder hit ink").OrderBy(f=>Vector3.Distance(f.transform.position,tableEcho.GetComponent<Renderer>().bounds.center)).First();
+            var origins=LiveOrigins(field);var coverage=new Bounds(origins[0],Vector3.zero);foreach(var p in origins)coverage.Encapsulate(p);
+            var furniture=new{points=origins.Length,ribbons=field.GetComponentsInChildren<LineRenderer>().Count(l=>l.enabled),coverage=coverage.size.ToString("F3"),spreadAcrossTable=coverage.size.x>.6f&&coverage.size.z>.5f};
+            await Task.Delay(450);Vector3 center=tableEcho.GetComponent<Renderer>().bounds.center;
+            Warp(player,center+new Vector3(0,2,-5));Shot("10-multiple-furniture-ink",center+new Vector3(-2.5f,1.7f,-2.8f),center);
+            bool hidden=Hidden(actor)&&Hidden(echo)&&Hidden(tableEcho);float start=Time.time;
+            while(playback.ActiveCount>0&&Time.time-start<12)await Task.Delay(30);
+            bool restored=!playback.IsPlaying(actor.transform)&&!playback.IsPlaying(echo.transform)&&!playback.IsPlaying(table.transform)&&!Hidden(actor)&&!Hidden(echo)&&!Hidden(tableEcho);
+            var report=new{body,furniture,hidden,restored,healthUnchanged=player.Health==health,preservedSpeed=settings.inkPlaybackSpeed};
+            string json=Newtonsoft.Json.JsonConvert.SerializeObject(report,Newtonsoft.Json.Formatting.Indented);File.WriteAllText(Folder+"/multiple-points.json",json);return json;
+        }
+        finally{playback.enabled=false;playback.enabled=true;settings.inkPlaybackSpeed=speed;motor.inputEnabled=input;encounter.elder.enabled=combatEnabled;encounter.enabled=encounterEnabled;Warp(player,position);}
+    }
     public static async Task<string> Preview()
     {
         Directory.CreateDirectory(Folder);var settings=Object.FindAnyObjectByType<InkboundTownInkSettings>();float speed=settings.inkPlaybackSpeed;

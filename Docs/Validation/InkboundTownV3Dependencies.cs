@@ -7,6 +7,7 @@ public static class InkboundTownV3Dependencies
     {
         var roots=new[]{
             InkboundTownBuilder.ScenePath,"Assets/_Project/Prefabs/Boss/PF_InkboundTown_Elder.prefab",
+            "Assets/_Project/Resources/ScenePortals/PF_ForestInkboundPortal.prefab",
             "Assets/Resources/InkboundTown/M_IT_EntryScroll.mat","Assets/Resources/InkboundTown/M_IT_EntryRoller.mat",
             "Assets/Soswaewon/Meshes/Buildings/SM_JWD_Roof01a.fbx","Assets/Soswaewon/Meshes/Buildings/SM_JWD_Door01a.fbx",
             "Assets/Soswaewon/Meshes/Buildings/SM_JWD_Door01b.fbx","Assets/Soswaewon/Meshes/Buildings/SM_JWD_Door01c.fbx",

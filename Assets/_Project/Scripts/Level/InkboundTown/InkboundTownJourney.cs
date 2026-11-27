@@ -22,7 +22,7 @@ public static class InkboundTownJourney
     }
     public static void Carry(BossHealth health)
     {Register();Pending=true;MaximumHealth=health.maxHealth;RemainingHealth=Mathf.Max(1,health.Health);}
-    static void Register()
+    public static void Register()
     {
         var manager=GameManager.Instance;if(!manager||manager.FindLevel(Scene)!=null)return;
         manager.storyLevels=(manager.storyLevels??System.Array.Empty<GameManager.Level>()).Concat(new[]{new GameManager.Level{sceneName=Scene,title="河鎮",music=""}}).ToArray();

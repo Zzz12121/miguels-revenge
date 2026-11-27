@@ -25,8 +25,8 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _ReflectionStrength: 0.82
+    - _ReflectionStrength: 0.68
     m_Colors:
-    - _BaseColor: {r: 0.925, g: 0.922, b: 0.9, a: 1}
+    - _BaseColor: {r: 0.957, g: 0.949, b: 0.918, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

@@ -69,6 +69,9 @@ public sealed class VictoryCongratulations : MonoBehaviour
     IEnumerator ShowAfterDeath(BossHealth health)
     {
         if (Showing) yield break;
+        // These two encounters now own a continuous portal / credits sequence. A modal
+        // victory screen would freeze the portal before the player could reach it.
+        if(CentipedeCredits.HandlesEndingFor(health))yield break;
         // 百足駭骨三階段的分身也有 BossHealth（整隻複製出來的）：分身倒下不算贏，要等本體倒下
         if (health != null && health.TryGetComponent(out SkeletonCentipedeBossAI centipede) && centipede.IsClone) yield break;
         if (health != null) health.ShowDefeatLabel = false;   // 換成這個畫面，血條上的小字不用了

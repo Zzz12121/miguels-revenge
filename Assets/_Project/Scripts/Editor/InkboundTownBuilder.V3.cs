@@ -13,6 +13,7 @@ public static partial class InkboundTownBuilder
 {
     static readonly List<GameObject> v3Plants=new();
     static Material darkCloth,petals,teaPaper,steamInk;
+    static Material[] v3WallTones,v3RoofTones;
     static bool forceSimpleRoof;
     static readonly Dictionary<string,Material> latticeMaterials=new();
     static bool V3DetailedWindow(Transform parent,Vector3 position,float width,float height)
@@ -40,29 +41,60 @@ public static partial class InkboundTownBuilder
     }
     // Shader Color properties are converted by Unity in a Linear project; keep the authored sRGB values.
     static Color Display(float r,float g,float b)=>new Color(r,g,b);
+    static void TuneInkSurface(Material m,float tone,float grain,float wash,float outline,float brush,float contact,float mist=0)
+    {
+        int pattern=Mathf.RoundToInt(m.GetFloat("_Pattern"));
+        m.SetColor("_BaseColor",Display(tone,tone,tone*.985f));m.SetColor("_PaperColor",Display(.957f,.949f,.918f));
+        m.SetFloat("_Grain",grain);m.SetFloat("_Wash",wash);m.SetFloat("_Outline",outline);
+        m.SetFloat("_BrushWeight",brush);m.SetFloat("_ContactInk",contact);m.SetFloat("_HeightMist",mist);
+        m.SetFloat("_FadeNear",pattern==5?95:pattern==6?70:75);m.SetFloat("_FadeFar",pattern==5?520:pattern==6?310:360);
+        EditorUtility.SetDirty(m);AssetDatabase.SaveAssetIfDirty(m);
+    }
     static void CreateV3Materials()
     {
         var atlas=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Project/VFX/InkboundTown/IT_V3_BrushAtlas.png");
-        var tones=new[]{(paper,.957f),(plaster,.91f),(timber,.40f),(roof,.36f),(stone,.73f),(earth,.83f),
-            (cloth,.79f),(foliage,.40f),(leafWash,.57f),(bankStone,.60f),(bark,.32f),(ink,.105f),(ceramic,.58f)};
-        foreach(var pair in tones)
+        var tuning=new[]
         {
-            var m=pair.Item1;float t=pair.Item2;
-            m.SetColor("_BaseColor",Display(t,t,t*.985f));m.SetColor("_PaperColor",Display(.957f,.949f,.918f));
-            m.SetFloat("_Grain",.24f);m.SetFloat("_Wash",.10f);m.SetFloat("_Outline",.035f);
-            m.SetFloat("_FadeNear",55);m.SetFloat("_FadeFar",285);
-            int pattern=Mathf.RoundToInt(m.GetFloat("_Pattern"));
-            m.SetTexture("_BrushAtlas",atlas);m.SetFloat("_BrushWeight",pattern==6?.12f:.64f);
-            m.SetVector("_BrushPanel",pattern==1?new Vector4(.5f,.5f,0,0):pattern==2?Vector4.zero:pattern==3?new Vector4(.5f,0,0,0):new Vector4(0,.5f,0,0));
-            EditorUtility.SetDirty(m);AssetDatabase.SaveAssetIfDirty(m);
+            (m:paper,t:.955f,g:.30f,w:.08f,o:.04f,b:.45f,c:.35f),
+            (m:plaster,t:.915f,g:.32f,w:.14f,o:.055f,b:.52f,c:.85f),
+            (m:timber,t:.34f,g:.48f,w:.16f,o:.075f,b:.72f,c:.45f),
+            (m:roof,t:.31f,g:.42f,w:.20f,o:.065f,b:.74f,c:.15f),
+            (m:stone,t:.67f,g:.52f,w:.20f,o:.06f,b:.72f,c:.60f),
+            (m:earth,t:.83f,g:.38f,w:.12f,o:.04f,b:.50f,c:.35f),
+            (m:cloth,t:.78f,g:.36f,w:.14f,o:.055f,b:.58f,c:.25f),
+            (m:foliage,t:.36f,g:.42f,w:.18f,o:.10f,b:.18f,c:.08f),
+            (m:leafWash,t:.58f,g:.48f,w:.22f,o:.08f,b:.22f,c:.08f),
+            (m:bankStone,t:.55f,g:.58f,w:.22f,o:.07f,b:.76f,c:.90f),
+            (m:bark,t:.26f,g:.52f,w:.18f,o:.09f,b:.82f,c:.45f),
+            (m:ink,t:.07f,g:.35f,w:.12f,o:.08f,b:.65f,c:.20f),
+            (m:ceramic,t:.64f,g:.30f,w:.12f,o:.06f,b:.56f,c:.70f)
+        };
+        foreach(var item in tuning)
+        {
+            int pattern=Mathf.RoundToInt(item.m.GetFloat("_Pattern"));
+            item.m.SetTexture("_BrushAtlas",atlas);
+            item.m.SetVector("_BrushPanel",pattern==1?new Vector4(.5f,.5f,0,0):pattern==2?Vector4.zero:pattern==3?new Vector4(.5f,0,0,0):new Vector4(0,.5f,0,0));
+            TuneInkSurface(item.m,item.t,item.g,item.w,item.o,item.b,item.c,pattern==5?.65f:0);
         }
-        darkCloth=V3Material("FoldedPatternedLinen",cloth,.59f);
+        v3WallTones=new Material[4];v3RoofTones=new Material[4];
+        float[] wallTones={.925f,.895f,.94f,.875f},roofTones={.285f,.325f,.37f,.415f};
+        for(int i=0;i<4;i++)
+        {
+            v3WallTones[i]=V3Material("Limewash"+i,plaster,wallTones[i]);
+            TuneInkSurface(v3WallTones[i],wallTones[i],.29f+i*.02f,.13f+i*.025f,.052f+i*.006f,.48f+i*.035f,.82f+i*.04f);
+            v3RoofTones[i]=V3Material("InkRoof"+i,roof,roofTones[i]);
+            TuneInkSurface(v3RoofTones[i],roofTones[i],.40f+i*.02f,.18f+i*.025f,.06f+i*.008f,.70f+i*.03f,.12f+i*.03f);
+        }
+        darkCloth=V3Material("FoldedPatternedLinen",cloth,.56f);
         petals=V3Material("PaperWhiteBlossoms",leafWash,.92f);
         teaPaper=V3Material("TeaInteriorPaper",plaster,.77f);
+        TuneInkSurface(darkCloth,.56f,.42f,.18f,.07f,.66f,.25f);
+        TuneInkSurface(petals,.92f,.42f,.16f,.07f,.16f,.05f);
+        TuneInkSurface(teaPaper,.77f,.34f,.16f,.055f,.54f,.75f);
         steamInk=Special("V3_KitchenSteam","Project/InkboundTown/Returning Pigment");steamInk.SetFloat("_VertexTint",1);EditorUtility.SetDirty(steamInk);AssetDatabase.SaveAssetIfDirty(steamInk);
         var masks=AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/_Project/VFX/InkboundTown/IT_V3_FluidMasks.png");
         plume.SetTexture("_FluidMask",masks);plume.SetFloat("_UseFluidMask",1);EditorUtility.SetDirty(plume);AssetDatabase.SaveAssetIfDirty(plume);
-        river.SetColor("_BaseColor",Display(.925f,.922f,.90f));river.SetFloat("_ReflectionStrength",.82f);
+        river.SetColor("_BaseColor",Display(.957f,.949f,.918f));river.SetFloat("_ReflectionStrength",.68f);
         EditorUtility.SetDirty(river);AssetDatabase.SaveAssetIfDirty(river);
     }
     static Material V3Material(string name,Material source,float tone)
@@ -187,16 +219,18 @@ public static partial class InkboundTownBuilder
     {
         bool upstairs=type==1||type==2||type==3||variation==1;
         float w=type==1?9:7.2f+variation*.45f,d=type==1?8:6.8f,h=upstairs?6.5f:3.7f;
+        var wall=v3WallTones[(type*3+variation)%v3WallTones.Length];
+        var roofSurface=v3RoofTones[(type+variation*2)%v3RoofTones.Length];
         var r=Root("IT_V3_"+shopNames[type]+"_"+variation,null);
         // Wall segments form a real accessible room, not a solid white box behind a painted door.
         Box("Solid stone foundation",r,new Vector3(0,.09f,0),new Vector3(w,.18f,d),stone,true);
-        Box("Rear plaster wall",r,new Vector3(0,h/2,d/2-.12f),new Vector3(w,h,.24f),plaster,true);
+        Box("Rear plaster wall",r,new Vector3(0,h/2,d/2-.12f),new Vector3(w,h,.24f),wall,true);
         foreach(int s in new[]{-1,1})
         {
             if(type==1)
             {
                 Box("Tea low side wall",r,new Vector3(s*(w/2-.12f),.65f,0),new Vector3(.24f,1.3f,d),teaPaper,true);
-                Box("Tea upper side wall",r,new Vector3(s*(w/2-.12f),(h+2.8f)*.5f,0),new Vector3(.24f,h-2.8f,d),plaster,true);
+                Box("Tea upper side wall",r,new Vector3(s*(w/2-.12f),(h+2.8f)*.5f,0),new Vector3(.24f,h-2.8f,d),wall,true);
                 for(int k=0;k<5;k++)
                 {
                     float z=-d/2+k*d/4;Box("Window wall pier",r,new Vector3(s*(w/2-.12f),2,z),new Vector3(.24f,1.8f,.20f),teaPaper,true);
@@ -205,7 +239,7 @@ public static partial class InkboundTownBuilder
                 RoundTimber(r,new Vector3(s*(w/2-.17f),1.35f,-d/2),new Vector3(s*(w/2-.17f),1.35f,d/2),.045f);
                 RoundTimber(r,new Vector3(s*(w/2-.17f),2.75f,-d/2),new Vector3(s*(w/2-.17f),2.75f,d/2),.045f);
             }
-            else Box("Side lime wall",r,new Vector3(s*(w/2-.12f),h/2,0),new Vector3(.24f,h,d),plaster,true);
+            else Box("Side lime wall",r,new Vector3(s*(w/2-.12f),h/2,0),new Vector3(.24f,h,d),wall,true);
             RoundTimber(r,new Vector3(s*(w/2-.28f),.18f,-d/2+.2f),new Vector3(s*(w/2-.28f),h,-d/2+.2f),.115f);
             for(int j=0;j<3;j++)Board(r,new Vector3(s*(w/2-.27f),.35f+j*.16f,-d/2),new Vector3(.32f,.13f,.45f),bankStone);
         }
@@ -218,21 +252,21 @@ public static partial class InkboundTownBuilder
             var capsule=column.gameObject.AddComponent<CapsuleCollider>();capsule.height=3.05f;capsule.radius=.095f;
         }
         RoundTimber(r,new Vector3(-w/2,2.95f,-d/2-.1f),new Vector3(w/2,2.95f,-d/2-.1f),.11f);
-        Roof(r,w+1.15f,d+1.35f,h,1.45f);
+        Roof(r,w+1.15f,d+1.35f,h,1.45f,roofSurface);
         for(int s=-1;s<=1;s+=2)
         {
             var gable=new Mesh{name="Solid limewashed gable"};
             gable.vertices=new[]{new Vector3(s*w/2,h,-d/2),new Vector3(s*w/2,h,d/2),new Vector3(s*w/2,h+1.45f,0)};
-            gable.uv=new[]{Vector2.zero,Vector2.right,Vector2.up};gable.triangles=new[]{0,1,2};gable.RecalculateNormals();Model("Painted gable",r,gable,plaster);
+            gable.uv=new[]{Vector2.zero,Vector2.right,Vector2.up};gable.triangles=new[]{0,1,2};gable.RecalculateNormals();Model("Painted gable",r,gable,wall);
         }
         // Separate overhang uses its own local frame so it extends into the street.
         var overhang=Root("Street veranda roof",r);overhang.localPosition=new Vector3(0,0,-d/2-.55f);
-        Roof(overhang,w+.6f,2.6f,3.0f,.52f);
+        Roof(overhang,w+.6f,2.6f,3.0f,.52f,roofSurface);
         for(int side=-1;side<=1;side+=2)Lantern(r,new Vector3(side*w*.39f,2.55f,-d/2-1.16f),.22f);
         if(upstairs)
         {
             Box("Upper storey floor",r,new Vector3(0,3.35f,0),new Vector3(w-.4f,.15f,d-.4f),timber,true);
-            Box("Upper facade plaster",r,new Vector3(0,4.93f,-d/2),new Vector3(w,3.1f,.2f),plaster,true);
+            Box("Upper facade plaster",r,new Vector3(0,4.93f,-d/2),new Vector3(w,3.1f,.2f),wall,true);
             for(int x=-1;x<=1;x++)Window(r,new Vector3(x*w*.3f,4.95f,-d/2-.13f),1.5f,1.65f);
             if(type==1||type==2)
             {
@@ -265,15 +299,15 @@ public static partial class InkboundTownBuilder
         // Decorative wall bases transition through stone, timber, paper and plaster.
         for(int i=0;i<7;i++)Board(r,new Vector3(-w*.43f+i*w*.14f,.23f,d/2+.035f),new Vector3(w*.135f,.3f,.22f),bankStone);
         Combine(r,"V3_"+type+"_"+variation);
-        InstallHouseLOD(r,w,h,d,type,variation);
+        InstallHouseLOD(r,w,h,d,type,variation,wall,roofSurface);
         return SavePrefab(r,Prefabs+"/PF_IT_V3_Shop"+type+"_"+variation+".prefab");
     }
-    static void InstallHouseLOD(Transform r,float w,float h,float d,int type,int variation)
+    static void InstallHouseLOD(Transform r,float w,float h,float d,int type,int variation,Material wall,Material roofSurface)
     {
         var close=r.GetComponentsInChildren<Renderer>();var distant=Root("Distant simplified architecture",r);
-        Box("Distant wall silhouette",distant,new Vector3(0,h*.5f,0),new Vector3(w,h,d),plaster);
+        Box("Distant wall silhouette",distant,new Vector3(0,h*.5f,0),new Vector3(w,h,d),wall);
         forceSimpleRoof=true;
-        try{Roof(distant,w+1.15f,d+1.35f,h,1.45f);}
+        try{Roof(distant,w+1.15f,d+1.35f,h,1.45f,roofSurface);}
         finally{forceSimpleRoof=false;}
         for(int j=-1;j<=1;j++)
         {

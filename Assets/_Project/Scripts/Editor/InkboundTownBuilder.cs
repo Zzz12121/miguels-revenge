@@ -50,6 +50,7 @@ public static partial class InkboundTownBuilder
             streets=Root("01 Stone streets and winding river",town);buildings=Root("02 Inhabited town architecture",town);
             scenery=Root("03 Willow banks and painted mountains",town);life=Root("04 Preserved lives and ink echoes",town);
             BuildTerrain();BuildBridges();BuildEntrance();BuildV3Blocks();BuildV3Landscape();BuildV3Population();BuildLightingAndPlayer();BuildV3Encounter();InstallV3PassableInteraction();
+            ApplyRiversideMarket(town);
             EditorSceneManager.SaveScene(scene,ScenePath);
             var listed=EditorBuildSettings.scenes.ToList();
             if(!listed.Any(x=>x.path==ScenePath)){listed.Add(new EditorBuildSettingsScene(ScenePath,true));EditorBuildSettings.scenes=listed.ToArray();}
@@ -76,6 +77,7 @@ public static partial class InkboundTownBuilder
         material.SetFloat("_Grain",grain);material.SetFloat("_Wash",pattern==5?.35f:.18f);material.SetFloat("_Outline",pattern==5?.04f:.12f);
         material.SetFloat("_StrokeScale",1);
         material.SetFloat("_DirectionalUV",0);
+        material.SetFloat("_ContactInk",pattern==5?0f:pattern==6?.08f:.55f);material.SetFloat("_HeightMist",pattern==5?.65f:0f);
         material.SetFloat("_FadeNear",pattern==5?100:32);material.SetFloat("_FadeFar",pattern==5?510:235);
         EditorUtility.SetDirty(material);AssetDatabase.SaveAssetIfDirty(material);return material;
     }

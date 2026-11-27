@@ -71,6 +71,62 @@ public sealed class InkboundPassThroughImpact : MonoBehaviour
         if(inside)s.contacts.Add(echo);else s.contacts.Remove(echo);
         if(requestEffect){s.exiting=echo;s.exitDirection=direction;pending.Add(s);}
     }
+    static Vector3 BonePosition(Animator animator,HumanBodyBones bone,Vector3 fallback)
+    {
+        if(!animator||!animator.isHuman||!animator.avatar||!animator.avatar.isValid)return fallback;
+        var joint=animator.GetBoneTransform(bone);return joint?joint.position:fallback;
+    }
+    static Vector3 InBounds(Bounds b,float x,float y,float z=0)
+        =>b.center+Vector3.Scale(b.size,new Vector3(x,y-.5f,z));
+    List<Vector3> BurstPositions(Subject s,Bounds bounds)
+    {
+        if(s.owner.GetComponentInChildren<SkinnedMeshRenderer>())
+        {
+            var animator=s.owner.GetComponentInChildren<Animator>();
+            var chest=BonePosition(animator,HumanBodyBones.Chest,InBounds(bounds,0,.68f));
+            var hips=BonePosition(animator,HumanBodyBones.Hips,InBounds(bounds,0,.43f));
+            return new List<Vector3>{
+                BonePosition(animator,HumanBodyBones.Head,InBounds(bounds,0,.88f)),chest,Vector3.Lerp(hips,chest,.35f),
+                BonePosition(animator,HumanBodyBones.LeftHand,InBounds(bounds,-.3f,.52f)),
+                BonePosition(animator,HumanBodyBones.RightHand,InBounds(bounds,.3f,.52f)),
+                BonePosition(animator,HumanBodyBones.LeftFoot,InBounds(bounds,-.16f,.06f)),
+                BonePosition(animator,HumanBodyBones.RightFoot,InBounds(bounds,.16f,.06f))};
+        }
+        float spacing=Mathf.Max(.3f,settings.passThroughPointSpacing);
+        if(Mathf.Max(bounds.size.x,Mathf.Max(bounds.size.y,bounds.size.z))<spacing)
+            return new List<Vector3>{bounds.center};
+        int count=Mathf.Clamp(Mathf.CeilToInt((bounds.size.x+bounds.size.y+bounds.size.z)/spacing),2,12);
+        var candidates=new List<Vector3>();
+        // Sample the actual shape: a table releases ink from its top and legs, not an empty
+        // uniform box around it. Bounded sampling runs only once when the object is crossed.
+        foreach(var r in s.surfaces)
+        {
+            var filter=r?r.GetComponent<MeshFilter>():null;
+            if(!filter||!filter.sharedMesh||!filter.sharedMesh.isReadable)continue;
+            var vertices=filter.sharedMesh.vertices;int step=Mathf.Max(1,vertices.Length/192);
+            for(int i=0;i<vertices.Length;i+=step)candidates.Add(filter.transform.TransformPoint(vertices[i]));
+        }
+        if(candidates.Count==0)
+        {
+            for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)for(int z=-1;z<=1;z++)
+                candidates.Add(bounds.center+Vector3.Scale(bounds.extents,new Vector3(x,y,z))*.85f);
+        }
+        var points=new List<Vector3>();
+        Vector3 first=candidates[0];float nearest=float.PositiveInfinity;
+        foreach(var p in candidates)if((p-bounds.center).sqrMagnitude<nearest){first=p;nearest=(p-bounds.center).sqrMagnitude;}
+        points.Add(first);
+        while(points.Count<count)
+        {
+            Vector3 selected=first;float farthest=0;
+            foreach(var p in candidates)
+            {
+                float distance=float.PositiveInfinity;foreach(var chosen in points)distance=Mathf.Min(distance,(p-chosen).sqrMagnitude);
+                if(distance>farthest){farthest=distance;selected=p;}
+            }
+            if(farthest<.01f)break;points.Add(selected);
+        }
+        return points;
+    }
     public bool Trigger(InkboundEcho echo,Vector3 direction)
     {
         if(!settings||!settings.useProjectileHitEffect)return false;
@@ -82,13 +138,18 @@ public sealed class InkboundPassThroughImpact : MonoBehaviour
         s.rebuild=-1;s.elapsed=0;
         s.effectRoot=new GameObject("Pass-through elder hit ink");
         s.effectRoot.transform.SetParent(transform,false);s.effectRoot.transform.position=bounds.center;
-        direction.y=0;if(direction.sqrMagnitude<.001f)direction=Vector3.forward;
+        var points=BurstPositions(s,bounds);
+        int perPoint=Mathf.Min(Mathf.Clamp(settings.passThroughInkPerPoint,6,20),160/points.Count);
         float scale=Mathf.Clamp(bounds.size.magnitude/2.1f,.65f,2.2f)*settings.passThroughEffectScale;
         s.effectRoot.SetActive(false);s.ink=s.effectRoot.AddComponent<CalligraphyInkField>();
-        s.ink.capacity=32;s.ink.ribbonMaterial=settings.passThroughInkMaterial;
+        s.ink.capacity=Mathf.Clamp(points.Count*perPoint,32,160);s.ink.ribbonMaterial=settings.passThroughInkMaterial;
+        // Multiplying the original white accent strands would turn the whole silhouette pale.
+        s.ink.whiteRatio=0;
         s.effectRoot.SetActive(true);s.ink.SetVisualPlayback(s.speed,true);
         // Same black burst as projectile contact, rather than the accompanying white flashes.
-        s.ink.Burst(bounds.center,1.1f*scale);
+        // Multiple smaller plumes retain distinct head/body/feet and furniture silhouettes.
+        float pointScale=points.Count>1?.7f:1;
+        foreach(var point in points)s.ink.Burst(point,1.1f*scale*pointScale,perPoint);
         for(int i=0;i<s.surfaces.Length;i++)if(s.surfaces[i])
         {s.forcedOff[i]=s.surfaces[i].forceRenderingOff;s.surfaces[i].forceRenderingOff=true;}
         SetPigment(s,0,bounds);playing.Add(s);TriggerCount++;return true;

@@ -4,21 +4,32 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// 霧海孤島（ForestIsland）打倒百足之後跑一小段工作人員名單，跑完回到漁村（不用在場景裡放東西，自動掛上）：
-///   百足本體倒下（SkeletonCentipedeBossAI.OnDefeated，分身不算）→ 等死亡動畫和消散播完 → 畫面暗下來 →
+/// 百足倒下後開啟前往河鎮的符陣；工作人員名單移至河鎮老者真正死亡後（自動掛上）：
+///   河鎮 InkboundTownEncounter 的 BossHealth.OnDied → 等死亡演出 → 畫面暗下來 →
 ///   舊宣紙上由下往上捲過「Miguel's Revenge／製作團隊（GitHub repo 的帳號）／感謝遊玩」→ 回到漁村（GameManager.LoadLevel，帶著玩家的狀態），
-///   記下 StoryProgress.centipedeDefeated（進漁村時自動存檔會一起存）。
+///   百足擊敗紀錄由 ForestInkboundPortal 在開啟傳送流程時寫入。
 /// 名單捲了 2 秒以後按 Space / Enter / 手把 A 可以直接跳到最後。百足是隊友的 Boss，這裡只訂閱它的事件，不改它。
 /// </summary>
 public class CentipedeCredits : MonoBehaviour
 {
     public const string Scene = "ForestIsland";
+    public static bool HandlesEndingFor(BossHealth health)
+    {
+        if(!health)return false;
+        if(health.gameObject.scene.name==Scene&&health.TryGetComponent<SkeletonCentipedeBossAI>(out var centipede))return !centipede.IsClone;
+        if(health.gameObject.scene.name==InkboundTownJourney.Scene)
+        {
+            var encounter=FindAnyObjectByType<InkboundTownEncounter>();
+            return encounter&&encounter.Health==health;
+        }
+        return false;
+    }
 
     /// <summary>GitHub repo（Zzz12121/miguels-revenge）的成員帳號</summary>
     static readonly string[] Team = { "LinLeo109", "Zzz12121", "isc777", "kevin2-111110" };
     const string Repo = "github.com/Zzz12121/miguels-revenge";
 
-    const float AfterDefeat = 6f;      // 百足倒下後等多久（死亡動畫 + 碎成灰）
+    const float AfterDefeat = 6f;      // 河鎮老者死亡演出結束後再進片尾
     const float ScrollSeconds = 16f;   // 名單從下面捲到停住
     const float HoldSeconds = 2.5f;    // 最後「感謝遊玩」停在中間
 
@@ -40,13 +51,15 @@ public class CentipedeCredits : MonoBehaviour
 
     static void Attach(Scene s)
     {
-        if (s.name != Scene || FindAnyObjectByType<CentipedeCredits>() != null) return;
+        if ((s.name != Scene && s.name != InkboundTownJourney.Scene) || FindAnyObjectByType<CentipedeCredits>() != null) return;
         var go = new GameObject("CentipedeCredits");
         SceneManager.MoveGameObjectToScene(go, s);
         go.AddComponent<CentipedeCredits>();
     }
 
     SkeletonCentipedeBossAI boss;
+    BossHealth townHealth;
+    bool lockedInput;
     bool started, rolling, leaving;
     float black, scroll, textAlpha, rollStart;
     ThirdPersonController lockedCtrl;
@@ -55,7 +68,16 @@ public class CentipedeCredits : MonoBehaviour
 
     void Update()
     {
-        if (!started && boss == null)
+        if (!started && gameObject.scene.name == InkboundTownJourney.Scene && townHealth == null)
+        {
+            var encounter=FindAnyObjectByType<InkboundTownEncounter>();
+            if(encounter && encounter.Health)
+            {
+                townHealth=encounter.Health;townHealth.OnDied+=OnTownDefeated;
+                if(townHealth.IsDead)OnTownDefeated();
+            }
+        }
+        if (!started && gameObject.scene.name == Scene && boss == null)
         {
             foreach (var b in FindObjectsByType<SkeletonCentipedeBossAI>(FindObjectsInactive.Exclude))
                 if (!b.IsClone) { boss = b; boss.OnDefeated += OnDefeated; break; }
@@ -71,6 +93,8 @@ public class CentipedeCredits : MonoBehaviour
     void OnDestroy()
     {
         if (boss != null) boss.OnDefeated -= OnDefeated;
+        if(townHealth)townHealth.OnDied-=OnTownDefeated;
+        if(lockedCtrl){lockedCtrl.UnlockActions();lockedCtrl.inputEnabled=lockedInput;}
         if (rolling) { VitalsHud.Hidden = false; InteractPrompt.Unblock(this); }
     }
 
@@ -78,6 +102,13 @@ public class CentipedeCredits : MonoBehaviour
     {
         if (started) return;
         started = true;
+        ForestInkboundPortal.BeginAfterDefeat(boss);
+    }
+
+    void OnTownDefeated()
+    {
+        if(started)return;
+        started=true;
         StartCoroutine(Roll());
     }
 
@@ -90,6 +121,7 @@ public class CentipedeCredits : MonoBehaviour
         lockedCtrl = hp != null ? hp.GetComponent<ThirdPersonController>() : null;
         if (lockedCtrl != null)
         {
+            lockedInput=lockedCtrl.inputEnabled;
             lockedCtrl.LockActions();
             lockedCtrl.inputEnabled = false;
             lockedCtrl.StopHorizontalMotion();
@@ -113,10 +145,9 @@ public class CentipedeCredits : MonoBehaviour
         textAlpha = 0f;
 
         // 回到漁村
-        StoryProgress.Current.centipedeDefeated = true;
-        GameManager.NextArrivalEvent = "打倒百足，回到漁村";
+        GameManager.NextArrivalEvent = "擊敗畫中河鎮的老者，回到漁村";
         leaving = true;
-        if (lockedCtrl != null) { lockedCtrl.UnlockActions(); lockedCtrl.inputEnabled = true; lockedCtrl = null; }
+        if (lockedCtrl != null) { lockedCtrl.UnlockActions(); lockedCtrl.inputEnabled = lockedInput; lockedCtrl = null; }
         var gm = GameManager.Instance;
         if (gm != null) gm.LoadLevel(VillageReturn.VillageScene);
         else SceneManager.LoadScene(VillageReturn.VillageScene);

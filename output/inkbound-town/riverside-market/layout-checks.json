@@ -1,0 +1,26 @@
+{
+  "movedShops": 8,
+  "oldMinimumClearWidth": 3.099987,
+  "newMinimumClearWidth": 8.349991,
+  "pavedWidth": 13.2,
+  "marketCenterX": -39.375,
+  "eastMarketRowX": -29.6500015,
+  "westMarketRowX": -49.1,
+  "roofBackGaps": [
+    1.0,
+    1.0,
+    0.200000763,
+    0.200000763,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "oppositeFronts": true,
+  "riverHousesPreserved": true,
+  "residentsPreserved": true,
+  "renderersPreserved": true,
+  "inkSettingsPreserved": true,
+  "mountainBasinPreserved": true,
+  "marketConnectedToRiver": true,
+  "elderPosition": "(-39.375, 0.000, 16.000)"
+}

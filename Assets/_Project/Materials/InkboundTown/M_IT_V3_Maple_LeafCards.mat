@@ -38,22 +38,28 @@ Material:
     m_Ints: []
     m_Floats:
     - _AlphaClip: 1
-    - _BrushWeight: 0.25
+    - _BrushWeight: 0.3
+    - _ContactInk: 0.06
     - _Cutoff: 0.35
     - _DirectionalUV: 0
     - _EchoStrength: 0
-    - _FadeFar: 285
-    - _FadeNear: 55
-    - _Grain: 0.24
-    - _Outline: 0.035
+    - _FadeFar: 310
+    - _FadeNear: 70
+    - _Grain: 0.46
+    - _HeightMist: 0
+    - _InkRebuild: 1
+    - _MountainWorldSpace: 0
+    - _Outline: 0.11
     - _Pattern: 6
     - _StrokeScale: 1
     - _TextureWeight: 0.6
     - _TouchRadius: 0.88
-    - _Wash: 0.1
+    - _Wash: 0.2
     m_Colors:
-    - _BaseColor: {r: 0.56, g: 0.56, b: 0.55160004, a: 1}
+    - _BaseColor: {r: 0.46, g: 0.46, b: 0.45310003, a: 1}
     - _BrushPanel: {r: 0, g: 0.5, b: 0, a: 0}
+    - _InkRebuildMin: {r: 0, g: 0, b: 0, a: 0}
+    - _InkRebuildSize: {r: 1, g: 1, b: 1, a: 0}
     - _PaperColor: {r: 0.957, g: 0.949, b: 0.918, a: 1}
     - _TouchDirection: {r: 0, g: 0, b: 0, a: 0}
     - _TouchPosition: {r: 0, g: 0, b: 0, a: 0}

@@ -27,14 +27,29 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _BrushAtlas:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _OpacityMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _AlphaClip: 0
+    - _BrushWeight: 0
+    - _ContactInk: 0
+    - _Cutoff: 0.35
     - _DirectionalUV: 0
     - _EchoStrength: 0
     - _FadeFar: 510
     - _FadeNear: 100
     - _Grain: 0.65
-    - _Outline: 0.04
+    - _HeightMist: 0.78
+    - _InkRebuild: 1
+    - _MountainWorldSpace: 0
+    - _Outline: 0.055
     - _Pattern: 5
     - _StrokeScale: 1
     - _TextureWeight: 0
@@ -42,6 +57,9 @@ Material:
     - _Wash: 0.35
     m_Colors:
     - _BaseColor: {r: 0.56, g: 0.56, b: 0.55160004, a: 1}
+    - _BrushPanel: {r: 0, g: 0, b: 0, a: 0}
+    - _InkRebuildMin: {r: 0, g: 0, b: 0, a: 0}
+    - _InkRebuildSize: {r: 1, g: 1, b: 1, a: 0}
     - _PaperColor: {r: 0.957, g: 0.949, b: 0.918, a: 1}
     - _TouchDirection: {r: 0, g: 0, b: 0, a: 0}
     - _TouchPosition: {r: 0, g: 0, b: 0, a: 0}

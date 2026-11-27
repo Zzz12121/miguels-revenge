@@ -1,0 +1,683 @@
+{
+  "scene": "Assets/Piloto Studio/Super Realistic FX Bundle 02/Realistic Ying Yang/Ying Yang Demo Scene.unity",
+  "dirty": false,
+  "scale": "(1.00, 1.00, 1.00)",
+  "systems": [
+    {
+      "name": "Ying Yang Vertical Rune",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 5.0,
+      "bursts": [],
+      "rate": 10.0
+    },
+    {
+      "name": "Momentum",
+      "active": true,
+      "duration": 0.5,
+      "delay": 3.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 40.0
+        }
+      ],
+      "rate": 25.0
+    },
+    {
+      "name": "Smoke_screen_cloud_sharp_fb_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 4.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 15.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAlpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAlpha_Soft",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAlpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAlpha_Soft",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.0,
+      "life": 0.75,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Explosion_Shockwave_03_Distorted_M",
+      "active": true,
+      "duration": 3.0,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_1_alpha",
+      "active": true,
+      "duration": 3.0,
+      "delay": 3.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 2.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Blood_Dark_Shockwave_05_Distorted_alpha",
+      "active": true,
+      "duration": 3.0,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_3_Distorted_still_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 1.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "Simple_StarDust_Noise_Desaturated_Add",
+      "active": true,
+      "duration": 2.0,
+      "delay": 3.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 15.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Flecks_Shiny_Additive",
+      "active": true,
+      "duration": 0.5,
+      "delay": 3.0,
+      "life": 5.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 35.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Smoke_screen_cloud_sharp_fb_1_alpha_soft",
+      "active": true,
+      "duration": 0.27,
+      "delay": 3.0,
+      "life": 2.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 25.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Flecks_Shiny_Additive",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 4.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 75.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Beam_1_Rotated_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Beam_1_Rotated_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Beam_1_Rotated_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 0.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "bamboo_leaf_alpha_soft",
+      "active": true,
+      "duration": 9.0,
+      "delay": 3.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 55.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_2_symbol_alpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.1,
+      "life": 2.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_3_Distorted_still_alpha_soft",
+      "active": true,
+      "duration": 3.0,
+      "delay": 2.8,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_1_alpha_soft",
+      "active": true,
+      "duration": 3.0,
+      "delay": 2.8,
+      "life": 1.2,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 2.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_3_symbol_alpha_soft",
+      "active": true,
+      "duration": 2.0,
+      "delay": 3.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 10.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 1.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_1_alpha_soft",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 1.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_3_Distorted_still_alpha",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 7.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Shockwave_3_Distorted_still_alpha",
+      "active": true,
+      "duration": 0.05,
+      "delay": 3.0,
+      "life": 7.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 2.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "Flare",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.2,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Flare",
+      "active": true,
+      "duration": 5.0,
+      "delay": 3.2,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAdd",
+      "active": true,
+      "duration": 2.0,
+      "delay": 3.0,
+      "life": 1.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 3.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Build Up Floor",
+      "active": true,
+      "duration": 0.05,
+      "delay": 0.0,
+      "life": 5.0,
+      "bursts": [],
+      "rate": 10.0
+    },
+    {
+      "name": "FuzzAlpha_Soft",
+      "active": true,
+      "duration": 2.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAlpha_Soft_1",
+      "active": true,
+      "duration": 2.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Trail_WispyGeneric_Alpha",
+      "active": true,
+      "duration": 0.05,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Beam_1_Rotated_1_alpha_soft",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Beam_1_Rotated_1_alpha_soft_1",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Ink_Vertical_trail_alpha_soft",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Ink_Vertical_trail_alpha_soft_1",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "bamboo_leaf_alpha_soft",
+      "active": true,
+      "duration": 3.0,
+      "delay": 1.0,
+      "life": 3.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 0.0
+        }
+      ],
+      "rate": 10.0
+    },
+    {
+      "name": "yy_3_symbol_alpha_soft",
+      "active": true,
+      "duration": 2.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 15.0
+    },
+    {
+      "name": "Smoke_screen_cloud_sharp_fb_1_alpha_soft",
+      "active": true,
+      "duration": 2.0,
+      "delay": 0.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 0.0
+        }
+      ],
+      "rate": 15.0
+    },
+    {
+      "name": "FuzzAlpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.2,
+      "life": 3.5,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_Shockwave_5_Distorted_still_alpha",
+      "active": true,
+      "duration": 0.05,
+      "delay": 0.0,
+      "life": 3.1,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "yy_Shockwave_3_Distorted_still_alpha",
+      "active": true,
+      "duration": 0.05,
+      "delay": 0.0,
+      "life": 3.1,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 1.0
+    },
+    {
+      "name": "bamboo_yy_3_alpha_soft",
+      "active": true,
+      "duration": 2.0,
+      "delay": 0.0,
+      "life": 3.1,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 10.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "yy_2_symbol_alpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.2,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "Flecks_Shiny_Additive",
+      "active": true,
+      "duration": 2.5,
+      "delay": 0.0,
+      "life": 2.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 0.0
+        }
+      ],
+      "rate": 50.0
+    },
+    {
+      "name": "FuzzAlpha",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 5.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    },
+    {
+      "name": "FuzzAdd",
+      "active": true,
+      "duration": 5.0,
+      "delay": 0.0,
+      "life": 3.0,
+      "bursts": [
+        {
+          "time": 0.0,
+          "count": 1.0
+        }
+      ],
+      "rate": 0.0
+    }
+  ]
+}

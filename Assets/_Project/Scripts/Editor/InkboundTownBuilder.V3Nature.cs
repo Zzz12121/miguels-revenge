@@ -208,10 +208,10 @@ public static partial class InkboundTownBuilder
         var original=filter.GetComponent<Renderer>().sharedMaterials;
         for(int sub=0;sub<source.subMeshCount;sub++)
         {
-            bool leaf=sub==1;var material=V3Material(name+(leaf?"_LeafCards":"_BranchedBark"),leaf?leafWash:bark,leaf?.56f:.32f);
+            bool leaf=sub==1;var material=V3Material(name+(leaf?"_LeafCards":"_BranchedBark"),leaf?leafWash:bark,leaf?.46f:.25f);
             material.SetTexture("_BaseMap",original[sub].GetTexture("Material_Texture2D_1"));material.SetFloat("_TextureWeight",leaf?.6f:.30f);
             material.SetFloat("_AlphaClip",leaf?1:0);if(leaf)material.SetTexture("_OpacityMap",original[sub].GetTexture("Material_Texture2D_4"));
-            material.SetFloat("_BrushWeight",leaf?.25f:.8f);EditorUtility.SetDirty(material);AssetDatabase.SaveAssetIfDirty(material);
+            TuneInkSurface(material,leaf?.46f:.25f,leaf?.46f:.54f,leaf?.20f:.18f,leaf?.11f:.09f,leaf?.30f:.85f,leaf?.06f:.5f);
             var map=new Dictionary<int,int>();var v=new List<Vector3>();var normals=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
             var vertices=source.vertices;var n=source.normals;var u=source.uv;
             foreach(int index in source.GetTriangles(sub))

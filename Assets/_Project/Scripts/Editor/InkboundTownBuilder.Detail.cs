@@ -9,9 +9,10 @@ public static partial class InkboundTownBuilder
         float s=Mathf.Abs(v-.5f)*2,end=Mathf.Abs(u-.5f)*2;
         return height+rise*Mathf.Pow(1-s,1.32f)+Mathf.Pow(s,7)*.38f+Mathf.Pow(end,7)*(.18f+s*.23f);
     }
-    static void SculptRoof(Transform parent,float width,float depth,float height,float rise)
+    static void SculptRoof(Transform parent,float width,float depth,float height,float rise,Material material=null)
     {
-        if(!forceSimpleRoof && width>6 && depth>5 && DetailedVillageRoof(parent,width,depth,height,rise))return;
+        var roofSurface=material?material:roof;
+        if(!forceSimpleRoof && width>6 && depth>5 && DetailedVillageRoof(parent,width,depth,height,rise,roofSurface))return;
         const int nx=20,nz=28;var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
         for(int z=0;z<=nz;z++)for(int x=0;x<=nx;x++)
         {
@@ -29,7 +30,7 @@ public static partial class InkboundTownBuilder
             AddQuad(v,uv,tr,p,q,q-Vector3.up*.19f,p-Vector3.up*.19f);
         }
         var mesh=new Mesh{name="Concave roof with swept corners and thick eaves"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();
-        Model("Concave tiled roof",parent,mesh,roof);
+        Model("Concave tiled roof",parent,mesh,roofSurface);
         var contours=new BrushGeometry();
         contours.Tube(new Vector3(-width*.5f,height+rise+.34f,0),new Vector3(-width*.25f,height+rise-.04f,0),new Vector3(width*.25f,height+rise-.04f,0),new Vector3(width*.5f,height+rise+.34f,0),.12f,.1f,20,7);
         for(int side=-1;side<=1;side+=2)
@@ -45,7 +46,7 @@ public static partial class InkboundTownBuilder
         }
         Model("Rounded ridge and broken tile caps",parent,contours.Mesh("Roof ridge and eave caps"),timber);
     }
-    static bool DetailedVillageRoof(Transform parent,float width,float depth,float height,float rise)
+    static bool DetailedVillageRoof(Transform parent,float width,float depth,float height,float rise,Material roofSurface)
     {
         const string path="Assets/Soswaewon/Meshes/Buildings/SM_JWD_Roof01a.fbx";
         var asset=UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(path);if(!asset)return false;
@@ -62,7 +63,7 @@ public static partial class InkboundTownBuilder
             slope.transform.localPosition=new Vector3(side*.012f,height-b.min.y*scale.y,0);
             foreach(var renderer in slope.GetComponentsInChildren<Renderer>())
             {
-                var mats=renderer.sharedMaterials;for(int k=0;k<mats.Length;k++)mats[k]=roof;renderer.sharedMaterials=mats;
+                var mats=renderer.sharedMaterials;for(int k=0;k<mats.Length;k++)mats[k]=roofSurface;renderer.sharedMaterials=mats;
             }
             foreach(var collider in slope.GetComponentsInChildren<Collider>())UnityEngine.Object.DestroyImmediate(collider);
         }

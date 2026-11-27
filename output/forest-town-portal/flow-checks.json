@@ -1,0 +1,21 @@
+{
+  "stillForest": true,
+  "chargeOnly": true,
+  "idleCycles": true,
+  "golden": true,
+  "walkedIntoPortal": true,
+  "descended": 1.98193359,
+  "completelyBelow": true,
+  "highestPoseAtSubmersion": -0.344811916,
+  "portalGround": 0.00518798828,
+  "replayDelay": 1.00072575,
+  "sinkDuration": 3.0013237,
+  "tailDuration": 1.00364017,
+  "fromAbove": true,
+  "landedAtStart": true,
+  "controls": true,
+  "healthPreserved": true,
+  "noPrematureCredits": true,
+  "creditsAfterTownDeath": true,
+  "centipedeProgress": true
+}

@@ -22,9 +22,10 @@ Shader "Project/InkboundTown/Paper Sky"
             {
                 float3 ray=normalize(i.ray);
                 float2 uv=float2(atan2(ray.x,ray.z),asin(ray.y));
-                float fibre=hash(floor(uv*float2(4800,2700)))-.5;
+                float fibre=hash(floor(uv*float2(1800,1000)))-.5;
                 float pulp=sin(uv.x*79+sin(uv.y*123))*sin(uv.y*137+sin(uv.x*51));
-                return half4(_Tint.rgb+fibre*.012+pulp*.0015,1);
+                float cloud=sin(uv.x*7+sin(uv.y*11))*sin(uv.y*9-uv.x*3);
+                return half4(_Tint.rgb+fibre*.006+pulp*.0012+cloud*.0018,1);
             }
             ENDHLSL
         }

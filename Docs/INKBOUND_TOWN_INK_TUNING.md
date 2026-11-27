@@ -2,6 +2,8 @@
 
 ## 目前穿透效果（取代下方舊版局部墨絲）
 
+最新多點散墨：居民在頭、胸、腹部、雙手、雙腳共 7 個位置同時散墨，依目前動畫骨架取點。家具依尺寸增加到最多 12 個位置，從實際網格挑出彼此分開的部位，涵蓋桌面、桌腳、櫃子／布架等；小物件維持少量點。每點預設 12 條黑墨絲，整件物件上限 160 條，僅使用黑色墨絲，避免多點疊加後白色點綴蓋過黑墨。
+
 玩家身體穿過居民／可穿透生活物件後，該物件完全隱藏，在它周圍呼叫與 `CalligraphyInkProjectile` 命中時相同的 `CalligraphyInkField.Burst(...,1.1)` 黑墨爆散及 `M_InkFluidRibbon` 材質。沒有呼叫傷害函式，也沒有伴隨的白色 nova／impact／cone 閃光。原本的 Returning ink filaments 不再產生。
 
 黑墨全部自然散去後，物件才開始由下而上、以不規則墨斑聚回；不是透明度直接漸入。居民行走、骨架動畫保持運作，因此在目前的位置及姿勢回復。特效跟隨被穿過的物件，沒有跟在玩家身上。實體樹幹保持可見，只有可穿透枝葉使用此效果。
@@ -10,8 +12,10 @@
 
 | 欄位 | 調整方式 |
 |---|---|
-| Ink Playback Speed | 散開／流動／聚回的共同速度。保留使用者現有 `0.162`；`0.5` 是半速，`1` 是原速。越小越慢。 |
+| Ink Playback Speed | 散開／流動／聚回的共同速度。保留使用者最新設定 `0.7`；`0.5` 是半速，`1` 是原速。越小越慢。 |
 | Pass Through Effect Scale | 黑墨範圍／尺寸倍率，預設 `1`。 |
+| Pass Through Point Spacing | 大物件散墨點間距，預設 `0.7`；越小，散布的點越多（最多 12 點）。居民固定 7 點。 |
+| Pass Through Ink Per Point | 每點墨絲數量，預設 `12`；增加會更濃密，整件物件上限 160。 |
 | Reassemble Seconds | 原速下的聚回時間，預設 `0.65` 秒；實際歷時＝此值 ÷ 場景速度 ÷ 個別速度。 |
 | Maximum Pass Through Effects | 同時播放的物件上限，預設 `8`；達上限時保留其他物件可見。 |
 | Pass Through Ink Material | 直接引用老者黑墨材質，不要改成白色命中閃光材質。 |
@@ -22,7 +26,7 @@
 
 店鋪桌、椅、茶盤、杯、器皿、布架等以完整物件保存為獨立組，不會因同材質而一起消失。多材質物件等各個接觸部分都離開後才觸發。更新既有店鋪可使用選單 **GeminiGrowUp → Inkbound Town V3 → Update individual passable furnishings**；這只更新家具，不重建街道／居民／地形。完整 Rebuild town 仍使用生成器預設速度 `0.5`；手動調速後應另存場景。
 
-`Docs/Validation/InkboundPassThroughChecks.cs` 僅檢查這次穿透流程；結果及原生 Unity 畫面保存在 `output/inkbound-town/pass-through-impact/`。檢查暫時使用速度 `1` 以縮短等待，結束會回復 `0.162`；主要實玩交給使用者。
+`Docs/Validation/InkboundPassThroughChecks.cs` 僅檢查穿透流程；結果及原生 Unity 畫面保存在 `output/inkbound-town/pass-through-impact/`。舊單點檢查曾暫時使用速度 `1` 以縮短等待，再回復當時的 `0.162`。最新 `MultiPointPreview` 保持使用者的 `0.7`，確認實際墨絲在頭／腹／雙腳起始、大桌六點覆蓋與完整復原，見 `multiple-points.json`、圖片 09／10；主要實玩交給使用者。
 
 ## 前次尺寸修正與舊版局部墨絲（歷史記錄）
 

@@ -170,29 +170,7 @@ public static partial class InkboundTownBuilder
             int k=new[]{1,3,4,5,2}[i%5];float s=i%2==0?-1:1;
             Place(v3Plants[k],scenery,new Vector3(s*Range(54,74),0,-57+i*9),Range(0,360),Range(.7f,1.12f));
         }
-        // Four asymmetrical mountain groups occupy different bearings, with deliberate sky gaps.
-        for(int layer=0;layer<4;layer++)for(int group=0;group<(layer==0?2:3);group++)
-        {
-            var r=Root("V3 brush ridge "+layer+" "+group,scenery);
-            float yaw=new[]{-49f,43,119}[group]+layer*17;
-            r.position=Quaternion.Euler(0,yaw,0)*new Vector3(0,-9,190+layer*83)+Vector3.forward*15;r.rotation=Quaternion.Euler(0,yaw+180,0);
-            var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
-            float seed=layer*11.7f+group*2.43f,width=layer==0?180:260;
-            for(int z=0;z<=18;z++)for(int x=0;x<=120;x++)
-            {
-                float u=x/120f,t=z/18f;
-                float spine=12+Mathf.PerlinNoise(u*3.4f,seed)*39+Mathf.PerlinNoise(u*8.3f,seed+4)*19;
-                spine*=Mathf.SmoothStep(0,1,u*8)*Mathf.SmoothStep(0,1,(1-u)*8);
-                spine+=Mathf.PerlinNoise(u*28,seed)*5;
-                float shape=Mathf.Pow(Mathf.Max(0,Mathf.Sin(t*Mathf.PI)),.65f+Mathf.PerlinNoise(u*5,seed)*.8f);
-                float y=spine*shape+(Mathf.PerlinNoise(u*19+t*2,seed)-.5f)*9*shape;
-                v.Add(new Vector3((u-.5f)*width,y,(t-.5f)*92+Mathf.Sin(u*13+seed)*12));uv.Add(new Vector2(u,shape));
-                if(x<120&&z<18){int q=z*121+x;tr.AddRange(new[]{q,q+121,q+1,q+1,q+121,q+122});}
-            }
-            var mesh=new Mesh{name="Asymmetric folded mountain ridges"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();
-            var m=V3Material("DistantRidge"+layer,bankStone,.67f+layer*.075f);m.SetFloat("_Pattern",5);m.SetFloat("_FadeNear",160);m.SetFloat("_FadeFar",680);EditorUtility.SetDirty(m);AssetDatabase.SaveAssetIfDirty(m);
-            Model("Layered ink mountain",r,SaveMesh(mesh,"V3Mountain"),m);
-        }
+        BuildSurroundingBasin(scenery);
     }
     static void BuildV3Population()
     {
