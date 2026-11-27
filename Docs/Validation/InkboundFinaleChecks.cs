@@ -123,6 +123,17 @@ public static class InkboundFinaleChecks
         Check("skill timer remains original speed",Mathf.Abs(elapsed-seconds)<.08f,new{elapsed,seconds});
         boss.StopBattle();return "Actual pursuit 1.2x; regular skill clock remains 1x.";
     }
+    public static async Task<string> BridgeSweep()
+    {
+        var d=Object.FindAnyObjectByType<InkboundTownEncounter>();d.enabled=false;d.elder.StopBattle();
+        var bridge=d.transform.Find("01 Stone streets and winding river/Stone arch bridge -22");
+        var bounds=bridge.GetComponentInChildren<Renderer>().bounds;
+        Vector3 origin=bounds.center+Vector3.back*4;origin.y=0;
+        d.GetComponent<InkboundTownSweepDissolve>().Sweep(origin,Vector3.forward,-80,80,30,.5f,8);
+        await Until(()=>!bridge.gameObject.activeSelf,4);
+        Check("swept bridge also dissolves",!bridge.gameObject.activeSelf&&d.player.gameObject.activeInHierarchy,new{bridge=bridge.gameObject.activeSelf,player=d.player.gameObject.activeInHierarchy});
+        return "Bridge scenery also permanently dissolves; player remains active.";
+    }
     static void Screen(string name)
     {
         var type=typeof(Editor).Assembly.GetType("UnityEditor.GameView");var view=Resources.FindObjectsOfTypeAll(type).First();

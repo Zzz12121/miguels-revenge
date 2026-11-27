@@ -117,5 +117,12 @@
       "elapsed": 0.312115282,
       "seconds": 0.3121153
     }
+  },
+  "swept bridge also dissolves": {
+    "pass": true,
+    "details": {
+      "bridge": false,
+      "player": true
+    }
   }
 }

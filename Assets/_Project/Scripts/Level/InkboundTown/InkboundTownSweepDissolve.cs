@@ -33,7 +33,10 @@ public sealed class InkboundTownSweepDissolve : MonoBehaviour
                 if(item.GetComponentInChildren<PlayerHealth>(true)||item.GetComponentInChildren<CalligraphyBossCombat>(true))continue;
                 if(category.name.StartsWith("01 "))
                 {
-                    // Continuous street meshes and bridges keep the player's landing surface.
+                    // Bridges and landing steps are objects too; only the continuous
+                    // ground, streets and river remain as the player's underlying support.
+                    if(item.name.StartsWith("Stone arch bridge ")||item.name=="River landing stone steps")
+                    {Register(item);continue;}
                     foreach(var echo in item.GetComponentsInChildren<InkboundEcho>(true))Register(echo.transform);
                     continue;
                 }
