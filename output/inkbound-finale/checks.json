@@ -1,0 +1,121 @@
+{
+  "restored victory presentation": {
+    "pass": true,
+    "details": {
+      "Showing": true,
+      "timeScale": 0.0
+    }
+  },
+  "victory confirm restores clock": {
+    "pass": true,
+    "details": {
+      "timeScale": 1.0
+    }
+  },
+  "full ending credits": {
+    "pass": true,
+    "details": {
+      "team": [
+        "LinLeo109",
+        "Zzz12121",
+        "isc777",
+        "kevin2-111110"
+      ],
+      "scroll": 16.000042,
+      "timeScale": 1.0
+    }
+  },
+  "health and movement": {
+    "pass": true,
+    "details": {
+      "maxHealth": 15000.0,
+      "Health": 7500.0,
+      "moveSpeed": 2.8,
+      "MovementSpeed": 3.36000013,
+      "basicAttackSpeedMultiplier": 1.2
+    }
+  },
+  "player normal attack interval": {
+    "pass": true,
+    "details": {
+      "oldRecovery": 0.2769231,
+      "newRecovery": 0.221538469,
+      "AttackSpeed": 1.3
+    }
+  },
+  "basic swing speed": {
+    "pass": true,
+    "details": {
+      "meleeSeconds": 0.899865,
+      "expected": 0.87499994
+    }
+  },
+  "proximity wave damage and launch": {
+    "pass": true,
+    "details": {
+      "damage": 5.0,
+      "IsBallistic": true,
+      "ProximityWaves": 1
+    }
+  },
+  "no ultimate at 26 percent": {
+    "pass": true,
+    "details": {
+      "Health": 3899.99976,
+      "UltimateTriggered": false
+    }
+  },
+  "ultimate at 25 percent": {
+    "pass": true,
+    "details": {
+      "Health": 3750.0,
+      "SelectedSkill": 9,
+      "UltimateTriggered": true
+    }
+  },
+  "two sweeps and platforms": {
+    "pass": true,
+    "details": {
+      "SweepsCompleted": 2,
+      "SpawnedPlatformCount": 64,
+      "DissolvedObjects": 65,
+      "playerActive": true
+    }
+  },
+  "no repeated ultimate": {
+    "pass": true,
+    "details": {
+      "Casts": 1,
+      "casts": 1
+    }
+  },
+  "permanent after cleanup and retry": {
+    "pass": true,
+    "details": {
+      "objects": 65,
+      "hidden": 65,
+      "after": 65
+    }
+  },
+  "continuous landscape support retained": {
+    "pass": true,
+    "details": {
+      "landscape": true
+    }
+  },
+  "completed": true,
+  "actual town pursuit speed": {
+    "pass": true,
+    "details": {
+      "speed": 3.35999846,
+      "seconds": 0.6501838
+    }
+  },
+  "skill timer remains original speed": {
+    "pass": true,
+    "details": {
+      "elapsed": 0.312115282,
+      "seconds": 0.3121153
+    }
+  }
+}

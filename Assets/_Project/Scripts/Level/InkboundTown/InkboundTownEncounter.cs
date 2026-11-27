@@ -15,6 +15,8 @@ public sealed class InkboundTownEncounter:MonoBehaviour
     public int Casts {get;private set;}
     public int IncompletePaths {get;private set;}
     public bool FightStarted {get;private set;}
+    public bool UltimateTriggered {get;private set;}
+    [Range(.01f,1)] public float ultimateHealthThreshold=.25f;
     public BossHealth Health {get;private set;}
     Vector3 home;
     float repath,decision,entryHealth;
@@ -30,6 +32,7 @@ public sealed class InkboundTownEncounter:MonoBehaviour
         entryHealth=InkboundTownJourney.Pending?InkboundTownJourney.RemainingHealth:Health.maxHealth*initialHealthFraction;
         Health.ResetHealth();Health.SetHealth(entryHealth);Health.ShowBar=false;Health.bossName="遊墨行者";Health.flashTime=0;
         elder.encounterHealth=Health;elder.externallySequenced=true;
+        if(!GetComponent<InkboundTownSweepDissolve>())gameObject.AddComponent<InkboundTownSweepDissolve>();
         StandQuietly();
         agent.updatePosition=false;agent.updateRotation=false;agent.autoTraverseOffMeshLink=false;
         if(NavMesh.SamplePosition(home,out var hit,2,NavMesh.AllAreas))agent.Warp(hit.position);
@@ -63,6 +66,14 @@ public sealed class InkboundTownEncounter:MonoBehaviour
         }
         if(!agent.isOnNavMesh||elder.IsCasting||Held())
         {if(agent.isOnNavMesh){agent.isStopped=true;agent.nextPosition=elder.transform.position;}return;}
+        // The ultimate is a one-time health phase, independent of street width, sight and recovery.
+        if(!UltimateTriggered&&Health.Health<=Health.maxHealth*ultimateHealthThreshold)
+        {
+            elder.transform.rotation=Quaternion.LookRotation(Vector3.ProjectOnPlane(delta,Vector3.up).sqrMagnitude>.001f?Vector3.ProjectOnPlane(delta,Vector3.up):elder.transform.forward);
+            if(elder.CastEncounterSkill(9))
+            {UltimateTriggered=true;Casts++;awaitingRecovery=true;decision=float.PositiveInfinity;State=elder.SkillName;agent.isStopped=true;}
+            return;
+        }
         agent.isStopped=false;agent.nextPosition=elder.transform.position;
         if(Time.time>=repath)
         {
@@ -79,7 +90,7 @@ public sealed class InkboundTownEncounter:MonoBehaviour
             if(direction.sqrMagnitude>.0001f)
             {
                 elder.transform.rotation=Quaternion.RotateTowards(elder.transform.rotation,Quaternion.LookRotation(direction),240*Time.deltaTime);
-                Vector3 step=direction.normalized*elder.moveSpeed*Time.deltaTime;
+                Vector3 step=direction.normalized*elder.MovementSpeed*Time.deltaTime;
                 if(NavMesh.SamplePosition(elder.transform.position+step,out var support,.65f,NavMesh.AllAreas))
                 {
                     Vector3 before=elder.transform.position;elder.MoveInEncounter(step);
@@ -155,7 +166,7 @@ public sealed class InkboundTownEncounter:MonoBehaviour
     void ResetAfterDeath()
     {
         if(Health.IsDead)return;
-        resetting=true;awaitingRecovery=false;elder.EncounterMeleeContact-=BrushHit;elder.StopBattle();
+        resetting=true;awaitingRecovery=false;UltimateTriggered=false;elder.EncounterMeleeContact-=BrushHit;elder.StopBattle();
         Health.ResetHealth();Health.SetHealth(entryHealth);Health.ShowBar=false;
         FightStarted=false;State="Exploring";decision=Time.time+3;elder.transform.position=home;StandQuietly();
         if(NavMesh.SamplePosition(home,out var h,2,NavMesh.AllAreas)){agent.Warp(h.position);agent.nextPosition=h.position;}

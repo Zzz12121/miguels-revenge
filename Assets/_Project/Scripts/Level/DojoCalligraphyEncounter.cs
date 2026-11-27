@@ -209,7 +209,7 @@ public sealed class DojoCalligraphyEncounter : MonoBehaviour
             {
                 Phase="Approaching for brush melee";float until=Time.time+2.2f;
                 while(Alive&&Time.time<until&&Flat(player.transform.position-Form.transform.position).magnitude>Form.meleeDistance*.8f)
-                {Vector3 d=Flat(player.transform.position-Form.transform.position).normalized;Form.transform.rotation=Quaternion.LookRotation(d);Form.MoveInEncounter(d*Form.moveSpeed*Time.deltaTime);yield return null;}
+                {Vector3 d=Flat(player.transform.position-Form.transform.position).normalized;Form.transform.rotation=Quaternion.LookRotation(d);Form.MoveInEncounter(d*Form.MovementSpeed*Time.deltaTime);yield return null;}
                 if(Alive&&Flat(player.transform.position-Form.transform.position).magnitude>Form.meleeDistance){yield return TeleportBehindPlayer();teleported=true;}
             }
             if(Alive)yield return Cast(teleported?SelectTeleportFollowup():2,!teleported);

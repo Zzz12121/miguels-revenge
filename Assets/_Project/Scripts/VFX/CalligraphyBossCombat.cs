@@ -12,6 +12,11 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     public GameObject cloneTemplate;
     public PlayerHealth player;
     public float maxHealth=10000,moveSpeed=2.8f,meleeDistance=3.6f,projectileSpeed=15,projectileDamage=12;
+    [Min(.1f),Tooltip("只調整移動；不改技能演出時間。")]
+    public float movementSpeedMultiplier=1.2f;
+    [Min(.1f),Tooltip("只調整本體普攻揮筆；不改召喚與其他技能。")]
+    public float basicAttackSpeedMultiplier=1.2f;
+    public float MovementSpeed=>moveSpeed*movementSpeedMultiplier;
     public float recoverySeconds=1.1f,dodgeDistance=2.8f;
     public bool cycleDemonstration=true;
     public float paintingCooldown=32,dragonCooldown=22;
@@ -29,7 +34,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     public int SelectedSkill {get;private set;}
     public string SkillName=>SkillNames[Mathf.Clamp(SelectedSkill,0,SkillNames.Length-1)];
     public static readonly string[] SkillNames={"飛墨一筆","連筆四式","近戰・墨影合擊","畫中世界","天降墨龍","交叉運筆・墨光","躍筆重砸","連環墨浪","點墨落印","墨相鎮海・浮墨天階"};
-    public bool IsCasting=>casting;
+    public bool IsCasting=>casting || proximityWaveClock>=0;
     public bool WaitingForPreview {get;private set;}
     public Transform EffectsRoot=>effectsRoot;
     readonly Dictionary<int,bool> dodgeResults=new();
@@ -117,6 +122,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             return;
         }
         if(WaitingForPreview)return;
+        if(UpdateProximityWave())return;
         Vector3 direction=player.transform.position-transform.position;direction.y=0;
         if(direction.sqrMagnitude>.001f && (!casting || SelectedSkill<=1 || (SelectedSkill!=6 && elapsed<.4f)))
             transform.rotation=Quaternion.RotateTowards(transform.rotation,Quaternion.LookRotation(direction),240*Time.deltaTime);
@@ -127,11 +133,11 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
             float wanted=SelectedSkill==2 || SelectedSkill==7?meleeDistance*.7f:7;
             bool shouldWalk=direction.magnitude>wanted+.3f;
             SetWalking(shouldWalk);
-            if(shouldWalk)Move(direction.normalized*moveSpeed*Time.deltaTime);
+            if(shouldWalk)Move(direction.normalized*MovementSpeed*Time.deltaTime);
             if(cooldown<=0){SetWalking(false);casting=true;elapsed=0;released=0;impactDone=false;aim=player.transform.position;slashVfx=-1;skillEffect=null;}
             return;
         }
-        elapsed+=Time.deltaTime;
+        elapsed+=Time.deltaTime*(encounterBasicMelee?Mathf.Max(.1f,basicAttackSpeedMultiplier):1);
         switch(SelectedSkill)
         {
             case 0: Ranged(Mathf.Max(1,inkProjectile.singleCount));break;
@@ -153,6 +159,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     void SetWalking(bool value)
     {
         if(walking==value || !brush)return;walking=value;
+        if(brush.animator)brush.animator.speed=value?movementSpeedMultiplier:1;
         int index=System.Array.IndexOf(brush.animationStates,value?"walk":"standing_relax");
         if(index>=0)brush.PlayAnimation(index);
     }
@@ -207,12 +214,12 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
         // Summoning chasing doubles does not require brush-contact range. Only the
         // master's own swings stop when the player leaves range; doubles keep chasing.
         if(externallySequenced && !EncounterMeleeInRange){EncounterMeleeLostRange=true;brush.ClearCombatPose();FinishCast();return;}
-        float t=elapsed-1.2f,segment=Mathf.Max(.1f,inkMelee.strokeSeconds);int index=(int)(t/segment);float phase=(t%segment)/segment;
+        float t=(elapsed-1.2f)*Mathf.Max(.1f,basicAttackSpeedMultiplier),segment=Mathf.Max(.1f,inkMelee.strokeSeconds);int index=(int)(t/segment);float phase=(t%segment)/segment;
         int style=index%5;
         brush.SetCombatPose(4+style,phase);
         if(phase>=.38f && slashVfx<index){slashVfx=index;CalligraphyMeleeEffects.Play(brush,style,inkMelee.vfxScale);}
         Vector3 d=player.transform.position-transform.position;d.y=0;
-        if(phase<.3f && d.magnitude>meleeDistance*.8f)Move(d.normalized*moveSpeed*1.5f*Time.deltaTime);
+        if(phase<.3f && d.magnitude>meleeDistance*.8f)Move(d.normalized*MovementSpeed*1.5f*Time.deltaTime);
         if(phase>.38f && phase<.72f && released<index+2 &&
             CalligraphyPlayerHitGate.Touches(player,previousTip,brush.brushTip.position,inkMelee.hitRadius))
         {
@@ -284,6 +291,7 @@ public sealed partial class CalligraphyBossCombat : MonoBehaviour,IDamageable
     }
     public void CancelCast()
     {
+        CancelProximityWave();nextProximityWave=Time.time+2;
         if(avatarUltimate){avatarUltimate.Cleanup();Destroy(avatarUltimate.gameObject);avatarUltimate=null;}
         WaitingForPreview=practiceImmortal && Active;
         runePoints.Clear();

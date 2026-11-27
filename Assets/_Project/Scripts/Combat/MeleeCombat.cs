@@ -46,13 +46,14 @@ public abstract class MeleeCombat : MonoBehaviour
     /// 敵人都是 1；玩家由 PlayerCombat.attackSpeed 決定。揮刀的動畫（PlayerVisualAnimator）也照這個倍率播，判定和畫面才會對上
     /// </summary>
     public virtual float AttackSpeed => 1f;
+    public virtual float NormalAttackIntervalMultiplier => 1f;
     float Fast(float seconds) => seconds / Mathf.Max(0.1f, AttackSpeed);
     /// <summary>第 index 段的抬手時間（已套用攻擊速度）</summary>
     public float WindupFor(int index) => Fast(StepValue(stepWindup, index, windupTime));
     /// <summary>第 index 段有傷害判定的時間（已套用攻擊速度）</summary>
     public float SwingFor(int index) => Fast(StepValue(stepSwing, index, swingTime));
     /// <summary>第 index 段揮完之後的硬直（已套用攻擊速度）</summary>
-    public float RecoveryFor(int index) => Fast(StepValue(stepRecovery, index, index >= comboDamage.Length - 1 ? finisherRecoveryTime : recoveryTime));
+    public float RecoveryFor(int index,bool normalAttack=true) => Fast(StepValue(stepRecovery, index, index >= comboDamage.Length - 1 ? finisherRecoveryTime : recoveryTime))*(normalAttack?NormalAttackIntervalMultiplier:1);
 
     [Header("判定")]
     [Tooltip("判定球離角色中心往前多遠")]

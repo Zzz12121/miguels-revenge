@@ -27,7 +27,8 @@ public sealed class CalligraphyBossCombatEditor : Editor
     {
         serializedObject.Update();
         EditorGUILayout.HelpBox("紅色：攻擊範圍；青色：生成範圍；黃色：投射物最大距離。選取此物件並開啟 Scene Gizmos。Play 模式調整不會儲存；永久設定請修改 Boss Prefab。",MessageType.Info);
-        Group("共用／戰鬥與冷卻","maxHealth","moveSpeed","meleeDistance","recoverySeconds","skillRecovery","cycleDemonstration","dodgeDistance","dodgeChance");
+        Group("共用／戰鬥與冷卻","maxHealth","moveSpeed","movementSpeedMultiplier","basicAttackSpeedMultiplier","meleeDistance","recoverySeconds","skillRecovery","cycleDemonstration","dodgeDistance","dodgeChance");
+        Group("近身震波（固定 5 傷害）","proximityWaveEnabled","proximityWaveRadius","proximityWaveChance","proximityWaveCooldown");
         Group("0–1 飛墨一筆／連筆四式","projectileDamage","projectileSpeed","inkProjectile");
         Group("2 近戰／左右墨影","inkMelee");
         Group("3 畫中世界","paintingWorld.dragonCount","paintingRadius","paintingCooldown","paintingWorld","disturbanceRadius","disturbanceStrength","paintingDragonDamage","paintingDragonScale");

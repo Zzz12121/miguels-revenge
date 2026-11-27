@@ -20,6 +20,9 @@ public partial class PlayerCombat : MeleeCombat
     [Tooltip("攻擊速度倍率：1 = 原本，1.3 = 快 30%。抬手、揮刀、收招、空中刀、揮刀動畫一起變快（判定和畫面一直對得上），接招容錯時間不變")]
     [Range(0.5f, 2f)] public float attackSpeed = 1.3f;
     public override float AttackSpeed => attackSpeed;
+    [Range(.1f,2f),Tooltip("普通攻擊收招間隔倍率；不改抬手與命中時間。")]
+    public float normalAttackIntervalMultiplier=.8f;
+    public override float NormalAttackIntervalMultiplier => normalAttackIntervalMultiplier;
 
     [Header("盾擊（右鍵按一下，在陸地上）")]
     [Tooltip("打開：右鍵按一下 = 往前頂的盾擊（會傷到敵人）。關閉（預設）：舉盾不會造成傷害，傷害只來自盾反突刺")]
@@ -451,7 +454,7 @@ public partial class PlayerCombat : MeleeCombat
         // 刀劍格擋：反擊 = 第一刀的斜斬（抬手 / 揮 / 收的時間跟揮刀動畫一樣，也跟著攻擊速度）
         float delay = swordParry ? Mathf.Max(counterDelay, WindupFor(0)) : counterDelay;
         float active = swordParry ? SwingFor(0) : counterActive;
-        float recovery = swordParry ? RecoveryFor(0) * 0.7f : counterRecovery;
+        float recovery = swordParry ? RecoveryFor(0,false) * 0.7f : counterRecovery;
         float radius = swordParry ? Mathf.Max(counterRadius, hitRadius) : counterRadius;
         float total = delay + active + recovery;
         OnShieldCounter?.Invoke(total);

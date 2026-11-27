@@ -760,11 +760,13 @@ MonoBehaviour:
   ink: {fileID: 1631732955412500549}
   cloneTemplate: {fileID: 2835637790468908604, guid: cb2ab42acb159b94f8d7d1dfa80246ef, type: 3}
   player: {fileID: 0}
-  maxHealth: 10000
+  maxHealth: 15000
   moveSpeed: 2.8
   meleeDistance: 3.6
   projectileSpeed: 15
   projectileDamage: 12
+  movementSpeedMultiplier: 1.2
+  basicAttackSpeedMultiplier: 1.2
   recoverySeconds: 1.1
   dodgeDistance: 2.8
   cycleDemonstration: 0
@@ -932,6 +934,10 @@ MonoBehaviour:
   externallySequenced: 0
   encounterHealth: {fileID: 0}
   encounterShockwave: {fileID: 0}
+  proximityWaveEnabled: 1
+  proximityWaveRadius: 3.5
+  proximityWaveChance: 0.35
+  proximityWaveCooldown: 6
 --- !u!114 &1889805429850933133
 MonoBehaviour:
   m_ObjectHideFlags: 0

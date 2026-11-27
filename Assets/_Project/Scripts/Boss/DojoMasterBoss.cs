@@ -18,7 +18,7 @@ public sealed class DojoMasterBoss : MonoBehaviour
 {
     [Header("Boss")]
     public string bossName = "道場老師父";
-    public float maxHealth = 6000f;   // 原本 3000，加倍
+    public float maxHealth = 9000f;   // 6000 × 1.5；畫中河鎮獨立進場由河鎮老者 prefab 設定
     [Tooltip("Boss 音樂（不填 = Resources/Audio/Music/boss_fight_music，跟森林島一樣）")]
     public AudioClip bossMusic;
     public float musicVolume = 0.5f;

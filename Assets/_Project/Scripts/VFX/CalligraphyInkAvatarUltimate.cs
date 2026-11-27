@@ -53,6 +53,7 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
     int pillarIndex,airShotIndex=-1;
     bool impacted,cleaned,summonShaken,sweepHit,launchPending;
     TrailRenderer activeTrail;
+    InkboundTownSweepDissolve townDissolve;
     sealed class Pillar {public CalligraphyPackageEffect effect;public float until;public Vector3 offset;}
 
     public static CalligraphyInkAvatarUltimate Create(CalligraphyBossCombat owner,CalligraphyBossCombat.InkAvatarUltimateSettings tuning,Transform parent)
@@ -63,6 +64,8 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
     void Initialize(CalligraphyBossCombat owner,CalligraphyBossCombat.InkAvatarUltimateSettings tuning)
     {
         boss=owner;s=tuning;player=owner.player;
+        var town=FindAnyObjectByType<InkboundTownEncounter>();
+        if(town&&town.elder==owner)townDissolve=town.GetComponent<InkboundTownSweepDissolve>();
         motor=player?player.GetComponent<ThirdPersonController>():null;capsule=player?player.GetComponent<CharacterController>():null;
         entryBoss=boss.transform.position;entryBossRotation=boss.transform.rotation;
         entryPlayer=player?player.transform.position:entryBoss;
@@ -291,6 +294,8 @@ public sealed class CalligraphyInkAvatarUltimate : MonoBehaviour
         boss.brush.SetCombatPose(reverse?17:16,p);avatar?.SetCombatPose(reverse?17:16,p);
         float progress=Mathf.SmoothStep(0,1,(p-.2f)/.6f),half=s.sweep.angle*.5f;
         float from=Mathf.Lerp(half,-half,previousSweep)*(reverse?-1:1),to=Mathf.Lerp(half,-half,progress)*(reverse?-1:1);
+        if(townDissolve&&p>=.2f&&previousSweep<1)
+            townDissolve.Sweep(new Vector3(entryBoss.x,groundY,entryBoss.z),forward,from,to,s.sweep.radius*s.sweep.brushLengthMultiplier,s.sweep.trajectoryWidth,s.sweep.contactHeight);
         if(avatar)
         {
             avatar.useAvatarBrushTarget=true;

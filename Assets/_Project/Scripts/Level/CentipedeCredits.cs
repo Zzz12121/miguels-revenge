@@ -31,7 +31,7 @@ public class CentipedeCredits : MonoBehaviour
 
     const float AfterDefeat = 6f;      // 河鎮老者死亡演出結束後再進片尾
     const float ScrollSeconds = 16f;   // 名單從下面捲到停住
-    const float HoldSeconds = 2.5f;    // 最後「感謝遊玩」停在中間
+    const float HoldSeconds = 5f;      // 完整片尾與通關資訊留足閱讀時間
 
     static bool hooked;
 
@@ -61,6 +61,7 @@ public class CentipedeCredits : MonoBehaviour
     BossHealth townHealth;
     bool lockedInput;
     bool started, rolling, leaving;
+    bool skipReady;
     float black, scroll, textAlpha, rollStart;
     ThirdPersonController lockedCtrl;
     GUIStyle titleStyle, headStyle, nameStyle, smallStyle;
@@ -85,7 +86,11 @@ public class CentipedeCredits : MonoBehaviour
         if (rolling && !leaving && Time.unscaledTime - rollStart > 2f && Time.timeScale > 0f && !GameUI.OverlayOpen)
         {
             var kb = Keyboard.current;
-            if ((kb != null && (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame)) || PadInput.ConfirmPressed)
+            bool held=(kb!=null&&(kb.spaceKey.isPressed||kb.enterKey.isPressed))||PadInput.Pad?.buttonSouth.isPressed==true;
+            // Release the battle's jump/confirm first; carrying a button across the fade
+            // must not discard the whole recovered team/thanks sequence.
+            if(!held)skipReady=true;
+            if (skipReady&&((kb != null && (kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame)) || PadInput.ConfirmPressed))
                 scroll = Mathf.Max(scroll, ScrollSeconds);
         }
     }
@@ -115,6 +120,11 @@ public class CentipedeCredits : MonoBehaviour
     IEnumerator Roll()
     {
         for (float t = 0f; t < AfterDefeat; t += Time.deltaTime) yield return null;
+
+        // Restore the original blue-flame victory presentation for the final elder.
+        // The centipede portal still bypasses it; only this ending waits for confirmation.
+        VictoryCongratulations.Show(townHealth?townHealth.bossName:"遊墨行者");
+        while(VictoryCongratulations.Showing)yield return null;
 
         // 玩家停下來、HUD 收起來，畫面暗下來
         var hp = PlayerHealth.Find();
@@ -189,6 +199,11 @@ public class CentipedeCredits : MonoBehaviour
         foreach (var n in Team) lines.Add((n, nameStyle, ink, 0.065f));
         lines.Add(("", nameStyle, ink, 0.06f));
         lines.Add((Repo, smallStyle, soft, 0.12f));
+        if(GameManager.Instance)
+        {
+            int seconds=Mathf.FloorToInt(GameManager.Instance.PlayTime);
+            lines.Add(($"通關時間 {seconds/60:00}:{seconds%60:00}　剩餘生命 {GameManager.Instance.Lives}",smallStyle,soft,.08f));
+        }
         lines.Add(("感謝遊玩", titleStyle, ink, 0.1f));
 
         float total = 0f;

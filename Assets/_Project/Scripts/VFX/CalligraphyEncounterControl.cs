@@ -23,7 +23,7 @@ public sealed partial class CalligraphyBossCombat
     }
     public bool CastEncounterSkill(int index,bool basicMelee=false)
     {
-        if(!externallySequenced || !Active || IsDead || casting || !player || player.IsDead)return false;
+        if(!externallySequenced || !Active || IsDead || IsCasting || !player || player.IsDead)return false;
         if(index==2 && basicMelee && !EncounterMeleeInRange)return false;
         EncounterMeleeLostRange=false;
         SetWalking(false);
