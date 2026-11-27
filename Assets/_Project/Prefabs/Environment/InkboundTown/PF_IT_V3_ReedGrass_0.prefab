@@ -1,5 +1,115 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1918660915655436061
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8991376055405184159}
+  - component: {fileID: 5280253371697567181}
+  - component: {fileID: 8274744144208362700}
+  - component: {fileID: 6497690824088297493}
+  m_Layer: 0
+  m_Name: Distance plant LOD
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8991376055405184159
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918660915655436061}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 7552583924449825784}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!33 &5280253371697567181
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918660915655436061}
+  m_Mesh: {fileID: 4300000, guid: 8d03d21fe5e4c87489b2534a9376f6b7, type: 2}
+--- !u!23 &8274744144208362700
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918660915655436061}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RayTracingAccelStructBuildFlagsOverride: 0
+  m_RayTracingAccelStructBuildFlags: 1
+  m_SmallMeshCulling: 1
+  m_ForceMeshLod: -1
+  m_MeshLodSelectionBias: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: 0cf37be58846eff4f86a9206115c7f6e, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 0
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_GlobalIlluminationMeshLod: 0
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_MaskInteraction: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &6497690824088297493
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1918660915655436061}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &2165213925160154329
 GameObject:
   m_ObjectHideFlags: 0
@@ -11,6 +121,7 @@ GameObject:
   - component: {fileID: 3626489500863890960}
   - component: {fileID: 5568932148773922692}
   - component: {fileID: 294253800897674577}
+  - component: {fileID: 8948204733272559336}
   m_Layer: 0
   m_Name: Pale leaf planes
   m_TagString: Untagged
@@ -90,6 +201,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &8948204733272559336
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2165213925160154329}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &3359710110003589873
 GameObject:
   m_ObjectHideFlags: 0
@@ -101,6 +231,7 @@ GameObject:
   - component: {fileID: 1307685915866349872}
   - component: {fileID: 5928026196252225065}
   - component: {fileID: 7088918732967070778}
+  - component: {fileID: 6240375366031153093}
   m_Layer: 0
   m_Name: Dense irregular leaf clusters
   m_TagString: Untagged
@@ -180,96 +311,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!1 &5826383670826292517
-GameObject:
+--- !u!114 &6240375366031153093
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 7889527543448912062}
-  - component: {fileID: 2014807155009774536}
-  - component: {fileID: 4170455145570476649}
-  m_Layer: 0
-  m_Name: Distance plant LOD
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &7889527543448912062
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5826383670826292517}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 7552583924449825784}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &2014807155009774536
-MeshFilter:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5826383670826292517}
-  m_Mesh: {fileID: 4300000, guid: 8d03d21fe5e4c87489b2534a9376f6b7, type: 2}
---- !u!23 &4170455145570476649
-MeshRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5826383670826292517}
+  m_GameObject: {fileID: 3359710110003589873}
   m_Enabled: 1
-  m_CastShadows: 1
-  m_ReceiveShadows: 1
-  m_DynamicOccludee: 1
-  m_StaticShadowCaster: 0
-  m_MotionVectors: 1
-  m_LightProbeUsage: 1
-  m_ReflectionProbeUsage: 1
-  m_RayTracingMode: 2
-  m_RayTraceProcedural: 0
-  m_RayTracingAccelStructBuildFlagsOverride: 0
-  m_RayTracingAccelStructBuildFlags: 1
-  m_SmallMeshCulling: 1
-  m_ForceMeshLod: -1
-  m_MeshLodSelectionBias: 0
-  m_RenderingLayerMask: 1
-  m_RendererPriority: 0
-  m_Materials:
-  - {fileID: 2100000, guid: 0cf37be58846eff4f86a9206115c7f6e, type: 2}
-  m_StaticBatchInfo:
-    firstSubMesh: 0
-    subMeshCount: 0
-  m_StaticBatchRoot: {fileID: 0}
-  m_ProbeAnchor: {fileID: 0}
-  m_LightProbeVolumeOverride: {fileID: 0}
-  m_ScaleInLightmap: 1
-  m_ReceiveGI: 1
-  m_PreserveUVs: 0
-  m_IgnoreNormalsForChartDetection: 0
-  m_ImportantGI: 0
-  m_StitchLightmapSeams: 1
-  m_SelectedEditorRenderState: 3
-  m_MinimumChartSize: 4
-  m_AutoUVMaxDistance: 0.5
-  m_AutoUVMaxAngle: 89
-  m_LightmapParameters: {fileID: 0}
-  m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_MaskInteraction: 0
-  m_AdditionalVertexStreams: {fileID: 0}
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &6305371535655428978
 GameObject:
   m_ObjectHideFlags: 0
@@ -281,6 +341,7 @@ GameObject:
   - component: {fileID: 3463700818248912940}
   - component: {fileID: 3592494771111325135}
   - component: {fileID: 6766787828510927756}
+  - component: {fileID: 2022759808134228396}
   m_Layer: 0
   m_Name: Distance plant LOD
   m_TagString: Untagged
@@ -360,6 +421,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &2022759808134228396
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6305371535655428978}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &6506125884782918109
 GameObject:
   m_ObjectHideFlags: 0
@@ -369,6 +449,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7552583924449825784}
+  - component: {fileID: 8022718242925716009}
   - component: {fileID: 7517460606764942609}
   m_Layer: 0
   m_Name: PF_IT_V3_ReedGrass_0
@@ -394,9 +475,21 @@ Transform:
   - {fileID: 1307685915866349872}
   - {fileID: 3626489500863890960}
   - {fileID: 3463700818248912940}
-  - {fileID: 7889527543448912062}
+  - {fileID: 8991376055405184159}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8022718242925716009
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6506125884782918109}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
 --- !u!205 &7517460606764942609
 LODGroup:
   m_ObjectHideFlags: 0
@@ -422,7 +515,7 @@ LODGroup:
     renderers:
     - renderer: {fileID: 4118980079779337150}
     - renderer: {fileID: 6766787828510927756}
-    - renderer: {fileID: 4170455145570476649}
+    - renderer: {fileID: 8274744144208362700}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
 --- !u!1 &6833843329294307325
@@ -436,6 +529,7 @@ GameObject:
   - component: {fileID: 1078063557630893786}
   - component: {fileID: 7988711714823196091}
   - component: {fileID: 4118980079779337150}
+  - component: {fileID: 6009571513362928939}
   m_Layer: 0
   m_Name: Tapered joined branching structure
   m_TagString: Untagged
@@ -515,3 +609,22 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &6009571513362928939
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6833843329294307325}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}

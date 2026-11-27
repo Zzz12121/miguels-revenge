@@ -7,7 +7,10 @@ public sealed class InkboundEcho : MonoBehaviour
 {
     [Header("局部散墨與回流")]
     [Range(.2f,2f)] public float touchRadius = .88f;
-    [Range(.3f,3f)] public float returnSeconds = 1.3f;
+    [Tooltip("原速下的回流時間參數；數值越大，回復越慢。另乘場景播放速度。")]
+    [Range(.3f,8f)] public float returnSeconds = 1.3f;
+    [Tooltip("個別物件的速度倍率，再乘場景 Ink Playback Speed。1 = 沿用場景設定。")]
+    [Range(.05f,2f)] public float playbackSpeed=1;
     [Range(32,320)] public int sampleCount = 176;
     [Range(.1f,3f)] public float flowStrength = .9f;
     [Range(.3f,3f)] public float maximumDisplacement = 1.35f;
@@ -22,11 +25,14 @@ public sealed class InkboundEcho : MonoBehaviour
     PlayerHealth visitorHealth;
     Renderer[] surfaces;
     MaterialPropertyBlock block;
+    MaterialPropertyBlock plumeBlock;
+    InkboundTownInkSettings settings;
     SkinnedMeshRenderer skin;
     MeshFilter staticSurface;
     Mesh baked, plume;
     Transform meshSpace;
     readonly List<Vector3> source = new();
+    readonly List<int> nearbySamples=new();
     int[] samples;
     Vector3[] positions, velocities, targets, vertices;
     Vector2[] uvs, brushData;
@@ -38,7 +44,7 @@ public sealed class InkboundEcho : MonoBehaviour
     Color[] colors;
     float[] weights;
     int[] triangles;
-    float nextBake;
+    float nextBake,nextStaticProbe,inkClock;
     bool wasTouching, detailed,lightweight;
     MeshRenderer plumeRenderer;
     static readonly int EchoStrength = Shader.PropertyToID("_EchoStrength");
@@ -54,6 +60,41 @@ public sealed class InkboundEcho : MonoBehaviour
         skin = GetComponentInChildren<SkinnedMeshRenderer>();
         if (!skin) staticSurface = GetComponentInChildren<MeshFilter>();
         block = new MaterialPropertyBlock();
+        plumeBlock=new MaterialPropertyBlock();settings=GetComponentInParent<InkboundTownInkSettings>();
+    }
+
+    void ReadStaticSamples()
+    {
+        meshSpace=staticSurface.transform;var mesh=staticSurface.sharedMesh;mesh.GetVertices(source);
+        // A table top or cloth panel can have vertices only at its edges. Include interior
+        // samples on broad triangles, so walking through the middle still releases pigment.
+        var triangle=mesh.triangles;
+        for(int i=0;i+2<triangle.Length;i+=3)
+        {
+            Vector3 a=source[triangle[i]],b=source[triangle[i+1]],c=source[triangle[i+2]];
+            float edge=Mathf.Max((a-b).magnitude,Mathf.Max((b-c).magnitude,(c-a).magnitude));
+            if(edge<.4f)continue;
+            int divisions=Mathf.Clamp(Mathf.CeilToInt(edge/.35f),2,8);
+            for(int u=1;u<divisions;u++)for(int v=1;v<divisions-u;v++)
+                source.Add(a+(b-a)*(u/(float)divisions)+(c-a)*(v/(float)divisions));
+            source.Add((a+b+c)/3);source.Add((a+b)*.5f);source.Add((a+c)*.5f);source.Add((b+c)*.5f);
+        }
+    }
+    bool FindNearbyStaticSamples()
+    {
+        nearbySamples.Clear();var matrix=meshSpace.localToWorldMatrix;
+        for(int i=0;i<source.Count;i++)
+        {
+            Vector3 p=matrix.MultiplyPoint3x4(source[i]);
+            for(int slot=0;slot<4;slot++)
+            {
+                if(regionStrength[slot]<=.01f)continue;
+                float radius=regionRadius[slot]+.22f;
+                if((p-InkboundDisturbanceSource.Closest(p,(Vector3)regionFrom[slot],(Vector3)regionTo[slot])).sqrMagnitude>radius*radius)continue;
+                nearbySamples.Add(i);break;
+            }
+        }
+        return nearbySamples.Count>0;
     }
 
     bool BuildSamples()
@@ -63,14 +104,16 @@ public sealed class InkboundEcho : MonoBehaviour
         {
             if(plumeRenderer)Destroy(plumeRenderer.gameObject);
             if(plume)Destroy(plume);if(baked)Destroy(baked);
+            // Destroy is deferred until the frame ends. Never reuse the still-truthy
+            // reference while rebuilding at a different sample quality in this frame.
+            plumeRenderer=null;plume=null;baked=null;
             positions=null;source.Clear();
         }
         if (positions != null && positions.Length>0) return true;
         if (!plumeMaterial) return false;
-        baked = new Mesh { name = "Animated ink echo sample" };
-        if (skin) { skin.BakeMesh(baked); meshSpace=skin.transform; baked.GetVertices(source); }
+        if (skin) { if(!baked)baked=new Mesh{name="Animated ink echo sample"};skin.BakeMesh(baked); meshSpace=skin.transform; baked.GetVertices(source); }
         else if (staticSurface && staticSurface.sharedMesh && staticSurface.sharedMesh.isReadable)
-        { meshSpace=staticSurface.transform; staticSurface.sharedMesh.GetVertices(source); }
+        {if(source.Count==0)ReadStaticSamples();if(!FindNearbyStaticSamples())return false;}
         if (source.Count==0) return false;
         int count = Mathf.Min(lightweight?LightweightSamples:sampleCount,source.Count);
         samples=new int[count]; positions=new Vector3[count]; velocities=new Vector3[count]; targets=new Vector3[count]; weights=new float[count];
@@ -78,7 +121,7 @@ public sealed class InkboundEcho : MonoBehaviour
         vertices=new Vector3[count*VerticesPerSample]; uvs=new Vector2[count*VerticesPerSample]; brushData=new Vector2[count*VerticesPerSample]; colors=new Color[count*VerticesPerSample]; triangles=new int[count*QuadsPerSample*6];
         for(int i=0;i<count;i++)
         {
-            samples[i]=(i*7919+37)%source.Count; targets[i]=positions[i]=meshSpace.TransformPoint(source[samples[i]]);
+            samples[i]=skin?(i*7919+37)%source.Count:nearbySamples[(i*7919+37)%nearbySamples.Count]; targets[i]=positions[i]=meshSpace.TransformPoint(source[samples[i]]);
             for(int quad=0;quad<QuadsPerSample;quad++)
             {
                 int q=i*VerticesPerSample+quad*4,t=(i*QuadsPerSample+quad)*6;
@@ -104,7 +147,10 @@ public sealed class InkboundEcho : MonoBehaviour
     void LateUpdate()
     {
         if (!visitor || Time.deltaTime<=0f) return;
-        float dt=Mathf.Min(Time.deltaTime,.04f);
+        float speed=playbackSpeed*(settings?settings.inkPlaybackSpeed:1);
+        float dt=Mathf.Min(Time.deltaTime,.04f)*Mathf.Clamp(speed,.0025f,4);
+        inkClock+=dt;
+        if(!skin&&!detailed&&staticSurface&&!staticSurface.GetComponent<Renderer>().isVisible)return;
         var bounds=skin?skin.bounds:staticSurface?staticSurface.GetComponent<Renderer>().bounds:new Bounds(transform.position+Vector3.up*.8f,Vector3.one);
         Vector3 center=bounds.center;float coarseRadius=skin?1.2f:bounds.extents.magnitude;
         bool touching=false;
@@ -138,8 +184,9 @@ public sealed class InkboundEcho : MonoBehaviour
         }
         if(touching && !wasTouching)Contacts++;
         Disturbance=0;for(int slot=0;slot<4;slot++)Disturbance=Mathf.Max(Disturbance,regionStrength[slot]);
-        if(touching&&!detailed)
+        if(touching&&!detailed&&(skin||Time.time>=nextStaticProbe))
         {
+            nextStaticProbe=Time.time+.15f;
             lightweight=active.Count>=HighQualityBudget&&!active.Contains(this);
             if(BuildSamples()){detailed=true;if(!lightweight)active.Add(this);}
         }
@@ -151,10 +198,16 @@ public sealed class InkboundEcho : MonoBehaviour
             block.SetFloat(EchoStrength,Disturbance);surface.SetPropertyBlock(block);
         }
         if(!detailed || positions==null || !plumeRenderer || !plume)return;
+        if(!skin&&touching&&Time.time>=nextStaticProbe)
+        {
+            nextStaticProbe=Time.time+.18f;
+            if(FindNearbyStaticSamples())for(int i=0;i<samples.Length;i++)
+                if(weights[i]<.015f){samples[i]=nearbySamples[(i*7919+37)%nearbySamples.Count];positions[i]=targets[i]=meshSpace.TransformPoint(source[samples[i]]);velocities[i]=Vector3.zero;}
+        }
         if(Time.time>=nextBake)
         {
             nextBake=Time.time+(lightweight?.12f:.05f);
-            if(skin){skin.BakeMesh(baked);baked.GetVertices(source);}
+            if(skin){if(!baked)baked=new Mesh{name="Animated ink echo sample"};skin.BakeMesh(baked);baked.GetVertices(source);}
             for(int i=0;i<samples.Length;i++)targets[i]=meshSpace.TransformPoint(source[samples[i]]);
         }
         Camera camera=Camera.main;Vector3 right=camera?camera.transform.right:Vector3.right,up=camera?camera.transform.up:Vector3.up;
@@ -170,7 +223,7 @@ public sealed class InkboundEcho : MonoBehaviour
                 if(local>influence){influence=local;delta=targets[i]-nearest;transfer=regionVelocity[slot];}
             }
             weights[i]=Mathf.MoveTowards(weights[i],influence,dt*(touching?7:1.4f/returnSeconds));
-            float t=Time.time*1.15f;
+            float t=inkClock*1.15f;
             Vector3 pFlow=positions[i];
             Vector3 curl=new Vector3(Mathf.Sin(t+pFlow.y*3.1f+pFlow.z*1.7f),Mathf.Cos(t*.81f+pFlow.x*2)*.55f,Mathf.Sin(t*.67f-pFlow.y*2));
             // Advection bends around the capsule, preserving a wake rather than radial explosions.
@@ -214,6 +267,7 @@ public sealed class InkboundEcho : MonoBehaviour
 
         }
         plume.vertices=vertices;plume.colors=colors;plume.RecalculateBounds();
+        plumeBlock.SetFloat("_UseLocalClock",1);plumeBlock.SetFloat("_InkClock",inkClock);plumeRenderer.SetPropertyBlock(plumeBlock);
         plumeRenderer.enabled=Disturbance>.001f;
         if(!touching && Disturbance<=0f)
         {

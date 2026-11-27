@@ -65,6 +65,7 @@ public static partial class InkboundTownBuilder
     {
         var go=Place(residentPrefabs[model],life,stops[0].position,stops[0].yaw);go.name=role;
         var routine=go.AddComponent<NpcRoutine>();routine.animator=go.GetComponentInChildren<Animator>();
+        go.transform.localScale*=1.1f;
         routine.ignorePlayer=true;routine.noticeRadius=0;routine.resumeRadius=0;routine.walkSpeed=speed;routine.stops=stops;
         var phase=go.AddComponent<InkboundResidentPhase>();phase.phase=Range(0,1);
         return go;
@@ -160,6 +161,7 @@ public static partial class InkboundTownBuilder
         for(int i=0;i<6;i++)Box("Deck plank",boat,new Vector3(0,.08f,-2.5f+i*.95f),new Vector3(1.4f,.1f,.09f),cloth);
         Combine(boat,"Ferry");
         var passenger=Place(residentPrefabs["Fisherman"],boat,new Vector3(0,.12f,1.6f),180);
+        passenger.transform.localScale*=1.1f;
         var oar=Root("Rowing oar",boat);oar.localPosition=new Vector3(.85f,.6f,1.7f);oar.localRotation=Quaternion.Euler(30,0,22);
         Beam("Oar shaft",oar,new Vector3(0,-1.5f,0),new Vector3(0,1,0),.055f,timber);Box("Oar blade",oar,new Vector3(0,-1.35f,0),new Vector3(.24f,.65f,.055f),timber);Combine(oar,"Oar");
         var motion=boat.gameObject.AddComponent<InkboundBoat>();motion.rower=passenger.GetComponentInChildren<Animator>();motion.oar=oar;motion.speed=.65f;motion.timeOffset=index*8;motion.wakeIndex=index;

@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 7300172735460391512}
   - component: {fileID: 6016965888525556505}
   - component: {fileID: 3857172685832051597}
+  - component: {fileID: 3587941621761873943}
   m_Layer: 0
   m_Name: Tapered joined branching structure
   m_TagString: Untagged
@@ -90,6 +91,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &3587941621761873943
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5002335278528633587}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &7932691211365921915
 GameObject:
   m_ObjectHideFlags: 0
@@ -99,6 +119,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 103625185105467417}
+  - component: {fileID: 4758600365745850155}
   - component: {fileID: 5843401081096761319}
   - component: {fileID: 6207059674318029614}
   m_Layer: 0
@@ -125,6 +146,18 @@ Transform:
   - {fileID: 8677726669979799901}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4758600365745850155
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7932691211365921915}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
 --- !u!136 &5843401081096761319
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -185,6 +218,7 @@ GameObject:
   - component: {fileID: 8677726669979799901}
   - component: {fileID: 3635220918992236796}
   - component: {fileID: 8625598399805026585}
+  - component: {fileID: 2521588468723882545}
   m_Layer: 0
   m_Name: Paper white blossom petals
   m_TagString: Untagged
@@ -264,3 +298,22 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &2521588468723882545
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8608742086127387957}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}

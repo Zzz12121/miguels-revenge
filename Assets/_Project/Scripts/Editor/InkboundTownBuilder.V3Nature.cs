@@ -11,6 +11,7 @@ public static partial class InkboundTownBuilder
     {
         if(kind==4||(kind==0&&variation==1))return V3ImportedTree(kind,variation);
         var r=Root("IT_V3_"+species[kind]+"_"+variation,null);
+        r.gameObject.AddComponent<InkboundPassableGroup>();
         var wood=new BrushGeometry();var leaves=new BrushGeometry();var light=new BrushGeometry();var flowers=new BrushGeometry();
         if(kind==0||kind==1||kind==3||kind==4)
         {
@@ -199,7 +200,11 @@ public static partial class InkboundTownBuilder
         var asset=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Soswaewon/Meshes/Environments/SM_"+name+".fbx");
         var filter=asset.GetComponentInChildren<MeshFilter>();var source=filter.sharedMesh;
         var r=Root("IT_V3_"+species[kind]+"_"+variation,null);
+        r.gameObject.AddComponent<InkboundPassableGroup>();
         float size=(kind==0?8.4f:8.1f)/source.bounds.size.y;
+        // Hanging leaves can extend below the trunk. Ground the wood, not the full leaf bounds.
+        var sourceVertices=source.vertices;float trunkBase=float.PositiveInfinity;
+        foreach(int index in source.GetTriangles(0))trunkBase=Mathf.Min(trunkBase,sourceVertices[index].y);
         var original=filter.GetComponent<Renderer>().sharedMaterials;
         for(int sub=0;sub<source.subMeshCount;sub++)
         {
@@ -212,7 +217,7 @@ public static partial class InkboundTownBuilder
             foreach(int index in source.GetTriangles(sub))
             {
                 if(!map.TryGetValue(index,out int to))
-                {to=v.Count;map[index]=to;v.Add((vertices[index]-Vector3.up*source.bounds.min.y)*size);normals.Add(n[index]);uv.Add(u[index]);}
+                {to=v.Count;map[index]=to;v.Add((vertices[index]-Vector3.up*trunkBase)*size);normals.Add(n[index]);uv.Add(u[index]);}
                 tr.Add(to);
             }
             var mesh=new Mesh{name="Ink-adapted "+name+" "+sub};mesh.SetVertices(v);mesh.SetNormals(normals);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateBounds();

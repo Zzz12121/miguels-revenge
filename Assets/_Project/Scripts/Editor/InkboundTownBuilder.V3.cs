@@ -267,6 +267,8 @@ public static partial class InkboundTownBuilder
     }
     static void V3ShopGoods(Transform r,int type,float w,float d)
     {
+        r=Root("Passable daily life furnishings",r);
+        r.gameObject.AddComponent<InkboundPassableGroup>();
         float front=-d/2-.55f;
         if(type==0)
         {
@@ -350,10 +352,11 @@ public static partial class InkboundTownBuilder
         }
         else
         {
-            for(int side=-1;side<=1;side+=2)Board(r,new Vector3(side*.65f,1.46f,-d/2),new Vector3(1.24f,2.6f,.15f));
+            for(int side=-1;side<=1;side+=2)Board(r.parent,new Vector3(side*.65f,1.46f,-d/2),new Vector3(1.24f,2.6f,.15f));
             for(int j=0;j<4;j++)RoundTimber(r,new Vector3(2,.18f+j*.18f,front+.3f),new Vector3(2.5f,.2f+j*.18f,front+.4f),.095f);
             Basket(r,new Vector3(-2.6f,.18f,front),.35f,.65f);HangingCloth(r,new Vector3(2.1f,2.6f,-.6f),.9f,1.1f);
         }
+        Combine(r,"Passable shop furnishings");
     }
     static void V3Net(Transform p,Vector3 at,float w,float h)
     {
@@ -367,6 +370,7 @@ public static partial class InkboundTownBuilder
     }
     static void V3Vine(Transform p,Vector3 at,float height)
     {
+        p=Root("Passable climbing vines",p);p.gameObject.AddComponent<InkboundPassableGroup>();
         var stems=new BrushGeometry();var leaves=new BrushGeometry();
         for(int branch=0;branch<3;branch++)
         {
@@ -376,6 +380,7 @@ public static partial class InkboundTownBuilder
             {Vector3 q=Bezier(a,b,c,d,j/28f);float side=j%2==0?-1:1;Vector3 end=q+new Vector3(side*Range(.15f,.28f),Range(-.07f,.10f),Range(-.14f,.14f));leaves.Lance(q,end,.075f,j+branch);}
         }
         Model("Fine climbing vine stems",p,stems.Mesh("Vine stems"),bark);Model("Sparse vine leaves",p,leaves.Mesh("Vine foliage"),leafWash);
+        Combine(p,"ClimbingVine");
     }
 }
 #endif

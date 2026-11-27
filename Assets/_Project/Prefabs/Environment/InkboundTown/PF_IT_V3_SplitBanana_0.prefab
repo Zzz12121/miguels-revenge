@@ -11,6 +11,7 @@ GameObject:
   - component: {fileID: 2365504056007594499}
   - component: {fileID: 5357419786996628911}
   - component: {fileID: 7733387097995416052}
+  - component: {fileID: 8212735905514714140}
   m_Layer: 0
   m_Name: Tapered joined branching structure
   m_TagString: Untagged
@@ -90,6 +91,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &8212735905514714140
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 37416162323521163}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &1424895626094560262
 GameObject:
   m_ObjectHideFlags: 0
@@ -101,6 +121,7 @@ GameObject:
   - component: {fileID: 6221159795020083915}
   - component: {fileID: 8899413007923381368}
   - component: {fileID: 4580495590377051691}
+  - component: {fileID: 7973782522253894952}
   m_Layer: 0
   m_Name: Pale leaf planes
   m_TagString: Untagged
@@ -180,6 +201,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &7973782522253894952
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1424895626094560262}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &2829513901245287140
 GameObject:
   m_ObjectHideFlags: 0
@@ -191,6 +231,7 @@ GameObject:
   - component: {fileID: 2735986328349089003}
   - component: {fileID: 6867179349620815963}
   - component: {fileID: 7782163042238034014}
+  - component: {fileID: 3063819098868001435}
   m_Layer: 0
   m_Name: Dense irregular leaf clusters
   m_TagString: Untagged
@@ -270,6 +311,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &3063819098868001435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2829513901245287140}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &3009792074597087762
 GameObject:
   m_ObjectHideFlags: 0
@@ -279,6 +339,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 904799614622880127}
+  - component: {fileID: 5493717181781794792}
   - component: {fileID: 2928478010015633815}
   m_Layer: 0
   m_Name: PF_IT_V3_SplitBanana_0
@@ -304,9 +365,21 @@ Transform:
   - {fileID: 2735986328349089003}
   - {fileID: 6221159795020083915}
   - {fileID: 1207347432338475946}
-  - {fileID: 7593679670236029845}
+  - {fileID: 6521517171640480057}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5493717181781794792
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3009792074597087762}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
 --- !u!205 &2928478010015633815
 LODGroup:
   m_ObjectHideFlags: 0
@@ -332,10 +405,10 @@ LODGroup:
     renderers:
     - renderer: {fileID: 7733387097995416052}
     - renderer: {fileID: 6651942724295044113}
-    - renderer: {fileID: 733372427846051341}
+    - renderer: {fileID: 8642706151697599690}
   m_Enabled: 1
   m_GlobalIlluminationLOD: 0
---- !u!1 &7044605885429687230
+--- !u!1 &6657741149327663820
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -343,9 +416,10 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 7593679670236029845}
-  - component: {fileID: 2883131523893822005}
-  - component: {fileID: 733372427846051341}
+  - component: {fileID: 6521517171640480057}
+  - component: {fileID: 6363242777643885840}
+  - component: {fileID: 8642706151697599690}
+  - component: {fileID: 1790400627371200972}
   m_Layer: 0
   m_Name: Distance plant LOD
   m_TagString: Untagged
@@ -353,13 +427,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &7593679670236029845
+--- !u!4 &6521517171640480057
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7044605885429687230}
+  m_GameObject: {fileID: 6657741149327663820}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -368,21 +442,21 @@ Transform:
   m_Children: []
   m_Father: {fileID: 904799614622880127}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &2883131523893822005
+--- !u!33 &6363242777643885840
 MeshFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7044605885429687230}
+  m_GameObject: {fileID: 6657741149327663820}
   m_Mesh: {fileID: 4300000, guid: 845b5527b07bbc443b548b29aed61e35, type: 2}
---- !u!23 &733372427846051341
+--- !u!23 &8642706151697599690
 MeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7044605885429687230}
+  m_GameObject: {fileID: 6657741149327663820}
   m_Enabled: 1
   m_CastShadows: 1
   m_ReceiveShadows: 1
@@ -425,6 +499,25 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &1790400627371200972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6657741149327663820}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}
 --- !u!1 &8961883865046428243
 GameObject:
   m_ObjectHideFlags: 0
@@ -436,6 +529,7 @@ GameObject:
   - component: {fileID: 1207347432338475946}
   - component: {fileID: 5609131423939932052}
   - component: {fileID: 6651942724295044113}
+  - component: {fileID: 1105676926466397516}
   m_Layer: 0
   m_Name: Distance plant LOD
   m_TagString: Untagged
@@ -515,3 +609,22 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!114 &1105676926466397516
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8961883865046428243}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4b7c9ede39ad215459b41af6d5143413, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundEcho
+  touchRadius: 0.88
+  returnSeconds: 1.3
+  playbackSpeed: 1
+  sampleCount: 176
+  flowStrength: 0.9
+  maximumDisplacement: 1.35
+  plumeMaterial: {fileID: 2100000, guid: 6004552c829661d48b7fd54b465241ef, type: 2}

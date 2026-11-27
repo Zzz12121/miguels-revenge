@@ -93,6 +93,7 @@ public static partial class InkboundTownBuilder
         Roof(wall,13.1f,1,4.14f,.25f);Combine(wall,"MoonGate");
         Place(v3Plants[4],scenery,new Vector3(57,0,45),-23,1.13f);
         var furniture=Root("Chess under camphor canopy",court);
+        furniture.gameObject.AddComponent<InkboundPassableGroup>();
         V3Table(furniture,new Vector3(54,.08f,43),true,false);
         Board(furniture,new Vector3(54,.94f,43),new Vector3(.67f,.035f,.67f),paper);
         for(int i=0;i<19;i++)
@@ -130,6 +131,7 @@ public static partial class InkboundTownBuilder
         {
             float z=s<0?-39:28,c=RiverCenter(z);
             var dock=Root("Timber fishing landing",buildings);dock.position=new Vector3(c+s*6.7f,-.7f,z);
+            dock.gameObject.AddComponent<InkboundPassableGroup>();
             for(int j=0;j<12;j++)Board(dock,new Vector3(s*1.1f,-.05f,-2.5f+j*.44f),new Vector3(2.6f,.16f,.42f));
             foreach(float dz in new[]{-2.1f,2.1f})foreach(float x in new[]{0f,s*2.1f})
             {
@@ -145,7 +147,7 @@ public static partial class InkboundTownBuilder
         var asset=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Soswaewon/Meshes/Props/SM_Rock01a.fbx");
         var source=asset.GetComponentInChildren<MeshFilter>().sharedMesh;var mesh=UnityEngine.Object.Instantiate(source);var b=source.bounds;
         mesh.vertices=source.vertices.Select(v=>Vector3.Scale(v-b.center,new Vector3(size.x/b.size.x,size.y/b.size.y,size.z/b.size.z))+at).ToArray();mesh.RecalculateNormals();mesh.RecalculateBounds();
-        Model("Weathered garden rock",parent,SaveMesh(mesh,"V3GardenRock"),bankStone);
+        var rock=Model("Weathered garden rock",parent,SaveMesh(mesh,"V3GardenRock"),bankStone);rock.AddComponent<InkboundPassableGroup>();
     }
     static void BuildV3Landscape()
     {
@@ -236,7 +238,7 @@ public static partial class InkboundTownBuilder
         {
             foreach(int s in new[]{-1,1})
             {var chess=Stationary(s<0?"Elder":"Scholar","Chess elder",new Vector3(54,.08f,43+s*1.13f),s<0?0:180,NpcRoutine.Act.Sit,.51f,true);var task=chess.AddComponent<InkboundDailyLifeDetails>();task.kind=InkboundDailyLifeDetails.Kind.Chess;task.localTaskPoint=new Vector3(.1f,.91f,.75f);task.phase=s<0?0:.6f;}
-            foreach(int s in new[]{-1,1})Stationary("Fisherman","Dock net repair",new Vector3(RiverCenter(s<0?-39:28)+s*7.6f,-.65f,s<0?-39:28),s<0?90:-90,NpcRoutine.Act.Crouch);
+            foreach(int s in new[]{-1,1})Stationary("Fisherman","Dock net repair",new Vector3(RiverCenter(s<0?-39:28)+s*7.6f,.08f,s<0?-39:28),s<0?90:-90,NpcRoutine.Act.Crouch);
             Resident("VillagerWoman","Mother on afternoon walk",new[]{Stop(new Vector3(37,0,17),0,2),Stop(new Vector3(37,0,37),180,2)},.72f);
             Resident("ChildGirl","Child beside mother",new[]{Stop(new Vector3(38,0,17.1f),0,2),Stop(new Vector3(38,0,37.1f),180,2)},.72f);
         }
@@ -293,13 +295,6 @@ public static partial class InkboundTownBuilder
         if(combat.brush.brushTip){var tip=combat.brush.brushTip.gameObject.AddComponent<InkboundDisturbanceSource>();tip.shape=InkboundDisturbanceSource.Shape.SweptTip;tip.radius=.5f;tip.onlyWhileMoving=true;tip.minimumSpeed=.7f;}
         var blade=motor.GetComponentsInChildren<Transform>(true).FirstOrDefault(t=>t.name.IndexOf("blade",StringComparison.OrdinalIgnoreCase)>=0||t.name.IndexOf("saber",StringComparison.OrdinalIgnoreCase)>=0);
         if(blade){var sweep=blade.gameObject.AddComponent<InkboundDisturbanceSource>();sweep.shape=InkboundDisturbanceSource.Shape.SweptTip;sweep.onlyWhileMoving=true;sweep.minimumSpeed=1.8f;sweep.radius=.32f;}
-        // Specified goods are historical echoes. Structures retain their authored colliders.
-        foreach(var site in shopSites)
-        {
-            foreach(var renderer in site.transform.GetComponentsInChildren<MeshRenderer>())
-                if(renderer.sharedMaterial==cloth||renderer.sharedMaterial==ceramic||renderer.sharedMaterial==darkCloth)
-                {var echo=renderer.gameObject.AddComponent<InkboundEcho>();echo.plumeMaterial=plume;echo.touchRadius=.75f;}
-        }
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(town.gameObject.scene);
     }
 }

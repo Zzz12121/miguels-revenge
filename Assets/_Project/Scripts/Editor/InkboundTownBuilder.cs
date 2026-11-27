@@ -49,7 +49,7 @@ public static partial class InkboundTownBuilder
             town=Root("Inkbound Town — a preserved afternoon",null);
             streets=Root("01 Stone streets and winding river",town);buildings=Root("02 Inhabited town architecture",town);
             scenery=Root("03 Willow banks and painted mountains",town);life=Root("04 Preserved lives and ink echoes",town);
-            BuildTerrain();BuildBridges();BuildEntrance();BuildV3Blocks();BuildV3Landscape();BuildV3Population();BuildLightingAndPlayer();BuildV3Encounter();
+            BuildTerrain();BuildBridges();BuildEntrance();BuildV3Blocks();BuildV3Landscape();BuildV3Population();BuildLightingAndPlayer();BuildV3Encounter();InstallV3PassableInteraction();
             EditorSceneManager.SaveScene(scene,ScenePath);
             var listed=EditorBuildSettings.scenes.ToList();
             if(!listed.Any(x=>x.path==ScenePath)){listed.Add(new EditorBuildSettingsScene(ScenePath,true));EditorBuildSettings.scenes=listed.ToArray();}
@@ -147,6 +147,8 @@ public static partial class InkboundTownBuilder
         {
             var renderer=filter.GetComponent<MeshRenderer>();if(!renderer || filter.GetComponent<TextMesh>() || !filter.sharedMesh)continue;
             if(filter.GetComponentInParent<InkboundHangingMotion>())continue;
+            var passable=filter.GetComponentInParent<InkboundPassableGroup>();
+            if(passable&&passable.transform!=parent)continue;
             var materials=renderer.sharedMaterials;
             for(int sub=0;sub<filter.sharedMesh.subMeshCount;sub++)
             {
@@ -165,7 +167,7 @@ public static partial class InkboundTownBuilder
             if(node!=parent&&node.childCount==0&&node.GetComponents<Component>().Length==1)Object.DestroyImmediate(node.gameObject);
     }
     static GameObject SavePrefab(Transform root,string path)
-    {var prefab=PrefabUtility.SaveAsPrefabAsset(root.gameObject,path);Object.DestroyImmediate(root.gameObject);return prefab;}
+    {BindV3PassableEchoes(root);var prefab=PrefabUtility.SaveAsPrefabAsset(root.gameObject,path);Object.DestroyImmediate(root.gameObject);return prefab;}
     static GameObject Place(GameObject prefab,Transform parent,Vector3 position,float yaw=0,float scale=1)
     {
         var go=(GameObject)PrefabUtility.InstantiatePrefab(prefab,parent);go.transform.localPosition=position;

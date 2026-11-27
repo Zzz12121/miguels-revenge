@@ -1,6 +1,6 @@
 Shader "Project/InkboundTown/Returning Pigment"
 {
-    Properties{_BaseColor("Ink",Color)=(.025,.03,.035,1) _VertexTint("Use vertex pigment",Range(0,1))=0 _FluidMask("Fluid density atlas",2D)="white"{} _UseFluidMask("Fluid density",Range(0,1))=0}
+    Properties{_BaseColor("Ink",Color)=(.025,.03,.035,1) _VertexTint("Use vertex pigment",Range(0,1))=0 _FluidMask("Fluid density atlas",2D)="white"{} _UseFluidMask("Fluid density",Range(0,1))=0 [HideInInspector]_UseLocalClock("Local ink clock",Float)=0 [HideInInspector]_InkClock("Ink clock",Float)=0}
     SubShader
     {
         Tags{"RenderPipeline"="UniversalPipeline" "Queue"="Transparent" "RenderType"="Transparent"}
@@ -16,7 +16,7 @@ Shader "Project/InkboundTown/Returning Pigment"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Debug/DebuggingCommon.hlsl"
             CBUFFER_START(UnityPerMaterial)
-            half4 _BaseColor;float _VertexTint,_UseFluidMask;
+            half4 _BaseColor;float _VertexTint,_UseFluidMask,_UseLocalClock,_InkClock;
             CBUFFER_END
             TEXTURE2D(_FluidMask);SAMPLER(sampler_FluidMask);
             struct A{float4 p:POSITION;float2 uv:TEXCOORD0;float2 brush:TEXCOORD1;half4 color:COLOR;};
@@ -29,7 +29,8 @@ Shader "Project/InkboundTown/Returning Pigment"
                 #if defined(DEBUG_DISPLAY)
                     half4 debugColor;if(CalculateColorForDebugSceneOverride(debugColor))return debugColor;
                 #endif
-                float2 flow=float2(_Time.y*.19,-_Time.y*.14)+i.brush.y;
+                float clock=lerp(_Time.y,_InkClock,_UseLocalClock);
+                float2 flow=float2(clock*.19,-clock*.14)+i.brush.y;
                 float n=noise(i.uv*3.7+flow)*.65+noise(i.uv*9.1+flow*.6)*.35;
                 float2 p=(i.uv-.5)*2;
                 float density;

@@ -29,7 +29,9 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _InkClock: 0
     - _UseFluidMask: 1
+    - _UseLocalClock: 0
     - _VertexTint: 0
     m_Colors:
     - _BaseColor: {r: 0.025, g: 0.03, b: 0.035, a: 1}

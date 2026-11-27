@@ -1,0 +1,90 @@
+{
+  "residents": 102,
+  "allScaled": true,
+  "passableGroups": 304,
+  "missingEcho": [],
+  "trees": [
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_Willow_1",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_Willow_1",
+      "baseY": 0.0,
+      "rootY": 0.0
+    },
+    {
+      "name": "PF_IT_V3_OldCamphor_0",
+      "baseY": 0.0,
+      "rootY": 0.0
+    }
+  ],
+  "workers": [
+    {
+      "name": "Dock net repair",
+      "y": 0.08,
+      "scale": 1.1,
+      "head": 1.00998163
+    },
+    {
+      "name": "Dock net repair",
+      "y": 0.08,
+      "scale": 1.1,
+      "head": 1.010024
+    }
+  ],
+  "releases": [
+    {
+      "playbackSpeed": 1.0,
+      "peak": 1.0,
+      "releaseSeconds": 1.69182062,
+      "returned": true
+    },
+    {
+      "playbackSpeed": 0.5,
+      "peak": 1.0,
+      "releaseSeconds": 3.45724678,
+      "returned": true
+    }
+  ],
+  "timberEffect": {
+    "peak": 0.9133333,
+    "visiblePlume": true
+  }
+}
