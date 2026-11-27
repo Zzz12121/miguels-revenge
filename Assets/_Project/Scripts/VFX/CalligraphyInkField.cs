@@ -34,6 +34,15 @@ public sealed class CalligraphyInkField : MonoBehaviour
     public int ActiveCount { get; private set; }
     Vector3 disturbance, disturbanceVelocity;
     float disturbanceRadius, disturbanceUntil;
+    bool localPlayback,localSpace;
+    float visualClock,visualSpeed=1;
+    float Clock=>localPlayback?visualClock:Time.time;
+    // Optional visual adapter for pass-through scenery. Existing combat keeps its world clock.
+    public void SetVisualPlayback(float speed,bool followOwner)
+    {
+        localPlayback=true;visualClock=0;visualSpeed=Mathf.Clamp(speed,.0025f,4);localSpace=followOwner;
+        EnsurePool();foreach(var s in strands)s.line.useWorldSpace=!localSpace;
+    }
     void Awake()=>EnsurePool();
     void OnEnable()=>EnsurePool();
     void EnsurePool()
@@ -67,8 +76,9 @@ public sealed class CalligraphyInkField : MonoBehaviour
         var s=strands[cursor];cursor=(cursor+1)%strands.Length;
         if(!s.line)return;
         if(velocity.sqrMagnitude<.8f)velocity=(velocity+Random.onUnitSphere*.5f).normalized*1.1f;
+        if(localSpace){origin=transform.InverseTransformPoint(origin);velocity=transform.InverseTransformVector(velocity);}
         s.origin=origin; s.velocity=velocity; s.size=size; s.life=life>0?life:filamentLifetime;
-        s.seed=Random.value*40; s.born=Time.time; s.active=true;
+        s.seed=Random.value*40; s.born=Clock; s.active=true;
         Vector3 axis=velocity.sqrMagnitude>.001f?velocity.normalized:Vector3.up;
         s.side=Vector3.Cross(axis,Mathf.Abs(axis.y)<.9f?Vector3.up:Vector3.forward).normalized;
         s.up=Vector3.Cross(axis,s.side);
@@ -95,11 +105,12 @@ public sealed class CalligraphyInkField : MonoBehaviour
     void Update()
     {
         EnsurePool();
+        if(localPlayback)visualClock+=Time.deltaTime*visualSpeed;
         ActiveCount=0;
         foreach(var s in strands)
         {
             if(!s.active || !s.line) continue;
-            float age=Time.time-s.born;
+            float age=Clock-s.born;
             if(age>=s.life) {s.active=false;s.line.enabled=false;continue;}
             ActiveCount++; UpdateStrand(s,age);
         }
@@ -124,6 +135,7 @@ public sealed class CalligraphyInkField : MonoBehaviour
         }
         s.line.SetPositions(s.points); s.line.widthMultiplier=s.size*.36f*(1+age*diffusion);
         s.line.GetPropertyBlock(block); block.SetFloat("_Fade",Mathf.SmoothStep(0,1,life));
+        block.SetFloat("_UseLocalClock",localPlayback?1:0);block.SetFloat("_InkClock",visualClock);
         block.SetFloat("_Opacity",Mathf.Min(1,age*18+.2f)); s.line.SetPropertyBlock(block);
     }
 }

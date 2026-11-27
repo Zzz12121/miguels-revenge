@@ -8,6 +8,8 @@ Shader "Project/VFX/CalligraphyFluid"
         _Mode("0 ribbon, 1 sculpture, 2 paper, 3 yin yang",Float)=0
         _Flow("Flow speed",Float)=0.6
         _Seed("Seed",Float)=0
+        [HideInInspector]_UseLocalClock("Use visual clock",Float)=0
+        [HideInInspector]_InkClock("Visual clock",Float)=0
         _FaceTex("Elder visage albedo",2D)="white" {}
         _EyeVisibility("Sky eye ink definition",Range(0,1))=1
         _EyeCenter("Eye half-spacing / height",Vector)=(.035,.07,0,0)
@@ -28,6 +30,7 @@ Shader "Project/VFX/CalligraphyFluid"
             CBUFFER_START(UnityPerMaterial)
             half4 _BaseColor;
             float _Fade,_Opacity,_Mode,_Flow,_Seed;
+            float _UseLocalClock,_InkClock;
             float _EyeVisibility;
             float4 _EyeCenter;
             CBUFFER_END
@@ -49,8 +52,9 @@ Shader "Project/VFX/CalligraphyFluid"
             }
             half4 frag(V i,bool frontFace:SV_IsFrontFace):SV_Target
             {
+                float inkTime=lerp(_Time.y,_InkClock,_UseLocalClock);
                 float2 flow=i.world.xz*2.4+i.world.y*.7;
-                flow+=float2(_Time.y*_Flow*.22,_Seed);
+                flow+=float2(inkTime*_Flow*.22,_Seed);
                 float n=fbm(flow+float2(fbm(flow+3),fbm(flow-4))*1.7);
                 float erosion=smoothstep(_Fade*.98,_Fade*.98+.14,n);
                 float alpha=erosion*_Opacity*_BaseColor.a;
@@ -58,9 +62,9 @@ Shader "Project/VFX/CalligraphyFluid"
                 if(_Mode<.5)
                 {
                     float2 uv=i.uv;
-                    float warp=fbm(float2(uv.x*7-_Time.y*_Flow,uv.y*4)+_Seed);
+                    float warp=fbm(float2(uv.x*7-inkTime*_Flow,uv.y*4)+_Seed);
                     float edge=abs(uv.y-.5)*2;
-                    float fibers=fbm(float2(uv.x*4-_Time.y*_Flow*.3,uv.y*38)+warp);
+                    float fibers=fbm(float2(uv.x*4-inkTime*_Flow*.3,uv.y*38)+warp);
                     alpha*=smoothstep(1, .22, edge+(warp-.5)*.55)*lerp(.25,1,fibers);
                     alpha*=smoothstep(0,.08,uv.x)*smoothstep(1,.7,uv.x);
                     color=lerp(color,color+.12,saturate(fibers-.55));

@@ -48,6 +48,11 @@ public sealed class InkboundEcho : MonoBehaviour
     bool wasTouching, detailed,lightweight;
     MeshRenderer plumeRenderer;
     static readonly int EchoStrength = Shader.PropertyToID("_EchoStrength");
+    bool crossing;
+    Vector3 crossingStart,lastCrossingDirection;
+    InkboundPassThroughImpact impactPlayer;
+    Transform impactOwner;
+    bool impactEligible;
 
     void Start()
     {
@@ -61,6 +66,8 @@ public sealed class InkboundEcho : MonoBehaviour
         if (!skin) staticSurface = GetComponentInChildren<MeshFilter>();
         block = new MaterialPropertyBlock();
         plumeBlock=new MaterialPropertyBlock();settings=GetComponentInParent<InkboundTownInkSettings>();
+        impactOwner=InkboundPassThroughImpact.Owner(this);
+        impactEligible=skin||staticSurface&&InkboundPassThroughImpact.Eligible(staticSurface.GetComponent<Renderer>(),impactOwner);
     }
 
     void ReadStaticSamples()
@@ -147,6 +154,7 @@ public sealed class InkboundEcho : MonoBehaviour
     void LateUpdate()
     {
         if (!visitor || Time.deltaTime<=0f) return;
+        if(settings&&settings.useProjectileHitEffect){UpdatePassThrough();return;}
         float speed=playbackSpeed*(settings?settings.inkPlaybackSpeed:1);
         float dt=Mathf.Min(Time.deltaTime,.04f)*Mathf.Clamp(speed,.0025f,4);
         inkClock+=dt;
@@ -275,6 +283,42 @@ public sealed class InkboundEcho : MonoBehaviour
             for(int i=0;i<positions.Length;i++){positions[i]=targets[i];velocities[i]=Vector3.zero;weights[i]=0;}
         }
     }
+    void UpdatePassThrough()
+    {
+        if(!impactEligible)return;
+        if(!impactPlayer)impactPlayer=settings.ImpactPlayer;
+        if(plumeRenderer)plumeRenderer.enabled=false;
+        // Only the player's body crossing an object triggers this replacement. Sword tips,
+        // boss attacks and this effect's own particles cannot trigger it recursively.
+        InkboundDisturbanceSource body=null;
+        foreach(var s in InkboundDisturbanceSource.Active)
+            if(s&&s.transform==visitor&&s.shape==InkboundDisturbanceSource.Shape.BodyCapsule){body=s;break;}
+        if(!body)return;
+        bool inside=false;
+        var bounds=skin?skin.bounds:staticSurface?staticSurface.GetComponent<Renderer>().bounds:new Bounds(transform.position,Vector3.one);
+        Vector3 closest=InkboundDisturbanceSource.Closest(bounds.center,body.From,body.To);
+        float radius=body.radius+.06f;
+        if(bounds.SqrDistance(closest)<radius*radius)
+        {
+            if(skin)inside=true;
+            else if(staticSurface&&staticSurface.sharedMesh&&staticSurface.sharedMesh.isReadable)
+            {
+                if(source.Count==0)ReadStaticSamples();
+                var matrix=staticSurface.transform.localToWorldMatrix;
+                foreach(var vertex in source)
+                {
+                    Vector3 p=matrix.MultiplyPoint3x4(vertex);
+                    if((p-InkboundDisturbanceSource.Closest(p,body.From,body.To)).sqrMagnitude<radius*radius){inside=true;break;}
+                }
+            }
+        }
+        if(inside&&!crossing){crossingStart=visitor.position;Contacts++;}
+        if(inside&&body.Velocity.sqrMagnitude>.01f)lastCrossingDirection=body.Velocity;
+        bool crossed=!inside&&crossing&&(visitor.position-crossingStart).sqrMagnitude>.0144f&&
+            (visitor.position-crossingStart).sqrMagnitude<25;
+        if(inside||crossing)impactPlayer.Contact(this,inside,crossed,lastCrossingDirection);
+        crossing=inside;Disturbance=impactPlayer.IsPlaying(impactOwner)?1:0;
+    }
     static Vector3 Quadratic(Vector3 a,Vector3 b,Vector3 c,float t)=>Vector3.Lerp(Vector3.Lerp(a,b,t),Vector3.Lerp(b,c,t),t);
     void Card(int q,Vector3 p,Vector3 right,Vector3 up,float size,float alpha,Matrix4x4 matrix)
     {PutQuad(q,p-right*size-up*size,p+right*size-up*size,p+right*size+up*size,p-right*size+up*size,alpha,matrix);}
@@ -286,6 +330,6 @@ public sealed class InkboundEcho : MonoBehaviour
         vertices[q]=matrix.MultiplyPoint3x4(a);vertices[q+1]=matrix.MultiplyPoint3x4(b);vertices[q+2]=matrix.MultiplyPoint3x4(c);vertices[q+3]=matrix.MultiplyPoint3x4(d);
         Color color=new Color(.025f,.029f,.032f,alpha);for(int k=0;k<4;k++)colors[q+k]=color;
     }
-    void OnDisable(){active.Remove(this);detailed=false;if(plumeRenderer)plumeRenderer.enabled=false;}
+    void OnDisable(){active.Remove(this);detailed=false;if(plumeRenderer)plumeRenderer.enabled=false;if(impactPlayer&&crossing)impactPlayer.Contact(this,false,false,Vector3.zero);crossing=false;}
     void OnDestroy(){if(baked)Destroy(baked);if(plume)Destroy(plume);}
 }

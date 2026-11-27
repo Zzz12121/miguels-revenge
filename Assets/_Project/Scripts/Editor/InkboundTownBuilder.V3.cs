@@ -85,11 +85,14 @@ public static partial class InkboundTownBuilder
     }
     static void RoundTimber(Transform parent,Vector3 a,Vector3 b,float r=.065f,Material material=null)
     {
+        bool unit=BeginPassableUnit(ref parent,"Timber furnishing");
         var g=new BrushGeometry();g.Tube(a,Vector3.Lerp(a,b,.32f),Vector3.Lerp(a,b,.67f),b,r,r*.94f,3,8);
         Model("Rounded hand hewn timber",parent,g.Mesh("Rounded timber"),material?material:timber);
+        EndPassableUnit(parent,unit);
     }
     static void Board(Transform p,Vector3 at,Vector3 size,Material m=null)
     {
+        bool unit=BeginPassableUnit(ref p,"Joinery furnishing");
         float x=size.x*.5f,z=size.z*.5f,c=Mathf.Min(.022f,Mathf.Min(x,z)*.12f),bevel=Mathf.Min(.012f,size.y*.18f);
         Vector2[] edge={new(-x,-z+c),new(-x+c,-z),new(x-c,-z),new(x,-z+c),new(x,z-c),new(x-c,z),new(-x+c,z),new(-x,z-c)};
         var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
@@ -103,14 +106,18 @@ public static partial class InkboundTownBuilder
         v.Add(at+Vector3.up*size.y*.5f);uv.Add(Vector2.zero);
         for(int k=0;k<8;k++)tr.AddRange(new[]{24,16+(k+1)%8,16+k});
         var mesh=new Mesh{name="Timber board with small worn bevels"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();Model("Bevelled joinery board",p,mesh,m?m:timber);
+        EndPassableUnit(p,unit);
     }
     static void Shelf(Transform p,Vector3 at,float w,float h,int count)
     {
+        bool unit=BeginPassableUnit(ref p,"Complete shelf");
         for(int s=-1;s<=1;s+=2)RoundTimber(p,at+new Vector3(s*w*.48f,0,0),at+new Vector3(s*w*.48f,h,0),.045f);
         for(int j=0;j<count;j++)Board(p,at+Vector3.up*(.12f+j*h/(count-1)),new Vector3(w,.075f,.48f));
+        EndPassableUnit(p,unit);
     }
     static void Ring(Transform p,Vector3 at,float r,float thickness,Material m)
     {
+        bool unit=BeginPassableUnit(ref p,"Bound rim");
         var g=new BrushGeometry();
         for(int j=0;j<8;j++)
         {
@@ -119,11 +126,13 @@ public static partial class InkboundTownBuilder
             g.Tube(at+x*r,at+(x*.75f+y*.27f)*r,at+(x*.27f+y*.75f)*r,at+y*r,thickness,thickness,3,5);
         }
         Model("Hand bound circular rim",p,g.Mesh("Rim"),m);
+        EndPassableUnit(p,unit);
     }
     static void Cup(Transform p,Vector3 at,float size=.065f)
-    {V3Lathe(p,at,size,size*1.1f,new[]{.52f,.66f,.80f,.92f,1f},ceramic);Ring(p,at+Vector3.up*size*1.1f,size,.008f,paper);}
+    {bool unit=BeginPassableUnit(ref p,"Complete cup");V3Lathe(p,at,size,size*1.1f,new[]{.52f,.66f,.80f,.92f,1f},ceramic);Ring(p,at+Vector3.up*size*1.1f,size,.008f,paper);EndPassableUnit(p,unit);}
     static void V3Lathe(Transform p,Vector3 at,float radius,float height,float[] shape,Material m)
     {
+        bool unit=BeginPassableUnit(ref p,"Thrown vessel");
         const int sides=32;var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
         for(int row=0;row<shape.Length;row++)for(int j=0;j<=sides;j++)
         {
@@ -131,9 +140,11 @@ public static partial class InkboundTownBuilder
             if(row<shape.Length-1&&j<sides){int q=row*(sides+1)+j;tr.AddRange(new[]{q,q+sides+1,q+1,q+1,q+sides+1,q+sides+2});}
         }
         var mesh=new Mesh{name="Smooth thrown vessel"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();Model("Open rounded vessel",p,mesh,m);
+        EndPassableUnit(p,unit);
     }
     static void Steamer(Transform p,Vector3 at,float radius)
     {
+        bool unit=BeginPassableUnit(ref p,"Complete steamer");
         V3Lathe(p,at,radius,.155f,new[]{1f,1f,1f},cloth);
         foreach(float y in new[]{.012f,.145f})Ring(p,at+Vector3.up*y,radius,.014f,timber);
         for(int i=0;i<9;i++)
@@ -141,27 +152,34 @@ public static partial class InkboundTownBuilder
             float x=(i-4)*radius*.22f,z=Mathf.Sqrt(Mathf.Max(0,radius*radius-x*x));
             RoundTimber(p,at+new Vector3(x,.153f,-z),at+new Vector3(x,.153f,z),.009f,cloth);
         }
+        EndPassableUnit(p,unit);
     }
     static void TeaSet(Transform p,Vector3 at)
     {
+        bool unit=BeginPassableUnit(ref p,"Tea tray and cups");
         Board(p,at,new Vector3(.62f,.045f,.39f),cloth);Pot(p,at+Vector3.up*.025f,.12f,.17f,ceramic);
         var handle=Root("Upright teapot handle",p);handle.localPosition=at+new Vector3(.115f,.12f,0);handle.localRotation=Quaternion.Euler(90,0,0);Ring(handle,Vector3.zero,.055f,.014f,ceramic);
         V3Lathe(p,at+Vector3.up*.198f,.075f,.02f,new[]{1f,.87f},ceramic);Pot(p,at+Vector3.up*.218f,.017f,.02f,ceramic);
         RoundTimber(p,at+new Vector3(-.08f,.10f,0),at+new Vector3(-.21f,.16f,0),.028f,ceramic);
         Cup(p,at+new Vector3(-.23f,.025f,.10f));Cup(p,at+new Vector3(.23f,.025f,.1f));
+        EndPassableUnit(p,unit);
     }
     static void V3Table(Transform p,Vector3 at,bool seats=true,bool tea=true)
     {
+        var original=p;bool unit=BeginPassableUnit(ref p,"Complete table");
         Board(p,at+Vector3.up*.77f,new Vector3(1.7f,.105f,1.15f));
         for(int x=-1;x<=1;x+=2)for(int z=-1;z<=1;z+=2)
             RoundTimber(p,at+new Vector3(x*.65f,0,z*.4f),at+new Vector3(x*.65f,.76f,z*.4f),.055f);
         RoundTimber(p,at+new Vector3(-.65f,.22f,-.4f),at+new Vector3(.65f,.22f,-.4f),.035f);
+        EndPassableUnit(p,unit);p=original;
         if(tea)TeaSet(p,at+Vector3.up*.84f);
         if(seats)foreach(int side in new[]{-1,1})
         {
+            p=original;bool stool=BeginPassableUnit(ref p,"Complete stool");
             Board(p,at+new Vector3(0,.43f,side*1.13f),new Vector3(.68f,.085f,.52f));
             for(int x=-1;x<=1;x+=2)for(int z=-1;z<=1;z+=2)
                 RoundTimber(p,at+new Vector3(x*.23f,0,side*1.13f+z*.17f),at+new Vector3(x*.23f,.4f,side*1.13f+z*.17f),.033f);
+            EndPassableUnit(p,stool);
         }
     }
     static readonly string[] shopNames={"Cloth merchant","Tea pavilion","Wine inn","Herbal pharmacy","Steamer kitchen","Fishmonger","Ceramic workshop","Courtyard dwelling"};
@@ -268,21 +286,25 @@ public static partial class InkboundTownBuilder
     static void V3ShopGoods(Transform r,int type,float w,float d)
     {
         r=Root("Passable daily life furnishings",r);
-        r.gameObject.AddComponent<InkboundPassableGroup>();
+        r.gameObject.AddComponent<InkboundPassableGroup>().containerOnly=true;
         float front=-d/2-.55f;
         if(type==0)
         {
             Shelf(r,new Vector3(1.6f,.18f,1.8f),2.4f,2.05f,4);
             for(int j=0;j<12;j++)Board(r,new Vector3(.82f+(j%3)*.69f,.38f+(j/3)*.62f,1.8f),new Vector3(.61f,.14f,.42f),j%2==0?cloth:darkCloth);
             var rack=Root("Draped fabric rack",r);rack.localPosition=new Vector3(1.65f,0,front);
+            rack.gameObject.AddComponent<InkboundPassableGroup>();
             for(int s=-1;s<=1;s+=2)RoundTimber(rack,new Vector3(s*1.15f,0,.4f),new Vector3(s*1.15f,2.45f,.1f),.05f);
             RoundTimber(rack,new Vector3(-1.27f,2.4f,0),new Vector3(1.27f,2.4f,0),.05f);
             for(int j=0;j<4;j++)
             {
                 HangingCloth(rack,new Vector3(-.84f+j*.56f,2.4f,0),.48f,1.65f+j%2*.30f);
                 var roll=Root("Rolled patterned bolt",r);roll.localPosition=new Vector3(-1.2f+j*.51f,.95f,front-.1f);roll.localRotation=Quaternion.Euler(0,0,90);
+                roll.gameObject.AddComponent<InkboundPassableGroup>();
                 V3Lathe(roll,Vector3.zero,.105f,.42f,new[]{.94f,1f,1f,1f,.94f},j%2==0?cloth:darkCloth);Ring(roll,new Vector3(0,.425f,0),.065f,.009f,timber);Ring(roll,new Vector3(0,.428f,0),.035f,.007f,cloth);
+                Combine(roll,"Passable fabric bolt");
             }
+            Combine(rack,"Passable draped rack");
             Board(r,new Vector3(-.5f,.82f,front+.4f),new Vector3(2.5f,.10f,1));
         }
         else if(type==1)
@@ -301,7 +323,8 @@ public static partial class InkboundTownBuilder
             for(int j=0;j<9;j++)
             {
                 Vector3 p=new Vector3(-2.5f+(j%3)*.71f,.18f+(j/6)*.72f,front+.25f+(j/3%2)*.68f);
-                Pot(r,p,.29f,.65f,ceramic);Board(r,p+Vector3.up*.66f,new Vector3(.34f,.045f,.34f),darkCloth);Ring(r,p+Vector3.up*.5f,.19f,.018f,cloth);
+                var jar=r;bool unit=BeginPassableUnit(ref jar,"Covered wine vessel");
+                Pot(jar,p,.29f,.65f,ceramic);Board(jar,p+Vector3.up*.66f,new Vector3(.34f,.045f,.34f),darkCloth);Ring(jar,p+Vector3.up*.5f,.19f,.018f,cloth);EndPassableUnit(jar,unit);
             }
             V3Table(r,new Vector3(1.6f,.18f,-.2f));
         }
@@ -352,7 +375,7 @@ public static partial class InkboundTownBuilder
         }
         else
         {
-            for(int side=-1;side<=1;side+=2)Board(r.parent,new Vector3(side*.65f,1.46f,-d/2),new Vector3(1.24f,2.6f,.15f));
+            if(!refreshingPassableFurnishings)for(int side=-1;side<=1;side+=2)Board(r.parent,new Vector3(side*.65f,1.46f,-d/2),new Vector3(1.24f,2.6f,.15f));
             for(int j=0;j<4;j++)RoundTimber(r,new Vector3(2,.18f+j*.18f,front+.3f),new Vector3(2.5f,.2f+j*.18f,front+.4f),.095f);
             Basket(r,new Vector3(-2.6f,.18f,front),.35f,.65f);HangingCloth(r,new Vector3(2.1f,2.6f,-.6f),.9f,1.1f);
         }
@@ -360,6 +383,7 @@ public static partial class InkboundTownBuilder
     }
     static void V3Net(Transform p,Vector3 at,float w,float h)
     {
+        bool unit=BeginPassableUnit(ref p,"Complete knotted fishing net");
         var g=new BrushGeometry();
         for(int i=0;i<=12;i++)for(int side=-1;side<=1;side+=2)
         {
@@ -367,6 +391,7 @@ public static partial class InkboundTownBuilder
             g.Tube(a,a+Vector3.down*h*.3f,b+Vector3.up*h*.3f,b,.007f,.005f,5,4);
         }
         Model("Hanging fine knotted fishing net",p,g.Mesh("Net"),timber);
+        EndPassableUnit(p,unit);
     }
     static void V3Vine(Transform p,Vector3 at,float height)
     {

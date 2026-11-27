@@ -204,6 +204,7 @@ public static partial class InkboundTownBuilder
     }
     static void Pot(Transform parent,Vector3 position,float radius,float height,Material material)
     {
+        bool unit=BeginPassableUnit(ref parent,"Complete clay vessel");
         int sides=28,rings=12;var verts=new List<Vector3>();var uv=new List<Vector2>();var tris=new List<int>();
         float[] profile={.5f,.64f,.78f,.90f,.98f,1,.99f,.92f,.8f,.62f,.59f,.64f};
         for(int r=0;r<rings;r++)for(int k=0;k<=sides;k++)
@@ -212,6 +213,7 @@ public static partial class InkboundTownBuilder
             if(r<rings-1 && k<sides){int q=r*(sides+1)+k;tris.AddRange(new[]{q,q+sides+1,q+1,q+1,q+sides+1,q+sides+2});}
         }
         var mesh=new Mesh{name="Hand-thrown river town vessel"};mesh.SetVertices(verts);mesh.SetUVs(0,uv);mesh.SetTriangles(tris,0);mesh.RecalculateNormals();Model("Clay vessel",parent,mesh,material);
+        EndPassableUnit(parent,unit);
     }
     static void BuildTeaHouse()
     {

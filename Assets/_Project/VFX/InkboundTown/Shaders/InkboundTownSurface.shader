@@ -21,6 +21,9 @@ Shader "Project/InkboundTown/Painted Surface"
         _StrokeScale("Brush scale",Float)=1
         _DirectionalUV("Follow curved brush UV",Range(0,1))=0
         [HideInInspector]_EchoStrength("Echo disturbance",Float)=0
+        [HideInInspector]_InkRebuild("Reassembled pigment",Float)=1
+        [HideInInspector]_InkRebuildMin("Reassembly bounds minimum",Vector)=(0,0,0,0)
+        [HideInInspector]_InkRebuildSize("Reassembly bounds size",Vector)=(1,1,1,0)
         [HideInInspector]_TouchRadius("Influence radius",Float)=.88
         [HideInInspector]_TouchPosition("Influence position",Vector)=(0,0,0,0)
         [HideInInspector]_TouchDirection("Advection",Vector)=(0,0,0,0)
@@ -37,6 +40,8 @@ Shader "Project/InkboundTown/Painted Surface"
         half4 _BaseColor,_PaperColor;
         float4 _BaseMap_ST,_TouchPosition,_TouchDirection,_BrushPanel;
         float4 _InkFrom[4],_InkTo[4];
+        float4 _InkRebuildMin,_InkRebuildSize;
+        float _InkRebuild;
         float _TextureWeight,_Pattern,_Grain,_Wash,_Outline,_FadeNear,_FadeFar,_EchoStrength,_TouchRadius,_StrokeScale,_DirectionalUV,_BrushWeight,_AlphaClip,_Cutoff;
         CBUFFER_END
         TEXTURE2D(_BaseMap);SAMPLER(sampler_BaseMap);
@@ -86,6 +91,14 @@ Shader "Project/InkboundTown/Painted Surface"
         }
         void echoClip(V i)
         {
+            // Shared by color, depth and shadows: the whole object really disappears.
+            // Return in irregular pigment patches following its current animated pose.
+            if(_InkRebuild<.9999)
+            {
+                float3 local=(i.original-_InkRebuildMin.xyz)/max(_InkRebuildSize.xyz,float3(.01,.01,.01));
+                float threshold=saturate(local.y)*.68+wash(local.xz*9+local.y*3.7)*.32;
+                clip(_InkRebuild*1.04-threshold-.015);
+            }
             if(_AlphaClip>.5)clip(SAMPLE_TEXTURE2D(_OpacityMap,sampler_OpacityMap,i.uv).r-_Cutoff);
             float m=influence(i.original);
             float pigment=wash(i.original.xz*11+i.original.y*3.7);

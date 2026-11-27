@@ -86,6 +86,7 @@ public static partial class InkboundTownBuilder
     }
     static void HangingCloth(Transform parent,Vector3 top,float width,float length)
     {
+        bool unit=BeginPassableUnit(ref parent,"Hanging linen and crossbar");
         var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
         for(int row=0;row<=10;row++)for(int col=0;col<=6;col++)
         {
@@ -96,9 +97,11 @@ public static partial class InkboundTownBuilder
         var mesh=new Mesh{name="Hanging wrinkled linen with uneven hem"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();
         Model("Hanging cloth",parent,SaveMesh(mesh,"HangingCloth"),cloth);
         Beam("Banner crossbar",parent,top-new Vector3(width*.62f,0,0),top+new Vector3(width*.62f,0,0),.055f,timber);
+        EndPassableUnit(parent,unit);
     }
     static void ClothCanopy(Transform parent,Vector3 at,float width,float depth)
     {
+        bool unit=BeginPassableUnit(ref parent,"Linen canopy");
         var v=new List<Vector3>();var uv=new List<Vector2>();var tr=new List<int>();
         const int nx=12,nz=8;
         for(int z=0;z<=nz;z++)for(int x=0;x<=nx;x++)
@@ -109,6 +112,7 @@ public static partial class InkboundTownBuilder
             if(x<nx && z<nz){int q=z*(nx+1)+x;tr.AddRange(new[]{q,q+nx+1,q+1,q+1,q+nx+1,q+nx+2});}
         }
         var mesh=new Mesh{name="Sagging pleated market canopy"};mesh.SetVertices(v);mesh.SetUVs(0,uv);mesh.SetTriangles(tr,0);mesh.RecalculateNormals();Model("Soft linen awning",parent,mesh,cloth);
+        EndPassableUnit(parent,unit);
     }
     static void Lantern(Transform parent,Vector3 at,float radius)
     {
@@ -127,6 +131,7 @@ public static partial class InkboundTownBuilder
     }
     static void Basket(Transform parent,Vector3 at,float radius,float height,bool fruit=false)
     {
+        bool unit=BeginPassableUnit(ref parent,"Complete wicker basket");
         Pot(parent,at,radius,height,cloth);var weave=new BrushGeometry();
         for(int k=0;k<7;k++)
         {
@@ -143,6 +148,7 @@ public static partial class InkboundTownBuilder
             Vector3 p=at+new Vector3(Mathf.Sin(k*2.4f)*radius*.55f,height*.8f+(k%3)*.06f,Mathf.Cos(k*2.4f)*radius*.55f);
             Pot(parent,p,.10f,.16f,k%3==0?stone:ceramic);
         }
+        EndPassableUnit(parent,unit);
     }
     static void RiversideLifeSets()
     {

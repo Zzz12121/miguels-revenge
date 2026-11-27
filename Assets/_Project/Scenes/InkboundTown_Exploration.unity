@@ -1683,6 +1683,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &45570078
 GameObject:
   m_ObjectHideFlags: 0
@@ -5279,6 +5280,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!23 &202257107
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -8723,6 +8725,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &321596986
 GameObject:
   m_ObjectHideFlags: 0
@@ -9788,6 +9791,7 @@ GameObject:
   - component: {fileID: 358462728}
   - component: {fileID: 358462727}
   - component: {fileID: 358462726}
+  - component: {fileID: 358462732}
   m_Layer: 0
   m_Name: "Inkbound Town \u2014 a preserved afternoon"
   m_TagString: Untagged
@@ -9807,7 +9811,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8470dce087ab8d94cb913e97fe634303, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundTownInkSettings
-  inkPlaybackSpeed: 0.5
+  inkPlaybackSpeed: 0.162
+  useProjectileHitEffect: 1
+  passThroughInkMaterial: {fileID: 2100000, guid: 9e98e44d5077cbe43906e1785285409a, type: 2}
+  passThroughEffectScale: 1
+  reassembleSeconds: 0.65
+  maximumPassThroughEffects: 8
 --- !u!114 &358462727
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9914,6 +9923,18 @@ Transform:
   - {fileID: 1754966457}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &358462732
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 358462725}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b4d756ff0f5d1c24082e81013872ee40, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InkboundPassThroughImpact
 --- !u!1001 &360199886
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11355,6 +11376,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &414126096
 GameObject:
   m_ObjectHideFlags: 0
@@ -13194,6 +13216,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!23 &475331270
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -19263,6 +19286,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!23 &723452759
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22583,6 +22607,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &824581630
 GameObject:
   m_ObjectHideFlags: 0
@@ -29914,6 +29939,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1122698008
 GameObject:
   m_ObjectHideFlags: 0
@@ -31129,6 +31155,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1001 &1158889639
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -33716,6 +33743,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1001 &1253416781
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -38944,6 +38972,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1001 &1414974474
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -39221,6 +39250,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1420786947
 GameObject:
   m_ObjectHideFlags: 0
@@ -41587,6 +41617,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1478020510
 GameObject:
   m_ObjectHideFlags: 0
@@ -42097,6 +42128,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1490041746
 GameObject:
   m_ObjectHideFlags: 0
@@ -44272,6 +44304,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!23 &1568676245
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -45543,6 +45576,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!23 &1630616529
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -46503,6 +46537,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!114 &1680256383
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -51017,6 +51052,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1808345637
 GameObject:
   m_ObjectHideFlags: 0
@@ -52547,6 +52583,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &1876113538
 GameObject:
   m_ObjectHideFlags: 0
@@ -58214,6 +58251,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!1 &2104612530
 GameObject:
   m_ObjectHideFlags: 0
@@ -58479,6 +58517,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8afc5c61f975f1a49a8ae22cb19431c3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InkboundPassableGroup
+  containerOnly: 0
 --- !u!114 &2116205272
 MonoBehaviour:
   m_ObjectHideFlags: 0
