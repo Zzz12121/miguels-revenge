@@ -13,10 +13,26 @@ public static class InkboundFinaleSetup
         elder.maxHealth=15000;EditorUtility.SetDirty(elder);AssetDatabase.SaveAssetIfDirty(elder);
         string dojo="Assets/_Project/Prefabs/NPC/PF_DojoMaster.prefab";
         var master=AssetDatabase.LoadAssetAtPath<GameObject>(dojo);
-        master.GetComponent<DojoMasterBoss>().maxHealth=9000;
-        master.GetComponent<BossHealth>().maxHealth=9000;
+        master.GetComponent<DojoMasterBoss>().maxHealth=15000;
+        master.GetComponent<BossHealth>().maxHealth=15000;
         EditorUtility.SetDirty(master.GetComponent<DojoMasterBoss>());EditorUtility.SetDirty(master.GetComponent<BossHealth>());
         AssetDatabase.SaveAssetIfDirty(master.GetComponent<DojoMasterBoss>());
-        return "Town elder 10000 -> 15000; dojo 6000 -> 9000; carried health keeps its encounter's max and fraction.";
+        return "Shared elder HP: dojo 15000 -> escape at 7500; town continues 7500 / 15000, ultimate at 3750.";
+    }
+    public static string Verify()
+    {
+        var master=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/NPC/PF_DojoMaster.prefab");
+        var town=AssetDatabase.LoadAssetAtPath<GameObject>("Assets/_Project/Prefabs/Boss/PF_InkboundTown_Elder.prefab");
+        if(master.GetComponent<DojoMasterBoss>().maxHealth!=15000||master.GetComponent<BossHealth>().maxHealth!=15000||town.GetComponent<CalligraphyBossCombat>().maxHealth!=15000)
+            throw new Exception("Elder health differs between scenes");
+        if(Application.isPlaying)
+        {
+            var encounter=UnityEngine.Object.FindAnyObjectByType<InkboundTownEncounter>();
+            if(!encounter||encounter.Health.maxHealth!=15000||encounter.Health.Health!=7500)throw new Exception("Town did not start at half of shared HP");
+            InkboundTownJourney.Carry(encounter.Health);
+            if(!InkboundTownJourney.Pending||InkboundTownJourney.MaximumHealth!=15000||InkboundTownJourney.RemainingHealth!=7500)
+                throw new Exception("Journey did not retain max/remaining HP");
+        }
+        return "PASS: shared maximum 15000, half-health town arrival 7500, carried max/remaining unchanged.";
     }
 }

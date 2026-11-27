@@ -72,7 +72,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossHealth
   bossName: "\u9AD8\u5854\u5B88\u885B"
-  maxHealth: 9000
+  maxHealth: 15000
   flashTime: 0.08
   excludeFromFlash: []
 --- !u!114 &3568359753201949712
@@ -88,7 +88,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DojoMasterBoss
   bossName: "\u9053\u5834\u8001\u5E2B\u7236"
-  maxHealth: 9000
+  maxHealth: 15000
   bossMusic: {fileID: 0}
   musicVolume: 0.5
   arenaCenter: {x: 0, y: 0, z: 0}
